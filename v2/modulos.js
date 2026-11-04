@@ -1057,7 +1057,8 @@ const chipEudr = r => r.length ? r.map(([n, t]) => `<span class="estado" style="
 
 RUTAS.eudr = async function verEudr(id) {
   const d = await q(sb.from('despachos').select('*').eq('id', id).single());
-  const lotes = lista(d.lotes).map(x => x.toUpperCase());
+  // Los lotes pueden venir como «LOTE-01: 0.5 qq» (desde Kobo): se toma solo el código
+  const lotes = [...new Set(lista(d.lotes).map(x => x.split(':')[0].trim().toUpperCase()).filter(Boolean))];
   const aco = lotes.length ? await q(sb.from('acopio').select('productor_id,lote,psec_lb').eq('org_id', S.org.id).in('lote', lotes)) : [];
   const ids = [...new Set(aco.map(a => a.productor_id))];
   const parc = ids.length ? await q(sb.from('parcelas').select('*, productores(codigo,nombre)').in('productor_id', ids).order('nombre')) : [];
