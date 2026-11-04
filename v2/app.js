@@ -595,7 +595,7 @@ async function verConfig() {
   const val = Object.fromEntries(filas.map(x => [x.clave, x.valor]));
   const internas = k => /^KOBO_(ULT_|MEDIA_|SINC_|ULTIMA_)/.test(k);
   const claves = [...new Set([...Object.keys(CFG_TEXTO), ...filas.map(x => x.clave)])].filter(k => !internas(k));
-  const largo = k => /LINEAS|PROYECTOS|AREAS|DESTINOS|ENLACES/.test(k);
+  const largo = k => /LINEAS|PROYECTOS|AREAS|DESTINOS|ENLACES|INSUMOS/.test(k);
   app().innerHTML = cabecera('Configuración de ' + S.org.nombre) + `<form class="caja" id="f"><div class="rejilla">
     ${claves.map(k => `<div class="${largo(k) ? 'ancho' : ''}"><label>${esc(CFG_TEXTO[k] || k)}</label>${largo(k) ? `<textarea name="${k}" rows="5">${esc(lista(val[k]).join('\n'))}</textarea>` : `<input name="${k}" value="${esc(val[k])}">`}</div>`).join('')}
   </div><div class="acciones"><button>Guardar cambios</button></div></form>
