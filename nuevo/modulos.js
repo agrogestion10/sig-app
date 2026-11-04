@@ -3,7 +3,8 @@
 
 Object.assign(CFG_TEXTO, {
   CREDITO_TASA_ANUAL: 'Crédito: tasa de interés anual (%)', CREDITO_PLAZO_MAX_MESES: 'Crédito: plazo máximo (meses)', CREDITO_MONTO_MAX: 'Crédito: monto máximo por productor (L)',
-  CREDITO_MORA_PCT_MENSUAL: 'Crédito: recargo por mora (% mensual sobre lo atrasado)', CREDITO_GERENCIA_HASTA: 'Crédito: gerencia aprueba hasta (L); arriba, el administrador',
+  CREDITO_MORA_PCT_MENSUAL: 'Crédito: recargo por mora (% mensual sobre lo atrasado)', CREDITO_GERENCIA_HASTA: 'Crédito: gerencia aprueba hasta (L); arriba, el comité',
+  CREDITO_APROBACION_MODO: 'Crédito: quién aprueba (Gerencia / Gerencia hasta monto / Comité)', COMITE_VOTOS_MINIMOS: 'Comité de crédito: votos a favor para aprobar (vacío = mayoría)',
   CREDITO_DESTINOS: 'Crédito: destinos (uno por renglón)', PRIMA_FT_USD_LB: 'Prima de Comercio Justo (USD por libra)', PRIMA_PCT_PRODUCTIVIDAD: 'Prima: % mínimo para productividad y calidad',
   RENDIMIENTO_PERGAMINO_ORO: 'Rendimiento de pergamino seco a oro (0.8 = 80 %)', FACTOR_CAFE_UVA: 'Factor de café uva a pergamino seco', FACTOR_CAFE_PERGAMINO_HUMEDO: 'Factor de pergamino húmedo a seco',
   HUMEDAD_MAXIMA: 'Humedad máxima aceptada (%)', QUEJAS_DIAS_RESPUESTA: 'Quejas: días para responder', QUEJAS_DIAS_URGENTE: 'Quejas urgentes: días para responder',
@@ -17,7 +18,7 @@ Object.assign(CFG_TEXTO, {
 });
 
 const SEC = { cre: 'Crédito interno', cer: 'Certificaciones', adm: 'Administración' };
-['credito', 'creditos', 'cred', 'cartera'].forEach(r => SECCION_DE[r] = 'cre');
+['credito', 'creditos', 'cred', 'cartera', 'condiciones'].forEach(r => SECCION_DE[r] = 'cre');
 ['padron', 'prod', 'prodf', 'parcela', 'inspeccion', 'inspecciones', 'nc', 'acopio', 'acopios', 'despacho', 'balance', 'prima', 'reg', 'quejas', 'queja', 'catalogo', 'kobo'].forEach(r => SECCION_DE[r] = 'cer');
 SECCION_DE.panel = '';
 
@@ -223,31 +224,82 @@ RUTAS.cre = async function menuCredito() {
     ${tarjeta('#/credito', 'Solicitud de crédito', 'Monto, destino, plazo y garantía')}
     ${tarjeta('#/creditos', esJefe() ? 'Créditos por resolver' : 'Mis solicitudes', 'Evaluación técnica, aprobación y desembolso', n)}
     ${esJefe() ? tarjeta('#/cartera', 'Cartera y pagos', 'Saldos, mora y recuperación') : ''}
+    ${esAdmin() ? tarjeta('#/condiciones', 'Condiciones y comité', 'Tasa, plazo y montos por destino; quién aprueba') : ''}
     ${tarjeta('#/padron', 'Productores', 'Padrón de socios')}
   </div>`;
 };
 
 RUTAS.credito = async function formCredito() {
-  const ps = await prods(), max = cfgN('CREDITO_MONTO_MAX', 100000), plazoMax = cfgN('CREDITO_PLAZO_MAX_MESES', 24);
+  const [ps, conds] = await Promise.all([prods(), q(sb.from('condiciones_credito').select('*').eq('org_id', S.org.id).eq('activa', true).order('orden'))]);
+  const max = cfgN('CREDITO_MONTO_MAX', 100000), plazoMax = cfgN('CREDITO_PLAZO_MAX_MESES', 24);
+  const destinos = conds.length ? conds.map(x => x.destino) : (lista(S.cfg.CREDITO_DESTINOS).length ? lista(S.cfg.CREDITO_DESTINOS) : ['Mantenimiento de finca', 'Otro']);
   app().innerHTML = cabecera('Solicitud de crédito') + `<form class="caja" id="f"><div class="rejilla">
     <div class="ancho"><label>Productor</label>${campoProd(ps)}<p class="nota">¿No aparece? <a href="#/prodf">Registralo primero</a>.</p></div>
+    <div><label>Destino</label><select name="destino">${opciones(destinos)}</select></div>
     <div><label>Monto solicitado (L)</label><input name="monto" required inputmode="decimal"></div>
-    <div><label>Destino</label><select name="destino">${opciones(lista(S.cfg.CREDITO_DESTINOS).length ? lista(S.cfg.CREDITO_DESTINOS) : ['Mantenimiento de finca', 'Otro'])}</select></div>
     <div><label>Plazo (meses)</label><input name="plazo" required inputmode="numeric" value="12"></div>
     <div><label>Forma de pago</label><select name="frecuencia">${opciones(Object.keys(MESES_FREC))}</select></div>
     <div><label>Garantía</label><select name="garantia">${opciones(['Fiduciaria (fiador)', 'Prendaria', 'Hipotecaria', 'Contrato de entrega de cosecha', 'Sin garantía'])}</select></div>
     <div class="ancho"><label>Detalle del uso y de la garantía</label><textarea name="comentario"></textarea></div>
-  </div><p class="nota">Máximo por productor: ${L(max)} · plazo máximo: ${plazoMax} meses · tasa vigente: ${cfgN('CREDITO_TASA_ANUAL', 18)} % anual.</p>
+  </div><p class="nota" id="cond"></p>
   <div class="acciones"><button>Registrar solicitud</button></div></form>`;
-  $('#f').onsubmit = async ev => {
-    ev.preventDefault(); const f = ev.target, d = datosForm(f), p = leerProd(ps, d.productor_txt);
+  const f = $('#f'), condDe = v => conds.find(x => x.destino === v);
+  const mostrar = cambio => {
+    const c = condDe(f.destino.value);
+    if (!c) { $('#cond').textContent = `Máximo por productor: ${L(max)} · plazo máximo: ${plazoMax} meses · tasa vigente: ${cfgN('CREDITO_TASA_ANUAL', 18)} % anual.`; return; }
+    $('#cond').innerHTML = `Condiciones para <b>${esc(c.destino)}</b>: de ${L(c.monto_min)} a ${L(c.monto_max)} · hasta ${c.plazo_max_meses} meses · ${num(c.tasa_anual)} % anual · pago ${esc(c.frecuencia).toLowerCase()}${c.garantia ? ' · garantía ' + esc(c.garantia).toLowerCase() : ''}.`;
+    if (cambio) { f.plazo.value = c.plazo_max_meses; f.frecuencia.value = c.frecuencia; }
+  };
+  f.destino.onchange = () => mostrar(true); mostrar(true);
+  f.onsubmit = async ev => {
+    ev.preventDefault(); const d = datosForm(f), p = leerProd(ps, d.productor_txt), c = condDe(d.destino);
+    const mn = c ? num(c.monto_min) : 0, mx = c ? num(c.monto_max) : max, pm = c ? c.plazo_max_meses : plazoMax;
     if (!p) return aviso('Elegí un productor de la lista.', true);
     if (num(d.monto) <= 0) return aviso('Poné el monto.', true);
-    if (num(d.monto) > max) return aviso(`El monto pasa del máximo por productor (${L(max)}).`, true);
-    if (+d.plazo < 1 || +d.plazo > plazoMax) return aviso(`El plazo debe ser de 1 a ${plazoMax} meses.`, true);
+    if (num(d.monto) < mn || num(d.monto) > mx) return aviso(`Para ${d.destino} el monto va de ${L(mn)} a ${L(mx)}.`, true);
+    if (+d.plazo < 1 || +d.plazo > pm) return aviso(`Para ${d.destino} el plazo es de 1 a ${pm} meses.`, true);
     ocupado(f, true);
-    try { const c = await q(sb.from('creditos').insert({ org_id: S.org.id, productor_id: p.id, monto_solicitado: num(d.monto), destino: d.destino, plazo_meses: +d.plazo, frecuencia: d.frecuencia, garantia: d.garantia, comentario: d.comentario }).select('id,numero').single()); avisar('credito', c.id); aviso('Solicitud registrada: ' + c.numero); location.hash = '#/cred/' + c.id; }
+    try { const r = await q(sb.from('creditos').insert({ org_id: S.org.id, productor_id: p.id, monto_solicitado: num(d.monto), destino: d.destino, plazo_meses: +d.plazo, frecuencia: d.frecuencia, garantia: d.garantia, comentario: d.comentario, tasa_anual: c ? num(c.tasa_anual) : null }).select('id,numero').single()); avisar('credito', r.id); aviso('Solicitud registrada: ' + r.numero); location.hash = '#/cred/' + r.id; }
     catch (e) { ocupado(f, false); aviso(falla(e), true); }
+  };
+};
+
+// Condiciones por destino y modo de aprobación (solo el administrador)
+RUTAS.condiciones = async function verCondiciones() {
+  if (!esAdmin()) return RUTAS.cre();
+  const filas = await q(sb.from('condiciones_credito').select('*').eq('org_id', S.org.id).order('orden'));
+  const fila = (c = {}) => `<tr data-id="${c.id || ''}"><td><input name="destino" value="${esc(c.destino)}"></td><td><input name="tasa_anual" inputmode="decimal" value="${esc(c.tasa_anual ?? 18)}" style="width:70px"></td><td><input name="plazo_max_meses" inputmode="numeric" value="${esc(c.plazo_max_meses ?? 12)}" style="width:70px"></td><td><input name="monto_min" inputmode="decimal" value="${esc(c.monto_min ?? 0)}"></td><td><input name="monto_max" inputmode="decimal" value="${esc(c.monto_max ?? '')}"></td><td><select name="frecuencia">${opciones(Object.keys(MESES_FREC), c.frecuencia || 'Mensual')}</select></td><td><input name="garantia" value="${esc(c.garantia)}"></td><td><input type="checkbox" name="activa" style="width:auto" ${c.activa === false ? '' : 'checked'}></td></tr>`;
+  app().innerHTML = cabecera('Condiciones de crédito', '#/cre') + `<p class="nota">Cada destino tiene su tasa, plazo, montos y forma de pago. La solicitud de crédito las toma de aquí y no deja pasar lo que se sale de ellas. Un destino que ya no se usa se desmarca en «Activa».</p>
+  <form id="f"><div class="tabla"><table><thead><tr><th>Destino</th><th>Tasa %</th><th>Plazo máx. (meses)</th><th>Monto mínimo (L)</th><th>Monto máximo (L)</th><th>Forma de pago</th><th>Garantía</th><th>Activa</th></tr></thead><tbody id="cuerpo">${filas.map(fila).join('')}</tbody></table></div>
+  <div class="acciones"><button type="button" class="sec" id="otra">+ Otro destino</button><button>Guardar condiciones</button></div></form>
+  <h2>Quién aprueba</h2><form class="caja" id="fm"><div class="rejilla">
+    <div><label>Modo de aprobación</label><select name="CREDITO_APROBACION_MODO">${opciones(['Gerencia', 'Gerencia hasta monto', 'Comité'], S.cfg.CREDITO_APROBACION_MODO || 'Gerencia')}</select></div>
+    <div><label>Gerencia aprueba hasta (L)</label><input name="CREDITO_GERENCIA_HASTA" inputmode="decimal" value="${esc(S.cfg.CREDITO_GERENCIA_HASTA || 50000)}"></div>
+    <div><label>Votos a favor para aprobar (vacío = mayoría)</label><input name="COMITE_VOTOS_MINIMOS" inputmode="numeric" value="${esc(S.cfg.COMITE_VOTOS_MINIMOS || '')}"></div>
+  </div><p class="nota">«Gerencia»: aprueban gerencia o el administrador. «Gerencia hasta monto»: arriba de ese monto vota el comité. «Comité»: todos los créditos los vota el comité. Quién es del comité se marca en <a href="#/usuarios">Usuarios</a>; si no hay nadie marcado, aprueba el administrador.</p><div class="acciones"><button>Guardar</button></div></form>`;
+  $('#otra').onclick = () => $('#cuerpo').insertAdjacentHTML('beforeend', fila());
+  if (!filas.length) $('#otra').click();
+  $('#f').onsubmit = async ev => {
+    ev.preventDefault(); const f = ev.target;
+    const datos = [...$('#cuerpo').rows].map((tr, i) => { const g = n => tr.querySelector(`[name=${n}]`); return { id: tr.dataset.id, org_id: S.org.id, destino: g('destino').value.trim(), tasa_anual: num(g('tasa_anual').value), plazo_max_meses: parseInt(g('plazo_max_meses').value, 10) || 1, monto_min: num(g('monto_min').value), monto_max: num(g('monto_max').value), frecuencia: g('frecuencia').value, garantia: g('garantia').value.trim() || null, activa: g('activa').checked, orden: i + 1 }; }).filter(x => x.destino);
+    const mal = datos.find(x => !x.monto_max || x.monto_max < x.monto_min); if (mal) return aviso(`Revisá los montos de «${mal.destino}».`, true);
+    if (new Set(datos.map(x => x.destino)).size < datos.length) return aviso('Hay dos destinos con el mismo nombre.', true);
+    ocupado(f, true);
+    try {
+      const viejos = datos.filter(x => x.id), nuevos = datos.filter(x => !x.id).map(({ id, ...x }) => x);
+      if (viejos.length) await q(sb.from('condiciones_credito').upsert(viejos));
+      if (nuevos.length) await q(sb.from('condiciones_credito').insert(nuevos));
+      await q(sb.from('bitacora').insert({ org_id: S.org.id, usuario: nombreQuien(), accion: 'Cambió las condiciones de crédito' }));
+      aviso('Condiciones guardadas.'); RUTAS.condiciones();
+    } catch (e) { ocupado(f, false); aviso(falla(e), true); }
+  };
+  $('#fm').onsubmit = async ev => {
+    ev.preventDefault(); const f = ev.target, d = datosForm(f); ocupado(f, true);
+    try {
+      await q(sb.from('configuracion').upsert(Object.entries(d).map(([clave, valor]) => ({ org_id: S.org.id, clave, valor })), { onConflict: 'org_id,clave' }));
+      await q(sb.from('bitacora').insert({ org_id: S.org.id, usuario: nombreQuien(), accion: 'Cambió quién aprueba los créditos', detalle: d.CREDITO_APROBACION_MODO }));
+      await cargarOrg(); aviso('Guardado.'); ocupado(f, false);
+    } catch (e) { ocupado(f, false); aviso(falla(e), true); }
   };
 };
 
@@ -267,6 +319,16 @@ RUTAS.cred = async function verCredito(id) {
   const pagos = esJefe() ? await q(sb.from('pagos_credito').select('*').eq('credito_id', id).order('fecha')) : [];
   const p = c.productores, ev = c.evaluacion || {}, est = c.estado === 'Desembolsado' || c.estado === 'Pagado' ? estadoCredito(c, pagos) : null;
   const tasa = c.tasa_anual ?? cfgN('CREDITO_TASA_ANUAL', 18), limGer = cfgN('CREDITO_GERENCIA_HASTA', 50000);
+  // Comité de crédito: si este crédito lo vota el comité, cuántos votos hacen falta y quién ya votó
+  const modo = S.cfg.CREDITO_APROBACION_MODO || 'Gerencia', abierto = ['Solicitado', 'En evaluación'].includes(c.estado);
+  const [com, votos] = await Promise.all([sb.rpc('comite_info', { o: S.org.id }).then(r => r.data || { miembros: 0, soy: false }), q(sb.from('votos_credito').select('*').eq('credito_id', id).order('fecha'))]);
+  const montoRef = num(ev.monto_recomendado ?? c.monto_solicitado);
+  const porComite = com.miembros > 0 && (modo === 'Comité' || (modo === 'Gerencia hasta monto' && montoRef > limGer));
+  const minimo = num(S.cfg.COMITE_VOTOS_MINIMOS) || Math.max(1, Math.floor(com.miembros / 2) + 1);
+  const aFavor = votos.filter(v => v.voto === 'A favor').length, enContra = votos.length - aFavor;
+  const notaDecision = porComite ? `Este crédito lo vota el comité de crédito (se aprueba con ${minimo} voto${minimo > 1 ? 's' : ''} a favor). Desde aquí solo se puede rechazar.`
+    : modo !== 'Gerencia' && !com.miembros ? `Gerencia aprueba hasta ${L(limGer)}; arriba de eso, el administrador (todavía no hay comité nombrado en Usuarios).`
+    : S.rol === 'gerencia' ? `Gerencia aprueba hasta ${L(limGer)}; arriba de eso, ${modo === 'Gerencia' ? 'el administrador' : 'el comité'}.` : '';
   let acc = '';
   if (['Solicitado', 'En evaluación'].includes(c.estado)) acc += `<h2>Evaluación técnica</h2><form class="caja" id="fEv"><div class="rejilla">
     <div><label>Técnico</label><input name="tecnico" required value="${esc(ev.tecnico || (S.maestro ? '' : S.perfil.nombre))}"></div>
@@ -284,8 +346,12 @@ RUTAS.cred = async function verCredito(id) {
     <div><label>Tasa anual (%)</label><input name="tasa" inputmode="decimal" value="${tasa}"></div>
     <div><label>Plazo (meses)</label><input name="plazo" inputmode="numeric" value="${c.plazo_meses}"></div>
     <div class="ancho"><label>Comentario</label><input name="comentario"></div>
-  </div>${S.rol === 'gerencia' ? `<p class="nota">Gerencia aprueba hasta ${L(limGer)}; arriba de eso, el administrador.</p>` : ''}
-  <div class="acciones"><button name="d" value="Aprobado">Aprobar</button><button class="rojo" name="d" value="Rechazado">Rechazar</button></div></form>`;
+  </div>${notaDecision ? `<p class="nota">${notaDecision}</p>` : ''}
+  <div class="acciones">${porComite ? '' : '<button name="d" value="Aprobado">Aprobar</button>'}<button class="rojo" name="d" value="Rechazado">Rechazar</button></div></form>`;
+  if (porComite || votos.length) acc += `<h2>Comité de crédito</h2><div class="caja"><p class="nota">${aFavor} a favor y ${enContra} en contra, de ${com.miembros} miembro${com.miembros === 1 ? '' : 's'}. Se aprueba con ${minimo} voto${minimo > 1 ? 's' : ''} a favor; el monto aprobado es el menor que propusieron quienes votaron a favor.</p>
+    ${votos.length ? `<div class="tabla"><table><thead><tr><th>Miembro</th><th>Voto</th><th class="n">Monto que propone</th><th>Comentario</th><th>Fecha</th></tr></thead><tbody>${votos.map(v => `<tr><td>${esc(v.nombre)}</td><td>${estadoChip(v.voto, v.voto === 'A favor' ? 'Autorizada' : 'Rechazada')}</td><td class="n">${v.monto ? L(v.monto) : ''}</td><td>${esc(v.comentario)}</td><td>${fechaHora(v.fecha)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="nota">Todavía nadie ha votado.</p>'}
+    ${abierto && porComite && com.soy && !votos.some(v => v.user_id === S.user.id) ? `<form id="fVoto" style="margin-top:12px"><div class="rejilla"><div><label>Tu voto</label><select name="voto"><option>A favor</option><option>En contra</option></select></div><div><label>Monto que aprobás (L)</label><input name="monto" inputmode="decimal" value="${montoRef}"></div><div class="ancho"><label>Comentario</label><input name="comentario"></div></div><div class="acciones"><button>Votar</button></div></form>` : ''}
+    ${abierto && porComite && !com.soy ? '<p class="nota">Votan solo los miembros del comité (el administrador los marca en Usuarios).</p>' : ''}</div>`;
   if (esJefe() && c.estado === 'Aprobado') acc += `<h2>Desembolso</h2><form class="caja" id="fDes"><div class="rejilla">
     <div><label>Fecha del desembolso</label><input type="date" name="fecha" required value="${hoy()}"></div>
     <div><label>Fecha de la primera cuota</label><input type="date" name="primera" required value="${sumarMeses(hoy(), MESES_FREC[c.frecuencia] || c.plazo_meses)}"></div>
@@ -313,6 +379,15 @@ RUTAS.cred = async function verCredito(id) {
   ${acc}<div class="acciones"><button class="sec" onclick="print()">Imprimir</button>${esJefe() && ['Solicitado', 'En evaluación', 'Aprobado'].includes(c.estado) ? '<button class="sec" id="anular">Anular solicitud</button>' : ''}</div>`;
 
   const recargar = () => { avisar('credito', id); RUTAS.cred(id); };
+  const fVoto = $('#fVoto'); if (fVoto) fVoto.onsubmit = async e => {
+    e.preventDefault(); const d = datosForm(fVoto);
+    if (d.voto === 'A favor' && num(d.monto) <= 0) return aviso('Poné el monto que aprobás.', true);
+    if (d.voto === 'En contra' && !d.comentario) return aviso('Escribí por qué votás en contra.', true);
+    if (!confirm(`¿Confirmás tu voto «${d.voto}»? Después no se puede cambiar.`)) return;
+    ocupado(fVoto, true);
+    try { await q(sb.from('votos_credito').insert({ org_id: S.org.id, credito_id: id, nombre: nombreQuien(), voto: d.voto, monto: d.voto === 'A favor' ? num(d.monto) : null, comentario: d.comentario || null })); aviso('Voto registrado.'); recargar(); }
+    catch (er) { ocupado(fVoto, false); aviso(falla(er), true); }
+  };
   const fEv = $('#fEv'); if (fEv) fEv.onsubmit = async e => {
     e.preventDefault(); const d = datosForm(fEv); ocupado(fEv, true);
     try { await q(sb.from('creditos').update({ evaluacion: d, estado: 'En evaluación' }).eq('id', id)); aviso('Evaluación guardada.'); recargar(); } catch (er) { ocupado(fEv, false); aviso(falla(er), true); }
@@ -321,8 +396,10 @@ RUTAS.cred = async function verCredito(id) {
     e.preventDefault(); const dec = e.submitter?.value || 'Aprobado', d = datosForm(fAp);
     if (dec === 'Aprobado') {
       if (num(d.monto) <= 0) return aviso('Poné el monto aprobado.', true);
+      if (num(d.monto) > limGer && modo !== 'Gerencia' && com.miembros) return aviso(`Arriba de ${L(limGer)} el crédito lo vota el comité.`, true);
       if (S.rol === 'gerencia' && num(d.monto) > limGer) return aviso(`Este monto lo aprueba el administrador (gerencia hasta ${L(limGer)}).`, true);
     } else if (!d.comentario) return aviso('Escribí por qué se rechaza.', true);
+    if (dec === 'Rechazado' && !confirm('¿Rechazar este crédito?')) return;
     ocupado(fAp, true);
     try { await q(sb.from('creditos').update(dec === 'Aprobado' ? { estado: dec, monto_aprobado: num(d.monto), tasa_anual: num(d.tasa), plazo_meses: +d.plazo, comentario: d.comentario || c.comentario } : { estado: dec, comentario: d.comentario }).eq('id', id)); aviso('Crédito ' + dec.toLowerCase() + '.'); recargar(); }
     catch (er) { ocupado(fAp, false); aviso(falla(er), true); }
