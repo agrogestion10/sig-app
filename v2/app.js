@@ -101,7 +101,35 @@ function pintarBarra() {
   $('#quien').textContent = S.maestro ? 'Usuario maestro' : S.perfil.nombre + ' · ' + ROLES[S.rol];
   const sel = $('#cambioOrg');
   if (S.maestro) { sel.hidden = false; sel.innerHTML = S.orgs.map(o => `<option value="${o.id}" ${o.id === S.org.id ? 'selected' : ''}>${esc(o.nombre)}</option>`).join(''); }
+  pintarEngrane();
 }
+
+// ---------- engrane de configuración (esquina de arriba, solo administrador) ----------
+const ICONO_ENGRANE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+function pintarEngrane() {
+  let eng = $('#engrane');
+  if (!eng) {
+    eng = document.createElement('div'); eng.id = 'engrane'; eng.className = 'engrane';
+    $('#barra .derecha').appendChild(eng);
+    document.addEventListener('click', ev => { if (!eng.contains(ev.target)) cerrarEngrane(); });
+    document.addEventListener('keydown', ev => { if (ev.key === 'Escape') cerrarEngrane(); });
+    window.addEventListener('hashchange', cerrarEngrane);
+  }
+  eng.hidden = !esAdmin();
+  if (!esAdmin()) { eng.innerHTML = ''; return; }
+  const op = (h, t, s) => `<a href="${h}" role="menuitem"><b>${t}</b><span>${s}</span></a>`;
+  eng.innerHTML = `<button type="button" class="icono" id="btnEng" title="Configuración" aria-label="Configuración" aria-haspopup="true" aria-expanded="false">${ICONO_ENGRANE}</button>
+    <div class="menuEng" id="menuEng" role="menu" hidden>
+      <div class="titEng">Configuración de ${esc(S.org?.nombre || '')}</div>
+      ${op('#/config', 'Configuración', 'Montos, listas, claves de paneles, Kobo y copias de seguridad')}
+      ${op('#/usuarios', 'Usuarios', 'Accesos, roles, paneles y comité')}
+      ${op('#/catalogo', 'Catálogo de certificaciones', 'Cuáles se usan en esta organización')}
+      ${op('#/bitacora', 'Bitácora', 'Quién hizo qué')}
+      ${S.maestro ? op('#/orgs', 'Organizaciones', 'Altas y valores de ley') : ''}
+    </div>`;
+  $('#btnEng').onclick = () => { const m = $('#menuEng'), abrir = m.hidden; m.hidden = !abrir; $('#btnEng').setAttribute('aria-expanded', abrir); };
+}
+function cerrarEngrane() { const m = $('#menuEng'); if (m && !m.hidden) { m.hidden = true; $('#btnEng').setAttribute('aria-expanded', 'false'); } }
 
 // ---------- rutas ----------
 const RUTAS = {
