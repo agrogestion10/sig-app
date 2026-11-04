@@ -7,7 +7,13 @@ Object.assign(CFG_TEXTO, {
   CREDITO_DESTINOS: 'Crédito: destinos (uno por renglón)', PRIMA_FT_USD_LB: 'Prima de Comercio Justo (USD por libra)', PRIMA_PCT_PRODUCTIVIDAD: 'Prima: % mínimo para productividad y calidad',
   RENDIMIENTO_PERGAMINO_ORO: 'Rendimiento de pergamino seco a oro (0.8 = 80 %)', FACTOR_CAFE_UVA: 'Factor de café uva a pergamino seco', FACTOR_CAFE_PERGAMINO_HUMEDO: 'Factor de pergamino húmedo a seco',
   HUMEDAD_MAXIMA: 'Humedad máxima aceptada (%)', QUEJAS_DIAS_RESPUESTA: 'Quejas: días para responder', QUEJAS_DIAS_URGENTE: 'Quejas urgentes: días para responder',
-  KOBO_ENLACES: 'Formularios de Kobo (uno por renglón: Nombre | enlace)'
+  KOBO_ENLACES: 'Formularios de Kobo (uno por renglón: Nombre | enlace)',
+  KOBO_SERVIDOR: 'Servidor de KoboToolbox', KOBO_PADRON: 'Kobo: código del formulario «Padrón»', KOBO_INSPECCION: 'Kobo: código del formulario «Inspección interna»',
+  KOBO_ACOPIO: 'Kobo: código del formulario «Acopio»', KOBO_CAPACITACION: 'Kobo: código del formulario «Capacitación»', KOBO_BENEFICIADO: 'Kobo: código del formulario «Beneficiado»',
+  KOBO_DESPACHO: 'Kobo: código del formulario «Despacho y venta»', KOBO_PRIMA: 'Kobo: código del formulario «Uso de la prima»', KOBO_SEGUIMIENTO: 'Kobo: código del formulario «Seguimiento de NC»',
+  KOBO_QUEJAS: 'Kobo: código del formulario «Quejas»', KOBO_EVALUACION: 'Kobo: código del formulario «Evaluación de inspector»',
+  TIPO_CAMBIO: 'Tipo de cambio (lempiras por dólar)', TOLERANCIA_ESTIMADO: 'Diferencia aceptada entre estimado y entregas (%)',
+  CORREO_AVISOS: 'Correo que recibe los avisos (separar varios con coma)', QUEJAS_CORREO: 'Correo del comité de quejas (si es distinto)'
 });
 
 const SEC = { cre: 'Crédito interno', cer: 'Certificaciones', adm: 'Administración' };
@@ -240,7 +246,7 @@ RUTAS.credito = async function formCredito() {
     if (num(d.monto) > max) return aviso(`El monto pasa del máximo por productor (${L(max)}).`, true);
     if (+d.plazo < 1 || +d.plazo > plazoMax) return aviso(`El plazo debe ser de 1 a ${plazoMax} meses.`, true);
     ocupado(f, true);
-    try { const c = await q(sb.from('creditos').insert({ org_id: S.org.id, productor_id: p.id, monto_solicitado: num(d.monto), destino: d.destino, plazo_meses: +d.plazo, frecuencia: d.frecuencia, garantia: d.garantia, comentario: d.comentario }).select('id,numero').single()); aviso('Solicitud registrada: ' + c.numero); location.hash = '#/cred/' + c.id; }
+    try { const c = await q(sb.from('creditos').insert({ org_id: S.org.id, productor_id: p.id, monto_solicitado: num(d.monto), destino: d.destino, plazo_meses: +d.plazo, frecuencia: d.frecuencia, garantia: d.garantia, comentario: d.comentario }).select('id,numero').single()); avisar('credito', c.id); aviso('Solicitud registrada: ' + c.numero); location.hash = '#/cred/' + c.id; }
     catch (e) { ocupado(f, false); aviso(falla(e), true); }
   };
 };
@@ -306,7 +312,7 @@ RUTAS.cred = async function verCredito(id) {
   ${pagos.length ? `<h2>Pagos recibidos</h2><div class="tabla"><table><thead><tr><th>Fecha</th><th>Recibo</th><th class="n">Monto</th><th class="n">Mora</th><th class="n">Interés</th><th class="n">Capital</th></tr></thead><tbody>${pagos.map(x => `<tr><td>${esc(x.fecha)}</td><td>${esc(x.recibo)}</td><td class="n">${L(x.monto)}</td><td class="n">${L(x.mora)}</td><td class="n">${L(x.interes)}</td><td class="n">${L(x.capital)}</td></tr>`).join('')}</tbody></table></div>` : ''}
   ${acc}<div class="acciones"><button class="sec" onclick="print()">Imprimir</button>${esJefe() && ['Solicitado', 'En evaluación', 'Aprobado'].includes(c.estado) ? '<button class="sec" id="anular">Anular solicitud</button>' : ''}</div>`;
 
-  const recargar = () => RUTAS.cred(id);
+  const recargar = () => { avisar('credito', id); RUTAS.cred(id); };
   const fEv = $('#fEv'); if (fEv) fEv.onsubmit = async e => {
     e.preventDefault(); const d = datosForm(fEv); ocupado(fEv, true);
     try { await q(sb.from('creditos').update({ evaluacion: d, estado: 'En evaluación' }).eq('id', id)); aviso('Evaluación guardada.'); recargar(); } catch (er) { ocupado(fEv, false); aviso(falla(er), true); }
@@ -384,8 +390,9 @@ RUTAS.cartera = async function verCartera() {
 // =====================================================================
 RUTAS.cer = async function menuCert() {
   S.seccion = 'cer';
+  setTimeout(() => sincronizarKobo(false), 0);
   const [nc, qj] = esJefe() ? await Promise.all([cuenta('no_conformidades', x => x.eq('estado', 'Abierta')), cuenta('quejas', x => x.neq('estado', 'Cerrada'))]) : [0, 0];
-  app().innerHTML = cabecera('Certificaciones · café', '#/') + `
+  app().innerHTML = cabecera('Certificaciones · café', '#/') + `<div class="caja nota" id="koboEstado" style="padding:10px 14px">Revisando Kobo…</div>
   <h2>Productores y fincas</h2><div class="tarjetas">
     ${tarjeta('#/padron', 'Padrón de productores', 'Socios, parcelas y certificaciones')}
     ${tarjeta('#/prodf', 'Registrar productor', 'Socio nuevo')}
@@ -575,7 +582,7 @@ RUTAS.inspecciones = async function verInspecciones() {
 RUTAS.nc = async function verNC() {
   const filas = await q(sb.from('no_conformidades').select('*, productores(nombre)').eq('org_id', S.org.id).order('estado').order('plazo'));
   app().innerHTML = cabecera('No conformidades') + `<div class="tabla"><table><thead><tr><th>Productor</th><th>Requisito</th><th>Hallazgo</th><th>Acción</th><th>Plazo</th><th>Estado</th><th></th></tr></thead><tbody>
-  ${filas.map(x => { const venc = x.estado === 'Abierta' && x.plazo && x.plazo < hoy(); return `<tr><td><a href="#/prod/${x.productor_id}">${esc(x.productores?.nombre)}</a></td><td>${esc(x.requisito)}</td><td>${esc(x.descripcion)}</td><td>${esc(x.accion)}</td><td class="${venc ? 'error' : ''}">${esc(x.plazo || '')}${venc ? ' (vencido)' : ''}</td><td>${estadoChip(x.estado, x.estado === 'Abierta' ? 'Pendiente' : 'Autorizada')}${x.cerrada ? '<br><span class="nota">' + esc(x.cerrada) + ' · ' + esc(x.verificacion) + '</span>' : ''}</td><td>${esJefe() && x.estado === 'Abierta' ? `<button class="sec" data-cerrar="${x.id}">Cerrar</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="7" class="nota">Sin no conformidades.</td></tr>'}</tbody></table></div>`;
+  ${filas.map(x => { const venc = x.estado === 'Abierta' && x.plazo && x.plazo < hoy(); return `<tr><td><b>${esc(x.numero || '')}</b><br><a href="#/prod/${x.productor_id}">${esc(x.productores?.nombre)}</a></td><td>${esc(x.requisito)}${x.gravedad ? '<br><span class="nota">' + esc(x.gravedad) + '</span>' : ''}</td><td>${esc(x.descripcion)}</td><td>${esc(x.accion)}</td><td class="${venc ? 'error' : ''}">${esc(x.plazo || '')}${venc ? ' (vencido)' : ''}</td><td>${estadoChip(x.estado, x.estado === 'Abierta' ? 'Pendiente' : 'Autorizada')}${x.cerrada ? '<br><span class="nota">' + esc(x.cerrada) + ' · ' + esc(x.verificacion) + '</span>' : ''}</td><td>${esJefe() && x.estado === 'Abierta' ? `<button class="sec" data-cerrar="${x.id}">Cerrar</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="7" class="nota">Sin no conformidades.</td></tr>'}</tbody></table></div>`;
   app().querySelectorAll('[data-cerrar]').forEach(b => b.onclick = async () => {
     const v = prompt('¿Cómo se verificó que se corrigió?'); if (!v) return;
     try { await q(sb.from('no_conformidades').update({ estado: 'Cerrada', cerrada: hoy(), verificacion: v }).eq('id', b.dataset.cerrar)); aviso('No conformidad cerrada.'); RUTAS.nc(); } catch (e) { aviso(falla(e), true); }
@@ -612,7 +619,7 @@ RUTAS.acopio = async function formAcopio(prodId) {
     if (num(d.peso_lb) <= 0) return aviso('Poné el peso.', true);
     ocupado(f, true);
     try {
-      const r = await q(sb.from('acopio').insert({ org_id: S.org.id, productor_id: p.id, fecha: d.fecha, certificacion: d.certificacion || null, estado_cafe: d.estado_cafe, peso_lb: num(d.peso_lb), humedad: d.humedad ? num(d.humedad) : null, precio_lb: d.precio_lb ? num(d.precio_lb) : null, total: d.precio_lb ? r2(num(d.peso_lb) * num(d.precio_lb)) : null, psec_lb: aPergaminoSeco(d.estado_cafe, d.peso_lb), lote: d.lote, observaciones: d.observaciones }).select('numero').single());
+      const r = await q(sb.from('acopio').insert({ org_id: S.org.id, productor_id: p.id, fecha: d.fecha, certificacion: d.certificacion || null, certificaciones: d.certificacion ? [d.certificacion] : [], estado_cafe: d.estado_cafe, peso_lb: num(d.peso_lb), humedad: d.humedad ? num(d.humedad) : null, precio_lb: d.precio_lb ? num(d.precio_lb) : null, total: d.precio_lb ? r2(num(d.peso_lb) * num(d.precio_lb)) : null, psec_lb: aPergaminoSeco(d.estado_cafe, d.peso_lb), lote: d.lote, observaciones: d.observaciones }).select('numero').single());
       aviso('Entrega registrada: ' + r.numero); location.hash = '#/acopios';
     } catch (e) { ocupado(f, false); aviso(falla(e), true); }
   };
@@ -655,7 +662,7 @@ RUTAS.despacho = async function formDespacho() {
     const disp = await disponibleCert(d.certificacion, +d.fecha.slice(0, 4));
     if (d.certificacion && c.ps > disp + 0.5) return aviso(`No se puede vender más café ${nombreCert(d.certificacion)} del que se compró (disponible ${disp.toLocaleString('es-HN')} lb pergamino seco).`, true);
     ocupado(f, true);
-    try { const r = await q(sb.from('despachos').insert({ org_id: S.org.id, fecha: d.fecha, contrato: d.contrato, comprador: d.comprador, certificacion: d.certificacion || null, tipo_cafe: d.tipo_cafe, peso_lb: num(d.peso_lb), psec_lb: c.ps, precio_usd_lb: d.precio_usd_lb ? num(d.precio_usd_lb) : null, prima_usd: c.prima, lotes: d.lotes, geojson: gj }).select('numero').single()); aviso('Despacho registrado: ' + r.numero); RUTAS.despacho(); }
+    try { const r = await q(sb.from('despachos').insert({ org_id: S.org.id, fecha: d.fecha, contrato: d.contrato, comprador: d.comprador, certificacion: d.certificacion || null, certificaciones: d.certificacion ? [d.certificacion] : [], tipo_cafe: d.tipo_cafe, peso_lb: num(d.peso_lb), psec_lb: c.ps, precio_usd_lb: d.precio_usd_lb ? num(d.precio_usd_lb) : null, prima_usd: c.prima, lotes: d.lotes, geojson: gj }).select('numero').single()); aviso('Despacho registrado: ' + r.numero); RUTAS.despacho(); }
     catch (e) { ocupado(f, false); aviso(falla(e), true); }
   };
 };
@@ -725,7 +732,7 @@ RUTAS.queja = async function formQueja() {
   </div><div class="acciones"><button>Enviar</button></div></form>`;
   $('#f').onsubmit = async ev => {
     ev.preventDefault(); const f = ev.target, d = datosForm(f), an = d.anonima === 'si'; ocupado(f, true);
-    try { await q(sb.from('quejas').insert({ org_id: S.org.id, tipo: d.tipo, descripcion: d.descripcion, anonima: an, nombre: an ? null : d.nombre, contacto: an ? null : d.contacto, urgente: URGENTES.includes(d.tipo) })); aviso('Gracias. La queja quedó registrada.'); location.hash = esJefe() ? '#/quejas' : '#/cer'; }
+    try { const idq = crypto.randomUUID(); await q(sb.from('quejas').insert({ id: idq, org_id: S.org.id, tipo: d.tipo, descripcion: d.descripcion, anonima: an, nombre: an ? null : d.nombre, contacto: an ? null : d.contacto, urgente: URGENTES.includes(d.tipo) })); avisar('queja', idq); aviso('Gracias. La queja quedó registrada.'); location.hash = esJefe() ? '#/quejas' : '#/cer'; }
     catch (e) { ocupado(f, false); aviso(falla(e), true); }
   };
 };
@@ -751,9 +758,38 @@ RUTAS.catalogo = async function verCatalogo() {
   app().querySelectorAll('[data-c]').forEach(x => x.onchange = async () => { try { await q(sb.from('catalogo_cert').update({ activa: x.checked }).eq('org_id', S.org.id).eq('codigo', x.dataset.c)); S._certs = null; aviso('Listo.'); } catch (e) { aviso(falla(e), true); x.checked = !x.checked; } });
   const agr = $('#agr'); if (agr) agr.onclick = async () => { const n = $('#nueva').value.trim(); if (!n) return; try { await q(sb.from('catalogo_cert').insert({ org_id: S.org.id, codigo: norm(n).slice(0, 30), nombre: n, orden: 50 })); S._certs = null; aviso('Certificación agregada.'); RUTAS.catalogo(); } catch (e) { aviso(falla(e), true); } };
 };
+const FORM_KOBO = { PADRON: 'Padrón', INSPECCION: 'Inspección interna', ACOPIO: 'Acopio', CAPACITACION: 'Capacitación', BENEFICIADO: 'Beneficiado', DESPACHO: 'Despacho y venta', PRIMA: 'Uso de la prima', SEGUIMIENTO: 'Seguimiento de NC', QUEJAS: 'Quejas', EVALUACION: 'Evaluación de inspector' };
+// Trae lo nuevo de Kobo (como mucho cada 10 minutos, o al tocar «Traer de Kobo ahora»)
+async function sincronizarKobo(forzar) {
+  const pintar = t => { const el = $('#koboEstado'); if (el) el.innerHTML = t; };
+  const boton = ' <a href="#" onclick="sincronizarKobo(true);return false">Traer de Kobo ahora</a>';
+  const ult = S.cfg.KOBO_ULTIMA_SINC ? Date.parse(S.cfg.KOBO_ULTIMA_SINC) : 0;
+  const hace = d => { const m = Math.round((Date.now() - d) / 60000); return m < 1 ? 'hace un momento' : m < 60 ? `hace ${m} min` : m < 1440 ? `hace ${Math.round(m / 60)} h` : 'el ' + fechaHora(d); };
+  if (!forzar && ult && Date.now() - ult < 10 * 60000) return pintar(`Kobo: actualizado ${hace(ult)}.` + boton);
+  if (sincronizarKobo.corriendo) return;
+  sincronizarKobo.corriendo = true; pintar('Trayendo los formularios de Kobo…');
+  try {
+    const { data, error } = await sb.functions.invoke('kobo', { body: { org_id: S.org.id, forzar: !!forzar } });
+    if (error) { let m = error.message; try { m = (await error.context.json()).error || m; } catch (_) {} throw new Error(m); }
+    if (data.error) throw new Error(data.error);
+    if (data.estado === 'sin_token') return pintar('Kobo todavía no está conectado: falta la clave de Kobo' + (esAdmin() ? ' en <a href="#/config">Configuración</a>.' : '. Avisale al administrador.'));
+    if (data.estado === 'en_curso') return pintar('Kobo: ya se están trayendo los datos. Esperá un momento.' + boton);
+    const res = Object.entries(data.resumen || {}), nuevos = res.filter(([, v]) => v.nuevos), errores = res.flatMap(([k, v]) => (v.errores || []).map(e => k + ': ' + e));
+    await cargarOrg(); S._prods = null;
+    pintar((nuevos.length ? 'Kobo: llegaron ' + nuevos.map(([k, v]) => `${v.nuevos} de ${k}`).join(', ') + '.' : 'Kobo: al día, no hay envíos nuevos.') + (errores.length ? ` <span class="error">${errores.length} con problemas</span> (<a href="#/kobo">ver</a>).` : '') + boton);
+  } catch (e) { pintar('<span class="error">No se pudo conectar con Kobo: ' + esc(falla(e)) + '</span>' + boton); }
+  finally { sincronizarKobo.corriendo = false; }
+}
+
 RUTAS.kobo = async function verKobo() {
   const enl = lista(S.cfg.KOBO_ENLACES).map(x => x.split('|').map(y => y.trim())).filter(x => x[1]);
-  app().innerHTML = cabecera('Formularios de KoboToolbox') + `<div class="caja"><p class="nota">Se llenan desde el teléfono, sin cuenta y sin señal (Kobo los guarda y los envía al volver la conexión).</p>
+  let tabla = '';
+  if (esJefe()) {
+    const env = await q(sb.from('kobo_envios').select('formulario,uid,enviado,procesado,error').eq('org_id', S.org.id).order('recibido', { ascending: false }).limit(60));
+    tabla = `<h2>Últimos envíos recibidos de Kobo</h2><div class="tabla"><table><thead><tr><th>Formulario</th><th>Envío</th><th>Enviado</th><th>Estado</th></tr></thead><tbody>${env.map(x => `<tr><td>${esc(FORM_KOBO[x.formulario] || x.formulario)}</td><td>#${esc(x.uid)}</td><td>${fechaHora(x.enviado)}</td><td>${x.error ? '<span class="error">' + esc(x.error) + '</span>' : x.procesado ? 'Registrado' : 'Pendiente'}</td></tr>`).join('') || '<tr><td colspan="4" class="nota">Todavía no ha llegado nada de Kobo.</td></tr>'}</tbody></table></div>`;
+  }
+  app().innerHTML = cabecera('Formularios de KoboToolbox') + `<div class="caja nota" id="koboEstado" style="padding:10px 14px">Revisando Kobo…</div><div class="caja"><p class="nota">Se llenan desde el teléfono, sin cuenta y sin señal (Kobo los guarda y los envía al volver la conexión). Lo que se envía llega solo a esta aplicación.</p>
   ${enl.length ? `<div class="tarjetas">${enl.map(([n, u]) => `<a class="tarjeta" href="${esc(/^https:\/\//.test(u) ? u : '#/kobo')}" target="_blank" rel="noopener"><b>${esc(n)}</b><span>${esc(u.replace(/^https:\/\//, ''))}</span></a>`).join('')}</div>` : '<p>Todavía no hay formularios configurados para esta organización.</p>'}
-  ${esAdmin() ? '<p class="nota">Los enlaces se cambian en <a href="#/config">Configuración</a> (Formularios de Kobo).</p>' : ''}</div>`;
+  ${esAdmin() ? '<p class="nota">Los enlaces, los códigos de los formularios y la clave de Kobo se cambian en <a href="#/config">Configuración</a>.</p>' : ''}</div>${tabla}`;
+  sincronizarKobo(false);
 };
