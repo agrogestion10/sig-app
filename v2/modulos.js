@@ -213,13 +213,13 @@ RUTAS.cre = async function menuCredito() {
   S.seccion = 'cre';
   const n = esJefe() ? await cuenta('creditos', x => x.in('estado', ['Solicitado', 'En evaluación', 'Aprobado'])) : 0;
   app().innerHTML = cabecera('Crédito interno', '#/') + `<div class="tarjetas">
-    ${puedePanel('cre') ? tarjeta('#/pnl/cre', 'Panel de control', 'Cartera, mora y archivo de PDF') : ''}
     ${tarjeta('#/prodf', 'Registrar productor', 'Datos del socio (también sirve para certificaciones)')}
     ${tarjeta('#/credito', 'Solicitud de crédito', 'Monto, destino, plazo y garantía')}
     ${tarjeta('#/creditos', esJefe() ? 'Créditos por resolver' : 'Mis solicitudes', 'Evaluación técnica, aprobación y desembolso', n)}
     ${esJefe() ? tarjeta('#/cartera', 'Cartera y pagos', 'Saldos, mora y recuperación') : ''}
     ${esAdmin() ? tarjeta('#/condiciones', 'Condiciones y comité', 'Tasa, plazo y montos por destino; quién aprueba') : ''}
     ${tarjeta('#/padron', 'Productores', 'Padrón de socios')}
+    ${puedePanel('cre') ? tarjeta('#/pnl/cre', 'Panel de control', 'Cartera, mora y archivo de PDF') : ''}
   </div>`;
 };
 
@@ -464,7 +464,6 @@ RUTAS.cer = async function menuCert() {
   setTimeout(() => sincronizarKobo(false), 0);
   const [nc, qj] = esJefe() ? await Promise.all([cuenta('no_conformidades', x => x.eq('estado', 'Abierta')), cuenta('quejas', x => x.neq('estado', 'Cerrada'))]) : [0, 0];
   app().innerHTML = cabecera('Certificaciones · café', '#/') + `<div class="caja nota" id="koboEstado" style="padding:10px 14px">Revisando Kobo…</div>
-  ${puedePanel('cer') ? `<div class="tarjetas">${tarjeta('#/pnl/cer', 'Panel de control', 'Números de certificaciones y archivo de PDF')}</div>` : ''}
   <h2>Productores y fincas</h2><div class="tarjetas">
     ${tarjeta('#/padron', 'Padrón de productores', 'Socios, parcelas y certificaciones')}
     ${tarjeta('#/prodf', 'Registrar productor', 'Socio nuevo')}
@@ -485,7 +484,8 @@ RUTAS.cer = async function menuCert() {
     ${tarjeta('#/balance', 'Balance de masas', 'Comprado contra vendido por certificación')}
     ${tarjeta('#/prima', 'Prima de Comercio Justo', 'Generada, usada y disponible')}
   </div>
-  <h2>Formularios de campo</h2><div class="tarjetas">${tarjeta('#/kobo', 'Formularios de KoboToolbox', 'Para llenar en el campo, con o sin señal')}${esAdmin() ? tarjeta('#/catalogo', 'Catálogo de certificaciones', 'Activar o desactivar') : ''}</div>`;
+  <h2>Formularios de campo</h2><div class="tarjetas">${tarjeta('#/kobo', 'Formularios de KoboToolbox', 'Para llenar en el campo, con o sin señal')}${esAdmin() ? tarjeta('#/catalogo', 'Catálogo de certificaciones', 'Activar o desactivar') : ''}</div>
+  ${puedePanel('cer') ? `<h2>Panel de control</h2><div class="tarjetas">${tarjeta('#/pnl/cer', 'Panel de control', 'Números de certificaciones y archivo de PDF')}</div>` : ''}`;
 };
 
 RUTAS.padron = async function verPadron() {
