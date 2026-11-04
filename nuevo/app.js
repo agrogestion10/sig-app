@@ -602,11 +602,11 @@ async function verUsuarios() {
   const filas = await q(sb.from('perfiles').select('*').eq('org_id', S.org.id).order('nombre'));
   const yo = nombreQuien();
   app().innerHTML = cabecera('Usuarios de ' + S.org.nombre, '#/') + `
-  <p class="nota">El rol dice qué puede hacer (Personal registra; Gerencia además autoriza; Administrador además maneja usuarios, configuración y el Panel de control). Las secciones dicen a qué partes entra.</p>
+  <p class="nota">El rol dice qué puede hacer (Personal registra; Gerencia además autoriza; Administrador además maneja usuarios, configuración y el Panel de control). Las secciones dicen a qué partes entra. «Comité de crédito» marca a quienes votan los créditos.</p>
   <div class="tabla"><table><thead><tr><th>Persona</th><th>Usuario</th><th>Rol</th><th>Secciones</th><th>Último acceso</th><th>Estado</th><th></th></tr></thead><tbody>
   ${filas.map(u => `<tr><td><b>${esc(u.nombre)}</b>${u.cargo ? '<br><span class="nota">' + esc(u.cargo) + '</span>' : ''}${u.correo ? '<br><span class="nota">' + esc(u.correo) + '</span>' : ''}</td><td>${esc(u.usuario)}</td>
   <td><select data-rol="${u.id}" ${u.id === S.user.id ? 'disabled' : ''}>${Object.entries(ROLES).filter(([k]) => k !== 'maestro').map(([k, v]) => `<option value="${k}" ${k === u.rol ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
-  <td style="min-width:170px">${u.rol === 'administrador' ? '<span class="nota">Todas</span>' : checksSec(u.secciones || [], 'data-sec', `data-u="${u.id}"`)}</td>
+  <td style="min-width:170px">${u.rol === 'administrador' ? '<span class="nota">Todas</span><br>' : checksSec(u.secciones || [], 'data-sec', `data-u="${u.id}"`)}<label style="font-weight:400;color:var(--texto);display:inline-flex;gap:5px;align-items:center;margin:0"><input type="checkbox" data-comite="${u.id}" style="width:auto" ${u.comite_credito ? 'checked' : ''}>Comité de crédito</label></td>
   <td>${fechaHora(u.ultimo_acceso) || 'Nunca'}</td><td>${u.activo ? 'Activo' : '<span class="error">Desactivado</span>'}</td>
   <td style="white-space:nowrap"><button class="sec" data-datos="${u.id}">Datos</button> <button class="sec" data-clave="${u.id}">Clave</button> ${u.id !== S.user.id ? `<button class="sec" data-activo="${u.id}" data-v="${!u.activo}">${u.activo ? 'Desactivar' : 'Activar'}</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="nota">Todavía no hay usuarios.</td></tr>'}
   </tbody></table></div>
@@ -636,6 +636,10 @@ async function verUsuarios() {
   app().querySelectorAll('[data-sec]').forEach(c => c.onchange = async () => {
     const id = c.dataset.u, secciones = [...app().querySelectorAll(`[data-sec][data-u="${id}"]:checked`)].map(x => x.dataset.sec);
     try { await q(sb.from('perfiles').update({ secciones }).eq('id', id)); await bit('Cambió secciones', c.closest('tr').cells[1].textContent + ' → ' + (secciones.map(s => SECCIONES[s]).join(', ') || 'ninguna')); aviso('Secciones actualizadas.'); }
+    catch (e) { aviso(falla(e), true); verUsuarios(); }
+  });
+  app().querySelectorAll('[data-comite]').forEach(c => c.onchange = async () => {
+    try { await q(sb.from('perfiles').update({ comite_credito: c.checked }).eq('id', c.dataset.comite)); await bit(c.checked ? 'Nombró en el comité de crédito' : 'Quitó del comité de crédito', c.closest('tr').cells[1].textContent); aviso(c.checked ? 'Ahora es del comité de crédito.' : 'Ya no es del comité de crédito.'); }
     catch (e) { aviso(falla(e), true); verUsuarios(); }
   });
   app().querySelectorAll('[data-datos]').forEach(b => b.onclick = async () => {
