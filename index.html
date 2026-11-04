@@ -8,10 +8,24 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Ccircle cx='24' cy='24' r='24' fill='%232e5e3e'/%3E%3Cpath d='M14 31c0-10 8-17 21-17-1 12-7 20-17 20-1.5 0-3-.3-4-.8M17 33c3-6 7-10 12-13' fill='none' stroke='%23e8f3ea' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://amcvgyhyngvxsrvcnhmf.supabase.co">
-<link rel="stylesheet" href="nuevo/estilo.css?v=5">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js" defer></script>
-<script src="nuevo/app.js?v=7" defer></script>
-<script src="nuevo/modulos.js?v=6" defer></script>
+<script>
+// Versiones publicadas: carpeta de cada una y número para refrescar la memoria del navegador.
+// Una organización sigue en su versión hasta que su administrador decide actualizar.
+window.SIG_RUTAS = { 1: 'nuevo/', 2: 'v2/' };
+window.SIG_CACHE = { 1: '7', 2: '1' };
+window.SIG_ULT = 2;
+(function () {
+  var v = parseInt(localStorage.getItem('sig_version') || '', 10);
+  if (!window.SIG_RUTAS[v]) v = window.SIG_ULT;
+  window.SIG_V = v;
+  var r = window.SIG_RUTAS[v], q = '?v=' + v + '.' + window.SIG_CACHE[v];
+  document.write('<link rel="stylesheet" href="' + r + 'estilo.css' + q + '">' +
+    '<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"><\/script>' +
+    '<script src="' + r + 'app.js' + q + '"><\/script>' +
+    '<script src="' + r + 'modulos.js' + q + '"><\/script>' +
+    '<script src="comun/version.js?v=1"><\/script>');
+})();
+</script>
 </head>
 <body>
 <header id="barra" hidden>
