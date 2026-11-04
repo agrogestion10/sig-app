@@ -110,7 +110,9 @@ function pintarEngrane() {
   let eng = $('#engrane');
   if (!eng) {
     eng = document.createElement('div'); eng.id = 'engrane'; eng.className = 'engrane';
-    $('#barra .derecha').appendChild(eng);
+    // «Salir» y el engrane van juntos en la esquina, aunque la barra se parta en dos renglones
+    const par = document.createElement('div'); par.className = 'parBarra';
+    const salir = $('#salir'); salir.replaceWith(par); par.append(salir, eng);
     document.addEventListener('click', ev => { if (!eng.contains(ev.target)) cerrarEngrane(); });
     document.addEventListener('keydown', ev => { if (ev.key === 'Escape') cerrarEngrane(); });
     window.addEventListener('hashchange', cerrarEngrane);
@@ -127,7 +129,13 @@ function pintarEngrane() {
       ${op('#/bitacora', 'Bitácora', 'Quién hizo qué')}
       ${S.maestro ? op('#/orgs', 'Organizaciones', 'Altas y valores de ley') : ''}
     </div>`;
-  $('#btnEng').onclick = () => { const m = $('#menuEng'), abrir = m.hidden; m.hidden = !abrir; $('#btnEng').setAttribute('aria-expanded', abrir); };
+  $('#btnEng').onclick = () => {
+    const m = $('#menuEng'), abrir = m.hidden; m.hidden = !abrir; $('#btnEng').setAttribute('aria-expanded', abrir);
+    if (abrir) { // el menú se abre pegado al engrane, sin salirse de la pantalla
+      const r = $('#btnEng').getBoundingClientRect(), ancho = Math.min(300, innerWidth - 20);
+      Object.assign(m.style, { position: 'fixed', top: (r.bottom + 8) + 'px', width: ancho + 'px', right: Math.max(10, Math.min(innerWidth - r.right, innerWidth - ancho - 10)) + 'px' });
+    }
+  };
 }
 function cerrarEngrane() { const m = $('#menuEng'); if (m && !m.hidden) { m.hidden = true; $('#btnEng').setAttribute('aria-expanded', 'false'); } }
 
