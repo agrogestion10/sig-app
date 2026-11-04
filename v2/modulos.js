@@ -13,13 +13,14 @@ Object.assign(CFG_TEXTO, {
   KOBO_ACOPIO: 'Kobo: código del formulario «Acopio»', KOBO_CAPACITACION: 'Kobo: código del formulario «Capacitación»', KOBO_BENEFICIADO: 'Kobo: código del formulario «Beneficiado»',
   KOBO_DESPACHO: 'Kobo: código del formulario «Despacho y venta»', KOBO_PRIMA: 'Kobo: código del formulario «Uso de la prima»', KOBO_SEGUIMIENTO: 'Kobo: código del formulario «Seguimiento de NC»',
   KOBO_QUEJAS: 'Kobo: código del formulario «Quejas»', KOBO_EVALUACION: 'Kobo: código del formulario «Evaluación de inspector»',
-  TIPO_CAMBIO: 'Tipo de cambio (lempiras por dólar)', TOLERANCIA_ESTIMADO: 'Diferencia aceptada entre estimado y entregas (%)', COSECHA_INICIO_MES: 'Mes en que empieza la cosecha (10 = octubre)',
+  TIPO_CAMBIO: 'Tipo de cambio (lempiras por dólar)', TOLERANCIA_ESTIMADO: 'Diferencia aceptada entre estimado y entregas (%)', COSECHA_INICIO_MES: 'Mes en que empieza la cosecha (10 = octubre)', MESES_TRANSICION: 'Meses de transición orgánica después de un producto prohibido',
+  INSUMOS_PROHIBIDOS: 'Insumos prohibidos para orgánico (uno por renglón)', INSUMOS_PERMITIDOS: 'Insumos permitidos (uno por renglón)',
   CORREO_AVISOS: 'Correo que recibe los avisos (separar varios con coma)', QUEJAS_CORREO: 'Correo del comité de quejas (si es distinto)'
 });
 
 const SEC = { cre: 'Crédito interno', cer: 'Certificaciones', adm: 'Administración' };
 ['credito', 'creditos', 'cred', 'cartera', 'condiciones'].forEach(r => SECCION_DE[r] = 'cre');
-['padron', 'prod', 'prodf', 'parcela', 'inspeccion', 'inspecciones', 'nc', 'acopio', 'acopios', 'despacho', 'balance', 'prima', 'reg', 'quejas', 'queja', 'catalogo', 'kobo', 'eudr'].forEach(r => SECCION_DE[r] = 'cer');
+['padron', 'prod', 'prodf', 'parcela', 'inspeccion', 'inspecciones', 'nc', 'acopio', 'acopios', 'despacho', 'balance', 'prima', 'reg', 'quejas', 'queja', 'catalogo', 'kobo', 'eudr', 'insumos', 'lotes', 'lote'].forEach(r => SECCION_DE[r] = 'cer');
 SECCION_DE.panel = '';
 
 const tarjeta = (h, b, s, n) => `<a class="tarjeta" href="${h}">${n ? `<span class="num">${n}</span>` : ''}<b>${b}</b><span>${s}</span></a>`;
@@ -473,6 +474,7 @@ RUTAS.cer = async function menuCert() {
     ${tarjeta('#/inspeccion', 'Inspección interna', 'Resultado anual y no conformidades')}
     ${tarjeta('#/inspecciones', 'Inspecciones', 'Historial')}
     ${tarjeta('#/nc', 'No conformidades', 'Seguimiento y cierre', nc)}
+    ${tarjeta('#/insumos', 'Insumos aplicados', 'Qué se aplicó en cada parcela, revisado contra la lista')}
     ${tarjeta('#/reg/capacitaciones', 'Capacitaciones', 'Temas, asistencia y acuerdos')}
     ${tarjeta('#/quejas', 'Quejas y reclamos', 'Buzón, también anónimo', qj)}
   </div>
@@ -481,6 +483,7 @@ RUTAS.cer = async function menuCert() {
     ${tarjeta('#/acopios', 'Acopio', 'Entregas registradas')}
     ${tarjeta('#/reg/beneficiado', 'Beneficiado y secado', 'Proceso de cada lote')}
     ${tarjeta('#/despacho', 'Despacho y venta', 'Contratos y lotes vendidos')}
+    ${tarjeta('#/lotes', 'Trazabilidad por lote', 'De qué fincas salió cada lote y a quién se vendió')}
     ${tarjeta('#/balance', 'Balance de masas', 'Comprado contra vendido por certificación')}
     ${tarjeta('#/prima', 'Prima de Comercio Justo', 'Generada, usada y disponible')}
   </div>
@@ -549,10 +552,11 @@ RUTAS.prod = async function verProductor(id) {
   </dl><div class="acciones"><a class="boton sec" href="#/prodf/${p.id}">Editar datos</a><a class="boton sec" href="#/parcela/nuevo/${p.id}">+ Parcela</a><a class="boton sec" href="#/inspeccion/${p.id}">+ Inspección</a><a class="boton sec" href="#/acopio/${p.id}">+ Acopio</a><a class="boton sec" href="#/credito">+ Crédito</a></div></div>
   <h2>Parcelas (${parc.length} · ${haTot.toFixed(2)} ha)</h2>
   ${parc.some(x => x.lat || x.poligono) ? '<div id="mapa" style="height:320px;border-radius:12px;border:1px solid var(--borde);margin-bottom:10px"></div>' : ''}
-  <div class="tabla"><table><thead><tr><th>Parcela</th><th class="n">Área (ha)</th><th>Variedad</th><th class="n">Altitud</th><th>Ubicación</th><th>Polígono</th><th class="n">Estimado (qq)</th><th></th></tr></thead><tbody>
-  ${parc.map(x => `<tr><td>${esc(x.nombre)}</td><td class="n">${num(x.area_ha).toFixed(2)}</td><td>${esc(x.variedad)}</td><td class="n">${x.altitud ?? ''}</td><td>${x.lat ? `${num(x.lat).toFixed(5)}, ${num(x.lon).toFixed(5)}` : '<span class="error">Sin punto</span>'}</td><td>${x.poligono ? 'Sí' : num(x.area_ha) >= 4 ? '<span class="error">Falta (4 ha o más)</span>' : 'No requerido'}</td><td class="n">${estimadoParcela(x) ? estimadoParcela(x).toLocaleString('es-HN') : ''}</td><td><a href="#/parcela/${x.id}">Editar</a></td></tr>`).join('') || '<tr><td colspan="8" class="nota">Sin parcelas.</td></tr>'}
+  <div class="tabla"><table><thead><tr><th>Parcela</th><th class="n">Área (ha)</th><th>Variedad</th><th class="n">Altitud</th><th>Ubicación</th><th>Polígono</th><th class="n">Estimado (qq)</th><th>Orgánico</th><th></th></tr></thead><tbody>
+  ${parc.map(x => `<tr><td>${esc(x.nombre)}</td><td class="n">${num(x.area_ha).toFixed(2)}</td><td>${esc(x.variedad)}</td><td class="n">${x.altitud ?? ''}</td><td>${x.lat ? `${num(x.lat).toFixed(5)}, ${num(x.lon).toFixed(5)}` : '<span class="error">Sin punto</span>'}</td><td>${x.poligono ? 'Sí' : num(x.area_ha) >= 4 ? '<span class="error">Falta (4 ha o más)</span>' : 'No requerido'}</td><td class="n">${estimadoParcela(x) ? estimadoParcela(x).toLocaleString('es-HN') : ''}</td><td>${chipOrg(estadoOrganico(x))}</td><td><a href="#/parcela/${x.id}">Editar</a></td></tr>`).join('') || '<tr><td colspan="9" class="nota">Sin parcelas.</td></tr>'}
   </tbody></table></div>
   <p class="nota" id="estProd"></p>
+  <div id="insProd"></div>
   <h2>Inspecciones</h2><div class="tabla"><table><thead><tr><th>Fecha</th><th>Inspector</th><th>Certificaciones</th><th>Resultado</th><th>Observaciones</th></tr></thead><tbody>
   ${insp.map(x => `<tr><td>${esc(x.fecha)}</td><td>${esc(x.inspector)}</td><td>${x.certificaciones.map(nombreCert).map(esc).join(', ')}</td><td>${esc(x.resultado)}</td><td>${esc(x.observaciones)}</td></tr>`).join('') || '<tr><td colspan="5" class="nota">Sin inspecciones.</td></tr>'}</tbody></table></div>
   ${nc.length ? `<h2>No conformidades</h2><div class="tabla"><table><thead><tr><th>Requisito</th><th>Hallazgo</th><th>Acción</th><th>Plazo</th><th>Estado</th></tr></thead><tbody>${nc.map(x => `<tr><td>${esc(x.requisito)}</td><td>${esc(x.descripcion)}</td><td>${esc(x.accion)}</td><td>${esc(x.plazo)}</td><td>${estadoChip(x.estado, x.estado === 'Abierta' ? 'Pendiente' : 'Autorizada')}</td></tr>`).join('')}</tbody></table></div>` : ''}
@@ -561,6 +565,7 @@ RUTAS.prod = async function verProductor(id) {
   ${cre.length ? `<h2>Créditos</h2><div class="tabla"><table><thead><tr><th>Número</th><th class="n">Monto</th><th>Estado</th></tr></thead><tbody>${cre.map(x => `<tr><td><a href="#/cred/${x.id}">${esc(x.numero)}</a></td><td class="n">${L(x.monto_aprobado || x.monto_solicitado)}</td><td>${esc(x.estado)}</td></tr>`).join('')}</tbody></table></div>` : ''}`;
   if ($('#mapa')) dibujarMapa($('#mapa'), parc);
   estimadoProductor(id).then(e => { const el = $('#estProd'); if (el) el.innerHTML = e.est ? `Cosecha actual (desde ${inicioCosecha()}): entregado <b>${qqTxt(e.ent)}</b> de un estimado de <b>${qqTxt(e.est)}</b>${e.ent > e.tope ? ' · <span class="error">pasa el estimado más la tolerancia</span>' : ''}.` : 'Sin estimado de cosecha: se pone en cada parcela.'; }).catch(() => {});
+  q(sb.from('insumos_aplicados').select('fecha,producto,parcela_nombre,estado,cantidad,unidad').eq('productor_id', id).order('fecha', { ascending: false }).limit(50)).then(l => { const el = $('#insProd'); if (el) el.innerHTML = `<h2>Insumos aplicados</h2>${l.length ? `<div class="tabla"><table><thead><tr><th>Fecha</th><th>Parcela</th><th>Producto</th><th class="n">Cantidad</th><th>Revisión</th></tr></thead><tbody>${l.map(x => `<tr><td>${esc(x.fecha)}</td><td>${esc(x.parcela_nombre || 'Toda la finca')}</td><td>${esc(x.producto)}</td><td class="n">${x.cantidad ? num(x.cantidad).toLocaleString('es-HN') + ' ' + esc(x.unidad || '') : ''}</td><td>${chipInsumo(x.estado)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="nota">Sin aplicaciones registradas.</p>'}<div class="acciones"><a class="boton sec" href="#/insumos/${id}">+ Registrar insumo</a></div>`; }).catch(() => {});
 }
 
 // Mapa con Leaflet (se carga solo cuando se necesita)
@@ -594,6 +599,7 @@ RUTAS.parcela = async function formParcela(id, prodId) {
     ${c('altitud', 'Altitud (msnm)', 'inputmode="decimal"')}${c('variedad', 'Variedad de café')}${c('anio_siembra', 'Año de siembra', 'inputmode="numeric"')}
     <div><label>Sombra</label><select name="sombra">${opciones(['', 'Sin sombra', 'Sombra regulada', 'Sombra diversificada', 'Bosque'], p.sombra)}</select></div>
     <div><label>Estimado de cosecha (qq pergamino seco)</label><input name="estimado_qq" inputmode="decimal" value="${esc(p.datos?.estimado_qq ?? '')}"></div>
+    <div><label>Fecha del último producto prohibido</label><input type="date" name="ultima_prohibida" value="${esc(p.datos?.ultima_prohibida || '')}"><p class="nota">${nuevo ? 'Dejala vacía si nunca se aplicó.' : esc(estadoOrganico(p).txt)}</p></div>
     <div class="ancho"><label>Polígono (GeoJSON, obligatorio desde 4 ha para EUDR)</label><textarea name="poligono" rows="4" placeholder='{"type":"Polygon","coordinates":[[[-86.1,14.9],…]]}'>${p.poligono ? esc(JSON.stringify(p.poligono)) : ''}</textarea></div>
   </div><div class="acciones"><button type="button" class="sec" id="gps">Usar mi ubicación actual</button><button>Guardar</button></div></form>`;
   const f = $('#f');
@@ -607,7 +613,7 @@ RUTAS.parcela = async function formParcela(id, prodId) {
     if (lat !== null && (lat < 12.9 || lat > 16.6 || lon > -82.9 || lon < -89.5)) return aviso('Las coordenadas no caen en Honduras. Revisá latitud y longitud (la longitud lleva signo menos).', true);
     if (num(d.area_ha) >= 4 && !pol) return aviso('Para parcelas de 4 ha o más el polígono es obligatorio.', true);
     if (!pol && lat === null) return aviso('Poné al menos el punto GPS de la parcela.', true);
-    const reg = { productor_id: pr.id, nombre: d.nombre, area_ha: num(d.area_ha), lat, lon, altitud: d.altitud ? num(d.altitud) : null, variedad: d.variedad, anio_siembra: d.anio_siembra ? +d.anio_siembra : null, sombra: d.sombra, poligono: pol, datos: { ...(p.datos || {}), estimado_qq: d.estimado_qq ? num(d.estimado_qq) : null } };
+    const reg = { productor_id: pr.id, nombre: d.nombre, area_ha: num(d.area_ha), lat, lon, altitud: d.altitud ? num(d.altitud) : null, variedad: d.variedad, anio_siembra: d.anio_siembra ? +d.anio_siembra : null, sombra: d.sombra, poligono: pol, datos: { ...(p.datos || {}), estimado_qq: d.estimado_qq ? num(d.estimado_qq) : null, ultima_prohibida: d.ultima_prohibida || null } };
     ocupado(f, true);
     try { if (nuevo) await q(sb.from('parcelas').insert({ ...reg, org_id: S.org.id })); else await q(sb.from('parcelas').update(reg).eq('id', id)); aviso('Parcela guardada.'); location.hash = '#/prod/' + pr.id; }
     catch (e) { ocupado(f, false); aviso(falla(e), true); }
@@ -699,6 +705,11 @@ RUTAS.acopio = async function formAcopio(prodId) {
       if (!motivo) return aviso('No se registró la entrega.', true);
       d.observaciones = [d.observaciones, 'Pasa el estimado de cosecha: ' + motivo].filter(Boolean).join(' · ');
     }
+    if (esOrganica(d.certificacion) && e.parc.length) {
+      const eo = e.parc.map(estadoOrganico), orgs = eo.filter(x => x.ok).length;
+      if (!orgs && !eo.some(x => x.ok === null)) return aviso('Ninguna parcela de este productor ha terminado la transición orgánica: su café no se puede recibir como orgánico.', true);
+      if (orgs < eo.length && !confirm(`${eo.length - orgs} de las ${eo.length} parcelas de este productor no están confirmadas como orgánicas (en transición o sin dato). ¿Registrar la entrega como ${nombreCert(d.certificacion)} de todos modos?`)) return;
+    }
     ocupado(f, true);
     try {
       const r = await q(sb.from('acopio').insert({ org_id: S.org.id, productor_id: p.id, fecha: d.fecha, certificacion: d.certificacion || null, certificaciones: d.certificacion ? [d.certificacion] : [], estado_cafe: d.estado_cafe, peso_lb: num(d.peso_lb), humedad: d.humedad ? num(d.humedad) : null, precio_lb: d.precio_lb ? num(d.precio_lb) : null, total: d.precio_lb ? r2(num(d.peso_lb) * num(d.precio_lb)) : null, psec_lb: aPergaminoSeco(d.estado_cafe, d.peso_lb), lote: d.lote, observaciones: d.observaciones }).select('numero').single());
@@ -712,7 +723,7 @@ RUTAS.acopios = async function verAcopios(mes) {
   const s = k => filas.reduce((t, x) => t + num(x[k]), 0);
   app().innerHTML = cabecera('Acopio') + `<div class="filtros"><input type="month" id="mes" value="${mes}"><a class="boton" href="#/acopio">+ Registrar entrega</a></div>
   <div class="tabla"><table><thead><tr><th>Número</th><th>Fecha</th><th>Productor</th><th>Café</th><th class="n">Peso (lb)</th><th class="n">Humedad</th><th class="n">Pergamino seco (lb)</th><th>Certificación</th><th class="n">Total</th></tr></thead><tbody>
-  ${filas.map(x => `<tr><td>${esc(x.numero)}</td><td>${esc(x.fecha)}</td><td>${esc(x.productores?.nombre)}</td><td>${esc(x.estado_cafe)}</td><td class="n">${num(x.peso_lb).toLocaleString('es-HN')}</td><td class="n">${x.humedad ?? ''}</td><td class="n">${num(x.psec_lb).toLocaleString('es-HN')}</td><td>${esc(nombreCert(x.certificacion))}</td><td class="n">${x.total ? L(x.total) : ''}</td></tr>`).join('') || '<tr><td colspan="9" class="nota">Sin entregas en este mes.</td></tr>'}
+  ${filas.map(x => `<tr><td>${esc(x.numero)}</td><td>${esc(x.fecha)}</td><td>${esc(x.productores?.nombre)}</td><td>${esc(x.estado_cafe)}</td><td class="n">${num(x.peso_lb).toLocaleString('es-HN')}</td><td class="n">${x.humedad ?? ''}</td><td class="n">${num(x.psec_lb).toLocaleString('es-HN')}</td><td>${esc(nombreCert(x.certificacion))}${x.lote ? `<br><a class="nota" href="#/lote/${encodeURIComponent(x.lote)}">Lote ${esc(x.lote)}</a>` : ''}</td><td class="n">${x.total ? L(x.total) : ''}</td></tr>`).join('') || '<tr><td colspan="9" class="nota">Sin entregas en este mes.</td></tr>'}
   </tbody>${filas.length ? `<tfoot><tr><th colspan="6">Total del mes</th><th class="n">${s('psec_lb').toLocaleString('es-HN')} lb (${(s('psec_lb') / 100).toFixed(2)} qq)</th><th></th><th class="n">${L(s('total'))}</th></tr></tfoot>` : ''}</table></div>`;
   $('#mes').onchange = e => location.hash = '#/acopios/' + e.target.value;
 };
@@ -871,7 +882,7 @@ RUTAS.kobo = async function verKobo() {
     tabla = `<h2>Últimos envíos recibidos de Kobo</h2><div class="tabla"><table><thead><tr><th>Formulario</th><th>Envío</th><th>Enviado</th><th>Estado</th></tr></thead><tbody>${env.map(x => `<tr><td>${esc(FORM_KOBO[x.formulario] || x.formulario)}</td><td>#${esc(x.uid)}</td><td>${fechaHora(x.enviado)}</td><td>${x.error ? '<span class="error">' + esc(x.error) + '</span>' : x.procesado ? 'Registrado' : 'Pendiente'}</td></tr>`).join('') || '<tr><td colspan="4" class="nota">Todavía no ha llegado nada de Kobo.</td></tr>'}</tbody></table></div>`;
   }
   app().innerHTML = cabecera('Formularios de KoboToolbox') + `<div class="caja nota" id="koboEstado" style="padding:10px 14px">Revisando Kobo…</div><div class="caja"><p class="nota">Se llenan desde el teléfono, sin cuenta y sin señal (Kobo los guarda y los envía al volver la conexión). Lo que se envía llega solo a esta aplicación.</p>
-  ${enl.length ? `<div class="tarjetas">${enl.map(([n, u]) => `<a class="tarjeta" href="${esc(/^https:\/\//.test(u) ? u : '#/kobo')}" target="_blank" rel="noopener"><b>${esc(n)}</b><span>${esc(u.replace(/^https:\/\//, ''))}</span></a>`).join('')}</div>` : '<p>Todavía no hay formularios configurados para esta organización.</p>'}
+  ${enl.length ? `<div class="tarjetas">${enl.map(([n, u]) => `<a class="tarjeta" href="${esc(/^https:\/\//.test(u) ? u : '#/kobo')}" target="_blank" rel="noopener"><b>${esc(n)}</b><span>Abrir el formulario</span></a>`).join('')}</div>` : '<p>Todavía no hay formularios configurados para esta organización.</p>'}
   ${esAdmin() ? '<p class="nota">Los enlaces, los códigos de los formularios y la clave de Kobo se cambian en <a href="#/config">Configuración</a>.</p>' : ''}</div>${tabla}`;
   sincronizarKobo(false);
 };
@@ -1036,9 +1047,9 @@ async function pintarArchivo(sec, abierta) {
 const inicioCosecha = (f = hoy()) => { const m = cfgN('COSECHA_INICIO_MES', 10), y = +f.slice(0, 4), mm = +f.slice(5, 7); return (mm >= m ? y : y - 1) + '-' + String(m).padStart(2, '0') + '-01'; };
 const estimadoParcela = p => num(p.datos?.estimado_qq);
 async function estimadoProductor(id) {
-  const [parc, aco] = await Promise.all([q(sb.from('parcelas').select('datos').eq('productor_id', id)), q(sb.from('acopio').select('psec_lb').eq('productor_id', id).gte('fecha', inicioCosecha()))]);
+  const [parc, aco] = await Promise.all([q(sb.from('parcelas').select('nombre,datos').eq('productor_id', id)), q(sb.from('acopio').select('psec_lb').eq('productor_id', id).gte('fecha', inicioCosecha()))]);
   const est = parc.reduce((t, p) => t + estimadoParcela(p), 0), ent = aco.reduce((t, a) => t + num(a.psec_lb), 0) / 100, tol = cfgN('TOLERANCIA_ESTIMADO', 20);
-  return { est, ent, tope: est * (1 + tol / 100), tol };
+  return { est, ent, tope: est * (1 + tol / 100), tol, parc };
 }
 const qqTxt = v => num(v).toLocaleString('es-HN', { maximumFractionDigits: 2 }) + ' qq';
 
@@ -1068,7 +1079,7 @@ RUTAS.eudr = async function verEudr(id) {
   const fc = { type: 'FeatureCollection', features: parc.filter(p => p.poligono || (p.lat !== null && p.lat !== undefined)).map(p => ({ type: 'Feature', geometry: p.poligono || { type: 'Point', coordinates: [num(p.lon), num(p.lat)] }, properties: { ProducerName: p.productores?.nombre || '', ProducerCountry: 'HN', ProductionPlace: p.nombre || '', Area: num(p.area_ha) } })) };
   app().innerHTML = cabecera('EUDR · despacho ' + d.numero, '#/despacho') + `<div class="caja"><dl class="detalle">
     <dt>Comprador</dt><dd>${esc(d.comprador)} · ${esc(d.fecha)} · ${num(d.peso_lb).toLocaleString('es-HN')} lb ${esc(d.tipo_cafe)}</dd>
-    <dt>Lotes</dt><dd>${esc(lotes.join(', ') || '—')}</dd><dt>Productores</dt><dd>${ids.length}</dd><dt>Parcelas</dt><dd>${parc.length}</dd></dl>
+    <dt>Lotes</dt><dd>${lotes.map(l => `<a href="#/lote/${encodeURIComponent(l)}">${esc(l)}</a>`).join(', ') || '—'}</dd><dt>Productores</dt><dd>${ids.length}</dd><dt>Parcelas</dt><dd>${parc.length}</dd></dl>
     ${!lotes.length ? '<p class="error">Este despacho no tiene lotes anotados. Sin lotes no se sabe de qué fincas salió el café: anotalos en el despacho.</p>' : ''}
     ${sinLote.length ? `<p class="error">Estos lotes no aparecen en ningún acopio: ${esc(sinLote.join(', '))}.</p>` : ''}
     ${parc.length ? `<p class="${malas ? 'error' : dudas ? '' : 'ok'}"><b>${malas ? `${malas} parcela${malas > 1 ? 's' : ''} no cumple${malas > 1 ? 'n' : ''}: corregí antes de declarar.` : dudas ? `${dudas} parcela${dudas > 1 ? 's' : ''} por revisar.` : 'Todas las parcelas cumplen.'}</b></p>` : ''}</div>
@@ -1111,6 +1122,8 @@ async function avisosCer() {
   parc.forEach(p => est[p.productor_id] = (est[p.productor_id] || 0) + estimadoParcela(p));
   const pasados = Object.keys(ent).filter(id => est[id] > 0 && ent[id] > est[id] * (1 + tol / 100));
   const sinEst = Object.keys(ent).filter(id => !est[id] && (P[id]?.certificaciones || []).length);
+  const [insRev] = await Promise.all([q(sb.from('insumos_aplicados').select('fecha,producto,productor_id,parcela_nombre').eq('org_id', S.org.id).eq('estado', 'Revisar').gte('fecha', desde).order('fecha', { ascending: false }))]);
+  const orgSinDato = parc.filter(p => (P[p.productor_id]?.certificaciones || []).some(esOrganica) && estadoOrganico(p).ok === null);
   const bloque = (titulo, n, nota, cols, filas) => `<details class="carpeta"><summary><b><span style="color:${n ? 'var(--rojo)' : 'var(--verde2)'}">●</span> ${titulo}</b> <span class="nota">${n || 'nada pendiente'}</span></summary>
     ${n ? `<p class="nota" style="margin:8px 0">${nota}</p><div class="tabla"><table><thead><tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>${filas}</tbody></table></div>` : ''}</details>`;
   return `<h2>Avisos de control interno</h2>` + [
@@ -1124,7 +1137,119 @@ async function avisosCer() {
       pasados.map(id => `<tr><td>${quien(id)}</td><td class="n">${qqTxt(est[id])}</td><td class="n">${qqTxt(ent[id])}</td><td class="n error">${Math.round((ent[id] / est[id] - 1) * 100)} %</td></tr>`).join('')),
     bloque('Entregan café certificado sin estimado de cosecha', sinEst.length, 'Sin estimado no se puede controlar cuánto puede entregar. Se pone en cada parcela.', ['Productor', 'Entregado esta cosecha'],
       sinEst.map(id => `<tr><td>${quien(id)}</td><td class="n">${qqTxt(ent[id])}</td></tr>`).join('')),
+    bloque('Parcelas orgánicas sin fecha del último producto prohibido', orgSinDato.length, 'Sin esa fecha no se puede demostrar que la parcela cumplió la transición. Se pone en cada parcela.', ['Productor', 'Parcela'],
+      orgSinDato.map(p => `<tr><td>${quien(p.productor_id)}</td><td><a href="#/parcela/${p.id}">${esc(p.nombre)}</a></td></tr>`).join('')),
+    bloque('Insumos por revisar (no están en las listas)', insRev.length, 'Revisar si están permitidos y agregarlos a la lista correcta en Configuración.', ['Fecha', 'Productor', 'Parcela', 'Producto'],
+      insRev.map(x => `<tr><td>${esc(x.fecha)}</td><td>${quien(x.productor_id)}</td><td>${esc(x.parcela_nombre || 'Toda la finca')}</td><td>${esc(x.producto)}</td></tr>`).join('')),
     bloque('Posible conflicto de interés del inspector', conflictos.length, 'Un inspector interno no debe inspeccionar su propia finca ni la de un familiar. Revisar y, si es el caso, repetir la inspección con otra persona.', ['Fecha', 'Inspector', 'Productor', 'Motivo'],
       conflictos.map(c => `<tr><td>${esc(c.i.fecha)}</td><td>${esc(c.i.inspector)}</td><td>${quien(c.p.id)}</td><td>${esc(c.motivo)}</td></tr>`).join(''))
   ].join('');
 }
+
+// =====================================================================
+// HISTORIAL ORGÁNICO, INSUMOS APLICADOS Y TRAZABILIDAD POR LOTE
+// =====================================================================
+// Fecha del último producto prohibido: la que se anota en la parcela o la del padrón de Kobo
+function fechaProhibida(p) {
+  const d = p.datos || {}, k = String(d.ultima_quimica ?? '').trim();
+  const kobo = /^\d{4}-\d{2}-\d{2}/.test(k) ? k.slice(0, 10) : /^(19|20)\d{2}$/.test(k) ? k + '-12-31' : '';
+  return [d.ultima_prohibida || '', kobo].filter(Boolean).sort().pop() || '';
+}
+function estadoOrganico(p) {
+  const f = fechaProhibida(p), meses = cfgN('MESES_TRANSICION', 36), k = norm(p.datos?.ultima_quimica || '');
+  if (!f) {
+    if (/^(nunca|no|ninguna)/.test(k) || /mas/.test(k)) return { estado: 'Orgánica', txt: 'Según el padrón, sin productos prohibidos en el período', ok: true };
+    return { estado: 'Sin dato', txt: 'Falta la fecha del último producto prohibido', ok: null };
+  }
+  const desde = sumarMeses(f, meses);
+  if (hoy() >= desde) return { estado: 'Orgánica', txt: 'Orgánica desde ' + desde, ok: true, desde };
+  const anio = Math.min(Math.floor(diasEntre(f, hoy()) / 365) + 1, Math.ceil(meses / 12));
+  return { estado: 'En transición', txt: `Año ${anio} de transición: orgánica desde ${desde}`, ok: false, desde };
+}
+const chipOrg = e => `<span class="estado" style="background:${e.ok ? '#dcfce7;color:#166534' : e.ok === false ? '#fef3c7;color:#92400e' : '#e5e7eb;color:#374151'}" title="${esc(e.txt)}">${esc(e.estado)}</span>${e.desde && !e.ok ? `<br><span class="nota">desde ${esc(e.desde)}</span>` : ''}`;
+const esOrganica = c => /org|usda|bio/i.test(c || '');
+
+// Mismo criterio que la base de datos (función revisar_insumo)
+function estadoInsumo(producto) {
+  const t = norm(producto), en = k => lista(S.cfg[k]).some(x => norm(x) && t.includes(norm(x)));
+  return en('INSUMOS_PROHIBIDOS') ? 'Prohibido' : en('INSUMOS_PERMITIDOS') ? 'Permitido' : 'Revisar';
+}
+const chipInsumo = e => `<span class="estado" style="background:${e === 'Permitido' ? '#dcfce7;color:#166534' : e === 'Prohibido' ? '#fee2e2;color:#991b1b' : '#fef3c7;color:#92400e'}">${esc(e || '')}</span>`;
+
+RUTAS.insumos = async function verInsumos(prodId) {
+  const [ps, filas] = await Promise.all([prods(), q(sb.from('insumos_aplicados').select('*, productores(codigo,nombre)').eq('org_id', S.org.id).order('fecha', { ascending: false }).limit(300))]);
+  const sugeridos = [...lista(S.cfg.INSUMOS_PERMITIDOS), ...lista(S.cfg.INSUMOS_PROHIBIDOS)];
+  app().innerHTML = cabecera('Insumos aplicados') + `<form class="caja" id="f"><div class="rejilla">
+    <div class="ancho"><label>Productor</label>${campoProd(ps, prodId)}</div>
+    <div><label>Parcela</label><select name="parcela_id" id="parc"><option value="">Toda la finca</option></select></div>
+    <div><label>Fecha de la aplicación</label><input type="date" name="fecha" required value="${hoy()}"></div>
+    <div><label>Producto</label><input name="producto" required list="dlIns"><datalist id="dlIns">${sugeridos.map(x => `<option value="${esc(x)}">`).join('')}</datalist></div>
+    <div><label>Tipo</label><select name="tipo">${opciones(['Fertilizante', 'Abono orgánico', 'Enmienda', 'Fungicida', 'Insecticida', 'Herbicida', 'Control biológico', 'Otro'])}</select></div>
+    <div><label>Cantidad</label><input name="cantidad" inputmode="decimal"></div>
+    <div><label>Unidad</label><select name="unidad">${opciones(['kg', 'lb', 'qq', 'sacos', 'litros', 'galones', 'ml'])}</select></div>
+    <div class="ancho"><label>Observaciones</label><input name="observaciones"></div>
+  </div><p class="nota" id="revIns"></p><div class="acciones"><button>Registrar aplicación</button></div></form>
+  <p class="nota">Las listas de insumos permitidos y prohibidos se ajustan en Configuración, según la certificadora. Si se aplica un producto prohibido, la parcela vuelve a empezar la transición y se abre una no conformidad sola.</p>
+  <h2>Últimas aplicaciones</h2><div class="tabla"><table><thead><tr><th>Fecha</th><th>Productor</th><th>Parcela</th><th>Producto</th><th>Tipo</th><th class="n">Cantidad</th><th>Revisión</th></tr></thead><tbody>
+  ${filas.map(x => `<tr><td>${esc(x.fecha)}</td><td><a href="#/prod/${x.productor_id}">${esc(x.productores?.codigo || '')} ${esc(x.productores?.nombre || '')}</a></td><td>${esc(x.parcela_nombre || 'Toda la finca')}</td><td>${esc(x.producto)}</td><td>${esc(x.tipo)}</td><td class="n">${x.cantidad ? num(x.cantidad).toLocaleString('es-HN') + ' ' + esc(x.unidad || '') : ''}</td><td>${chipInsumo(x.estado)}</td></tr>`).join('') || '<tr><td colspan="7" class="nota">Todavía no hay aplicaciones registradas.</td></tr>'}</tbody></table></div>`;
+  const f = $('#f');
+  const cargarParc = async () => {
+    const p = leerProd(ps, f.productor_txt.value); f.parcela_id.innerHTML = '<option value="">Toda la finca</option>';
+    if (!p) return;
+    const pa = await q(sb.from('parcelas').select('id,nombre').eq('productor_id', p.id).order('nombre'));
+    f.parcela_id.innerHTML += pa.map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join('');
+  };
+  const rev = () => { const v = f.producto.value.trim(); if (!v) { $('#revIns').innerHTML = ''; return; } const e = estadoInsumo(v); $('#revIns').innerHTML = `${chipInsumo(e)} ${e === 'Prohibido' ? 'Este producto está en la lista de prohibidos para orgánico.' : e === 'Permitido' ? 'Está en la lista de permitidos.' : 'No está en ninguna lista: queda por revisar.'}`; };
+  f.productor_txt.onchange = cargarParc; f.producto.oninput = rev; cargarParc();
+  f.onsubmit = async ev => {
+    ev.preventDefault(); const d = datosForm(f), p = leerProd(ps, d.productor_txt);
+    if (!p) return aviso('Elegí un productor de la lista.', true);
+    if (estadoInsumo(d.producto) === 'Prohibido' && !confirm(`${d.producto} está prohibido para orgánico. Al registrarlo, ${d.parcela_id ? 'la parcela vuelve' : 'las parcelas no cambian (no se eligió parcela), pero'} a empezar la transición y se abre una no conformidad. ¿Registrar?`)) return;
+    ocupado(f, true);
+    try {
+      const r = await q(sb.from('insumos_aplicados').insert({ org_id: S.org.id, productor_id: p.id, parcela_id: d.parcela_id || null, fecha: d.fecha, producto: d.producto, tipo: d.tipo, cantidad: d.cantidad ? num(d.cantidad) : null, unidad: d.unidad, observaciones: d.observaciones || null }).select('estado').single());
+      aviso(r.estado === 'Prohibido' ? 'Registrado. Se abrió una no conformidad por insumo prohibido.' : 'Aplicación registrada.', r.estado === 'Prohibido'); archivarLuego(true); RUTAS.insumos();
+    } catch (e) { ocupado(f, false); aviso(falla(e), true); }
+  };
+};
+
+RUTAS.lotes = async function verLotes() {
+  const desde = sumarMeses(hoy(), -24);
+  const aco = await q(sb.from('acopio').select('lote,fecha,psec_lb,certificacion,productor_id').eq('org_id', S.org.id).gte('fecha', desde).not('lote', 'is', null).order('fecha', { ascending: false }).limit(5000));
+  const L2 = {}; aco.forEach(a => { const k = String(a.lote).toUpperCase(); const x = L2[k] = L2[k] || { lote: k, qq: 0, prods: new Set(), desde: a.fecha, hasta: a.fecha, certs: new Set() }; x.qq += num(a.psec_lb) / 100; x.prods.add(a.productor_id); if (a.fecha < x.desde) x.desde = a.fecha; if (a.fecha > x.hasta) x.hasta = a.fecha; if (a.certificacion) x.certs.add(a.certificacion); });
+  const filas = Object.values(L2); await certs();
+  app().innerHTML = cabecera('Trazabilidad por lote') + `<div class="filtros"><input id="bus" placeholder="Buscar lote"></div>
+  <div class="tabla"><table><thead><tr><th>Lote</th><th>Acopio</th><th class="n">Productores</th><th class="n">Pergamino seco</th><th>Certificaciones</th></tr></thead><tbody>
+  ${filas.map(x => `<tr data-t="${esc(norm(x.lote))}"><td><a href="#/lote/${encodeURIComponent(x.lote)}"><b>${esc(x.lote)}</b></a></td><td>${esc(x.desde)}${x.hasta !== x.desde ? ' a ' + esc(x.hasta) : ''}</td><td class="n">${x.prods.size}</td><td class="n">${qqTxt(x.qq)}</td><td>${[...x.certs].map(nombreCert).map(esc).join(', ') || 'Convencional'}</td></tr>`).join('') || '<tr><td colspan="5" class="nota">No hay acopios con lote en los últimos dos años.</td></tr>'}</tbody></table></div>`;
+  $('#bus').oninput = e => { const t = norm(e.target.value); app().querySelectorAll('tr[data-t]').forEach(tr => tr.hidden = t && !tr.dataset.t.includes(t)); };
+};
+
+RUTAS.lote = async function verLote(codigo) {
+  const lote = String(codigo || '').toUpperCase();
+  const [aco, ben, des] = await Promise.all([
+    q(sb.from('acopio').select('*, productores(id,codigo,nombre,comunidad)').eq('org_id', S.org.id).ilike('lote', lote).order('fecha')),
+    q(sb.from('beneficiado').select('*').eq('org_id', S.org.id).ilike('lote', lote).order('fecha_inicio')),
+    q(sb.from('despachos').select('*').eq('org_id', S.org.id).ilike('lotes', '%' + lote + '%').order('fecha'))
+  ]);
+  await certs();
+  const ids = [...new Set(aco.map(a => a.productor_id))];
+  const parc = ids.length ? await q(sb.from('parcelas').select('*').in('productor_id', ids)) : [];
+  const total = aco.reduce((t, a) => t + num(a.psec_lb), 0) / 100, porProd = {};
+  aco.forEach(a => { const k = a.productor_id; porProd[k] = porProd[k] || { p: a.productores, qq: 0, n: 0 }; porProd[k].qq += num(a.psec_lb) / 100; porProd[k].n++; });
+  const eudr = parc.map(revisarEudr), malas = eudr.filter(r => r.some(x => x[0] === 'error')).length;
+  const org = parc.map(estadoOrganico), trans = org.filter(o => o.ok === false).length;
+  app().innerHTML = cabecera('Lote ' + lote, '#/lotes') + `<div class="caja"><dl class="detalle">
+    <dt>Café acopiado</dt><dd>${qqTxt(total)} de pergamino seco · ${aco.length} entregas de ${ids.length} productores</dd>
+    <dt>Certificaciones</dt><dd>${[...new Set(aco.flatMap(a => a.certificaciones?.length ? a.certificaciones : [a.certificacion]).filter(Boolean))].map(nombreCert).map(esc).join(', ') || 'Convencional'}</dd>
+    <dt>Fincas</dt><dd>${parc.length} parcelas · EUDR: ${malas ? `<span class="error">${malas} no cumplen</span>` : 'todas cumplen o están por revisar'} · orgánico: ${trans ? `<span class="error">${trans} en transición</span>` : 'sin parcelas en transición'}</dd>
+    <dt>Vendido en</dt><dd>${des.map(x => `<a href="#/eudr/${x.id}">${esc(x.numero)}</a> (${esc(x.fecha)}, ${esc(x.comprador)})`).join(' · ') || 'Todavía no se ha despachado'}</dd></dl>
+    <div class="acciones"><button class="sec" onclick="print()">Imprimir hoja del lote</button></div></div>
+  <h2>1. Productores y entregas</h2><div class="tabla"><table><thead><tr><th>Productor</th><th>Comunidad</th><th class="n">Entregas</th><th class="n">Pergamino seco</th></tr></thead><tbody>
+  ${Object.values(porProd).map(x => `<tr><td><a href="#/prod/${x.p?.id}">${esc(x.p?.codigo || '')} ${esc(x.p?.nombre || '')}</a></td><td>${esc(x.p?.comunidad || '')}</td><td class="n">${x.n}</td><td class="n">${qqTxt(x.qq)}</td></tr>`).join('') || '<tr><td colspan="4" class="nota">No hay acopios con este lote.</td></tr>'}</tbody></table></div>
+  <div class="tabla" style="margin-top:8px"><table><thead><tr><th>Recibo</th><th>Fecha</th><th>Productor</th><th>Café</th><th class="n">Peso (lb)</th><th class="n">Humedad</th><th>Certificación</th></tr></thead><tbody>
+  ${aco.map(a => `<tr><td>${esc(a.numero)}</td><td>${esc(a.fecha)}</td><td>${esc(a.productores?.nombre || '')}</td><td>${esc(a.estado_cafe)}</td><td class="n">${num(a.peso_lb).toLocaleString('es-HN')}</td><td class="n">${a.humedad ?? ''}</td><td>${esc(nombreCert(a.certificacion))}</td></tr>`).join('')}</tbody></table></div>
+  <h2>2. Beneficiado y secado</h2><div class="tabla"><table><thead><tr><th>Inicio</th><th>Fin</th><th>Método</th><th class="n">Entrada (lb)</th><th class="n">Salida (lb)</th><th class="n">Humedad final</th></tr></thead><tbody>
+  ${ben.map(b => `<tr><td>${esc(b.fecha_inicio || '')}</td><td>${esc(b.fecha_fin || '')}</td><td>${esc(b.metodo || '')}</td><td class="n">${b.peso_entrada_lb ? num(b.peso_entrada_lb).toLocaleString('es-HN') : ''}</td><td class="n">${b.peso_salida_lb ? num(b.peso_salida_lb).toLocaleString('es-HN') : ''}</td><td class="n">${b.humedad_final ?? ''}</td></tr>`).join('') || '<tr><td colspan="6" class="nota">Sin registro de beneficiado para este lote.</td></tr>'}</tbody></table></div>
+  <h2>3. Despacho y venta</h2><div class="tabla"><table><thead><tr><th>Despacho</th><th>Fecha</th><th>Comprador</th><th>Contrato</th><th>Certificación</th><th>EUDR</th></tr></thead><tbody>
+  ${des.map(x => `<tr><td>${esc(x.numero)}</td><td>${esc(x.fecha)}</td><td>${esc(x.comprador)}</td><td>${esc(x.contrato || '')}</td><td>${esc(nombreCert(x.certificacion))}</td><td><a href="#/eudr/${x.id}">${x.dds_numero ? 'Declarado: ' + esc(x.dds_numero) : 'Revisar'}</a></td></tr>`).join('') || '<tr><td colspan="6" class="nota">Este lote todavía no sale.</td></tr>'}</tbody></table></div>`;
+};
