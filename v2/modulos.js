@@ -66,7 +66,6 @@ RUTAS[''] = async function portal() {
     ${puedeSec('adm') ? tarjeta('#/adm', 'Administración', 'Compras, fondos, facturas, vacaciones, presupuesto', pend) : ''}
     ${puedeSec('cre') ? tarjeta('#/cre', 'Crédito interno', 'De la solicitud del productor al desembolso y la recuperación', crePend) : ''}
     ${puedeSec('cer') ? tarjeta('#/cer', 'Certificaciones', 'Padrón, inspecciones, acopio, balance de masas y prima', quejas) : ''}
-    ${esAdmin() ? tarjeta('#/panel', 'Panel de control', 'Los números de la organización en una sola vista') : ''}
     ${!puedeSec('adm') && !puedeSec('cre') && !puedeSec('cer') ? '<div class="caja">Todavía no tenés secciones habilitadas. Pedile al administrador que te las active.</div>' : ''}
   </div>
   `;
