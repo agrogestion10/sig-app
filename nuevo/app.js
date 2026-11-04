@@ -39,7 +39,7 @@ function falla(e) {
 async function q(p) { const { data, error } = await p; if (error) throw error; return data; }
 function datosForm(f) { const o = {}; new FormData(f).forEach((v, k) => o[k] = typeof v === 'string' ? v.trim() : v); return o; }
 function ocupado(f, si) { f.querySelectorAll('button').forEach(b => b.disabled = si); }
-function cabecera(titulo, volver = '#/') { return `<a class="volver" href="${volver}">← Volver</a><h1>${esc(titulo)}</h1>`; }
+function cabecera(titulo, volver = S.seccion ? '#/' + S.seccion : '#/') { return `<a class="volver" href="${volver}">← Volver</a><h1>${esc(titulo)}</h1>`; }
 
 // ---------- arranque ----------
 window.addEventListener('DOMContentLoaded', async () => {
@@ -90,8 +90,7 @@ async function cambiarOrg(id) {
 function pintarBarra() {
   $('#barra').hidden = false;
   $('#nombreOrg').textContent = S.org?.nombre || '';
-  const nombre = S.maestro ? 'Usuario maestro' : S.perfil.nombre;
-  $('#quien').textContent = nombre + ' · ' + ROLES[S.rol];
+  $('#quien').textContent = S.maestro ? 'Usuario maestro' : S.perfil.nombre + ' · ' + ROLES[S.rol];
   const sel = $('#cambioOrg');
   if (S.maestro) { sel.hidden = false; sel.innerHTML = S.orgs.map(o => `<option value="${o.id}" ${o.id === S.org.id ? 'selected' : ''}>${esc(o.nombre)}</option>`).join(''); }
 }
@@ -101,14 +100,18 @@ const RUTAS = {
   '': inicio, 'compra': formCompra, 'fondo': formFondo, 'liquidacion': formLiquidacion, 'vacacion': formVacacion,
   'factura': formFactura, 'facturas': verFacturas, 'solicitudes': verSolicitudes, 'solicitud': verSolicitud,
   'proveedores': verProveedores, 'proveedor': formProveedor, 'empleados': verEmpleados, 'empleado': formEmpleado,
-  'presupuesto': verPresupuesto, 'config': verConfig, 'usuarios': verUsuarios, 'bitacora': verBitacora, 'orgs': verOrgs
+  'presupuesto': verPresupuesto, 'config': verConfig, 'usuarios': verUsuarios, 'bitacora': verBitacora, 'orgs': verOrgs, 'adm': inicio
 };
+// A qué sección vuelve el botón «Volver» de cada pantalla ('' = portal)
+const SECCION_DE = { '': '', adm: 'adm', config: '', usuarios: '', bitacora: '', orgs: '' };
+['compra', 'fondo', 'liquidacion', 'vacacion', 'factura', 'facturas', 'solicitudes', 'solicitud', 'proveedores', 'proveedor', 'empleados', 'empleado', 'presupuesto', 'laboral'].forEach(r => SECCION_DE[r] = 'adm');
 async function ruta() {
   if (!S.user) return pantallaAcceso();
-  const [r, id] = location.hash.replace(/^#\/?/, '').split('/');
-  const f = RUTAS[r] || inicio;
+  const [r, ...resto] = location.hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent);
+  const f = RUTAS[r] || RUTAS[''];
+  if (SECCION_DE[r] !== undefined) S.seccion = SECCION_DE[r];
   app().innerHTML = '<div class="cargando">Cargando…</div>';
-  try { await f(id ? decodeURIComponent(id) : null); window.scrollTo(0, 0); }
+  try { await f(resto[0] || null, resto[1] || null); window.scrollTo(0, 0); }
   catch (e) { app().innerHTML = `<div class="caja error">No se pudo abrir esta pantalla: ${esc(falla(e))}</div>`; }
 }
 
@@ -140,22 +143,19 @@ async function inicio() {
   let pend = 0;
   if (esJefe()) { const r = await sb.from('solicitudes').select('id', { count: 'exact', head: true }).eq('org_id', S.org.id).eq('estado', 'Pendiente'); pend = r.count || 0; }
   const t = (h, b, s, n) => `<a class="tarjeta" href="${h}">${n ? `<span class="num">${n}</span>` : ''}<b>${b}</b><span>${s}</span></a>`;
-  app().innerHTML = `<h1>Administración</h1>
+  app().innerHTML = cabecera('Administración', '#/') + `
   <div class="tarjetas">
     ${t('#/compra', 'Solicitud de compra', 'Con cotizaciones y proveedor')}
     ${t('#/fondo', 'Solicitud de fondos', 'Anticipos para actividades')}
     ${t('#/liquidacion', 'Liquidar fondos', 'Rendir cuentas de un anticipo')}
     ${t('#/factura', 'Registrar factura', 'Revisión del CAI y retenciones')}
     ${t('#/vacacion', 'Vacaciones', 'Solicitar días')}
+    ${esJefe() ? t('#/laboral', 'Liquidación laboral', 'Prestaciones al terminar la relación') : ''}
     ${t('#/solicitudes', esJefe() ? 'Autorizaciones' : 'Mis solicitudes', esJefe() ? 'Revisar y resolver' : 'Ver en qué van', pend)}
     ${t('#/facturas', 'Facturas', 'Libro de compras del mes')}
     ${t('#/proveedores', 'Proveedores', 'Directorio')}
     ${esJefe() ? t('#/empleados', 'Empleados', 'Datos del personal') : ''}
     ${t('#/presupuesto', 'Presupuesto', 'Aprobado y ejecutado')}
-    ${esAdmin() ? t('#/usuarios', 'Usuarios', 'Accesos y roles') : ''}
-    ${esAdmin() ? t('#/config', 'Configuración', 'Montos, líneas y proyectos') : ''}
-    ${esAdmin() ? t('#/bitacora', 'Bitácora', 'Quién hizo qué') : ''}
-    ${S.maestro ? t('#/orgs', 'Organizaciones', 'Altas y valores de ley') : ''}
   </div>`;
 }
 
@@ -431,6 +431,8 @@ async function verSolicitud(id) {
   if (s.tipo === 'fondo') extra = `<dl class="detalle"><dt>Actividad</dt><dd>${esc(d.fecha_actividad)}</dd><dt>Liquidará el</dt><dd>${esc(d.fecha_liquidar || '—')}</dd><dt>Detalle</dt><dd>${esc(d.detalle || '—')}</dd></dl>${s.estado === 'Autorizada' ? `<div class="acciones"><a class="boton sec" href="#/liquidacion/${s.id}">Liquidar este fondo</a></div>` : ''}`;
   if (s.tipo === 'liquidacion') extra = `<dl class="detalle"><dt>Fondo</dt><dd>${esc(d.fondo)} · ${L(d.monto_fondo)}</dd><dt>Gastado</dt><dd>${L(d.total_gastos)}</dd><dt>Resultado</dt><dd>${d.diferencia > 0 ? 'Devuelve ' + L(d.diferencia) : d.diferencia < 0 ? 'Se le reintegra ' + L(-d.diferencia) : 'Cuadra exacto'}</dd></dl>`;
   if (s.tipo === 'vacacion') extra = `<dl class="detalle"><dt>Fechas</dt><dd>${esc(d.desde)} al ${esc(d.hasta)}</dd><dt>Días hábiles</dt><dd>${esc(d.dias)}</dd></dl>`;
+  if (s.tipo === 'laboral' && d.rubros) extra = `<dl class="detalle"><dt>Motivo</dt><dd>${esc(d.motivo)}</dd><dt>Período</dt><dd>${esc(d.ingreso)} al ${esc(d.salida)} (${esc(d.antiguedad)})</dd><dt>Salario mensual</dt><dd>${L(d.salario)}</dd></dl>
+    <div class="tabla" style="margin-top:10px"><table><thead><tr><th>Rubro</th><th>Base</th><th class="n">Monto</th></tr></thead><tbody>${d.rubros.map(x => `<tr><td>${esc(x.rubro)}</td><td>${esc(x.base)}</td><td class="n">${L(x.monto)}</td></tr>`).join('')}</tbody><tfoot><tr><th colspan="2">Total a pagar</th><th class="n">${L(s.monto)}</th></tr></tfoot></table></div>`;
   if (['compra', 'fondo'].includes(s.tipo) && s.linea) {
     const anio = new Date(s.creado).getFullYear();
     const pr = await sb.from('ejecucion_presupuesto').select('*').eq('org_id', S.org.id).eq('anio', anio).eq('linea', s.linea).eq('proyecto', s.proyecto || '').maybeSingle();
@@ -539,7 +541,7 @@ async function verConfig() {
   const filas = await q(sb.from('configuracion').select('*').eq('org_id', S.org.id).eq('secreta', false));
   const val = Object.fromEntries(filas.map(x => [x.clave, x.valor]));
   const claves = [...new Set([...Object.keys(CFG_TEXTO), ...filas.map(x => x.clave)])];
-  const largo = k => /LINEAS|PROYECTOS|AREAS/.test(k);
+  const largo = k => /LINEAS|PROYECTOS|AREAS|DESTINOS|ENLACES/.test(k);
   app().innerHTML = cabecera('Configuración de ' + S.org.nombre) + `<form class="caja" id="f"><div class="rejilla">
     ${claves.map(k => `<div class="${largo(k) ? 'ancho' : ''}"><label>${esc(CFG_TEXTO[k] || k)}</label>${largo(k) ? `<textarea name="${k}" rows="5">${esc(lista(val[k]).join('\n'))}</textarea>` : `<input name="${k}" value="${esc(val[k])}">`}</div>`).join('')}
   </div><div class="acciones"><button>Guardar cambios</button></div></form>
@@ -617,6 +619,7 @@ async function verOrgs() {
       const o = await q(sb.from('organizaciones').insert({ nombre: d.nombre, rtn: d.rtn || null }).select().single());
       const base = Object.fromEntries(Object.keys(CFG_TEXTO).map(k => [k, S.cfg[k] ?? '']));
       await q(sb.from('configuracion').insert(Object.entries(base).map(([clave, valor]) => ({ org_id: o.id, clave, valor }))));
+      await q(sb.rpc('preparar_org', { o: o.id }));
       S.orgs = await q(sb.from('organizaciones').select('id,nombre,es_maestra,activa').order('nombre')); pintarBarra();
       aviso('Organización creada con la configuración base.'); verOrgs();
     } catch (e) { ocupado(f, false); aviso(falla(e), true); }
