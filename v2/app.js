@@ -98,7 +98,9 @@ async function cambiarOrg(id) {
 function pintarBarra() {
   $('#barra').hidden = false;
   $('#nombreOrg').textContent = S.org?.nombre || '';
-  $('#quien').textContent = S.maestro ? 'Usuario maestro' : S.perfil.nombre + ' · ' + ROLES[S.rol];
+  // En Usuario maestro no se repite el nombre (ya está en el selector de organización)
+  $('#quien').textContent = S.maestro ? '' : S.perfil.nombre + ' · ' + ROLES[S.rol];
+  $('#quien').hidden = S.maestro;
   const sel = $('#cambioOrg');
   if (S.maestro) { sel.hidden = false; sel.innerHTML = S.orgs.map(o => `<option value="${o.id}" ${o.id === S.org.id ? 'selected' : ''}>${esc(o.nombre)}</option>`).join(''); }
   pintarEngrane();
