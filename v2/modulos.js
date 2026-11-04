@@ -1166,7 +1166,7 @@ function estadoOrganico(p) {
   const anio = Math.min(Math.floor(diasEntre(f, hoy()) / 365) + 1, Math.ceil(meses / 12));
   return { estado: 'En transición', txt: `Año ${anio} de transición: orgánica desde ${desde}`, ok: false, desde };
 }
-const chipOrg = e => `<span class="estado" style="background:${e.ok ? '#dcfce7;color:#166534' : e.ok === false ? '#fef3c7;color:#92400e' : '#e5e7eb;color:#374151'}" title="${esc(e.txt)}">${esc(e.estado)}</span>${e.desde && !e.ok ? `<br><span class="nota">desde ${esc(e.desde)}</span>` : ''}`;
+const chipOrg = e => `<span class="estado" style="background:${e.ok ? '#dcfce7;color:#166534' : e.ok === false ? '#fef3c7;color:#92400e' : '#e5e7eb;color:#374151'}" title="${esc(e.txt)}">${esc(e.estado)}</span>${e.desde && !e.ok ? `<br><span class="nota">orgánica desde ${esc(e.desde)}</span>` : ''}`;
 const esOrganica = c => /org|usda|bio/i.test(c || '');
 
 // Mismo criterio que la base de datos (función revisar_insumo)
