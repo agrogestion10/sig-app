@@ -69,13 +69,7 @@ RUTAS[''] = async function portal() {
     ${esAdmin() ? tarjeta('#/panel', 'Panel de control', 'Los números de la organización en una sola vista') : ''}
     ${!puedeSec('adm') && !puedeSec('cre') && !puedeSec('cer') ? '<div class="caja">Todavía no tenés secciones habilitadas. Pedile al administrador que te las active.</div>' : ''}
   </div>
-  ${esAdmin() ? `<h2>Configuración</h2><div class="tarjetas">
-    ${tarjeta('#/usuarios', 'Usuarios', 'Accesos y roles')}
-    ${tarjeta('#/config', 'Configuración', 'Montos, listas, crédito y certificaciones')}
-    ${tarjeta('#/catalogo', 'Catálogo de certificaciones', 'Cuáles se usan en esta organización')}
-    ${tarjeta('#/bitacora', 'Bitácora', 'Quién hizo qué')}
-    ${S.maestro ? tarjeta('#/orgs', 'Organizaciones', 'Altas y valores de ley') : ''}
-  </div>` : ''}`;
+  `;
 };
 
 // =====================================================================
