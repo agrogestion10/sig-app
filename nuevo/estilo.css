@@ -62,3 +62,7 @@ td.n,th.n{text-align:right;white-space:nowrap}
 .cot{border:1px dashed var(--borde);border-radius:10px;padding:12px;margin-top:10px}
 .volver{display:inline-block;margin-bottom:8px;font-size:14px}
 @media (max-width:600px){header{padding:8px 12px}main{padding:14px 10px 50px}.caja{padding:14px}}
+.tarjetas.portal{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+.portal .tarjeta{padding:22px;min-height:118px;border-left:4px solid var(--verde2)}
+.portal .tarjeta b{font-size:18px;margin-bottom:6px}
+@media print{header,.acciones,.volver,form{display:none!important}main{max-width:none;padding:0}.caja,.tabla{border:0}}
