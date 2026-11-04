@@ -618,7 +618,7 @@ RUTAS.acopio = async function formAcopio(prodId) {
 };
 RUTAS.acopios = async function verAcopios(mes) {
   mes = mes || hoy().slice(0, 7); await certs();
-  const filas = await q(sb.from('acopio').select('*, productores(nombre)').eq('org_id', S.org.id).gte('fecha', mes + '-01').lte('fecha', mes + '-31').order('fecha', { ascending: false }));
+  const filas = await q(sb.from('acopio').select('*, productores(nombre)').eq('org_id', S.org.id).gte('fecha', mes + '-01').lt('fecha', sumarMeses(mes + '-01', 1)).order('fecha', { ascending: false }));
   const s = k => filas.reduce((t, x) => t + num(x[k]), 0);
   app().innerHTML = cabecera('Acopio') + `<div class="filtros"><input type="month" id="mes" value="${mes}"><a class="boton" href="#/acopio">+ Registrar entrega</a></div>
   <div class="tabla"><table><thead><tr><th>Número</th><th>Fecha</th><th>Productor</th><th>Café</th><th class="n">Peso (lb)</th><th class="n">Humedad</th><th class="n">Pergamino seco (lb)</th><th>Certificación</th><th class="n">Total</th></tr></thead><tbody>
