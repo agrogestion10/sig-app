@@ -196,7 +196,6 @@ async function inicio() {
   const t = (h, b, s, n) => `<a class="tarjeta" href="${h}">${n ? `<span class="num">${n}</span>` : ''}<b>${b}</b><span>${s}</span></a>`;
   app().innerHTML = cabecera('Administración', '#/') + `
   <div class="tarjetas">
-    ${puedePanel('adm') ? t('#/pnl/adm', 'Panel de control', 'Números de la sección y archivo de PDF') : ''}
     ${t('#/compra', 'Solicitud de compra', 'Con cotizaciones y proveedor')}
     ${t('#/fondo', 'Solicitud de fondos', 'Anticipos para actividades')}
     ${t('#/liquidacion', 'Liquidar fondos', 'Rendir cuentas de un anticipo')}
@@ -208,6 +207,7 @@ async function inicio() {
     ${t('#/proveedores', 'Proveedores', 'Directorio')}
     ${esJefe() ? t('#/empleados', 'Empleados', 'Datos del personal') : ''}
     ${t('#/presupuesto', 'Presupuesto', 'Aprobado y ejecutado')}
+    ${puedePanel('adm') ? t('#/pnl/adm', 'Panel de control', 'Números de la sección y archivo de PDF') : ''}
   </div>`;
 }
 
