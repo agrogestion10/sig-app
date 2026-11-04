@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SIG · Sistema de Gestión Integral</title>
+<meta name="theme-color" content="#14532d">
+<link rel="preconnect" href="https://amcvgyhyngvxsrvcnhmf.supabase.co">
+<link rel="stylesheet" href="estilo.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js" defer></script>
+<script src="app.js" defer></script>
+</head>
+<body>
+<header id="barra" hidden>
+  <a href="#/" class="marca"><span class="logo">SIG</span><span id="nombreOrg">…</span></a>
+  <div class="derecha">
+    <select id="cambioOrg" hidden title="Organización"></select>
+    <span id="quien"></span>
+    <button id="salir" class="sec">Salir</button>
+  </div>
+</header>
+<main id="app"><div class="cargando">Cargando…</div></main>
+<div id="aviso" role="status"></div>
+</body>
+</html>
