@@ -176,6 +176,7 @@ function solicitanteDefecto() { return S.maestro ? '' : S.perfil.nombre; }
 async function guardarSolicitud(reg) {
   reg.org_id = S.org.id;
   const fila = await q(sb.from('solicitudes').insert(reg).select('id,numero').single());
+  avisar('solicitud', fila.id);
   aviso('Listo. Quedó registrada como ' + fila.numero);
   location.hash = '#/solicitud/' + fila.id;
 }
@@ -458,7 +459,7 @@ async function verSolicitud(id) {
   const resolver = async (estado, pedir) => {
     const comentario = pedir ? prompt('¿Por qué se ' + (estado === 'Anulada' ? 'anula' : 'rechaza') + '?') : $('#com')?.value;
     if (pedir && !comentario) return;
-    try { await q(sb.from('solicitudes').update({ estado, comentario: comentario || null }).eq('id', s.id)); aviso('Solicitud ' + estado.toLowerCase() + '.'); verSolicitud(s.id); }
+    try { await q(sb.from('solicitudes').update({ estado, comentario: comentario || null }).eq('id', s.id)); avisar('solicitud', s.id); aviso('Solicitud ' + estado.toLowerCase() + '.'); verSolicitud(s.id); }
     catch (e) { aviso(falla(e), true); }
   };
   if ($('#aut')) $('#aut').onclick = () => resolver('Autorizada');
@@ -547,12 +548,32 @@ const CFG_TEXTO = {
 async function verConfig() {
   const filas = await q(sb.from('configuracion').select('*').eq('org_id', S.org.id).eq('secreta', false));
   const val = Object.fromEntries(filas.map(x => [x.clave, x.valor]));
-  const claves = [...new Set([...Object.keys(CFG_TEXTO), ...filas.map(x => x.clave)])];
+  const internas = k => /^KOBO_(ULT_|MEDIA_|SINC_|ULTIMA_)/.test(k);
+  const claves = [...new Set([...Object.keys(CFG_TEXTO), ...filas.map(x => x.clave)])].filter(k => !internas(k));
   const largo = k => /LINEAS|PROYECTOS|AREAS|DESTINOS|ENLACES/.test(k);
   app().innerHTML = cabecera('Configuración de ' + S.org.nombre) + `<form class="caja" id="f"><div class="rejilla">
     ${claves.map(k => `<div class="${largo(k) ? 'ancho' : ''}"><label>${esc(CFG_TEXTO[k] || k)}</label>${largo(k) ? `<textarea name="${k}" rows="5">${esc(lista(val[k]).join('\n'))}</textarea>` : `<input name="${k}" value="${esc(val[k])}">`}</div>`).join('')}
   </div><div class="acciones"><button>Guardar cambios</button></div></form>
+  ${esAdmin() ? `<h2>Clave de Kobo</h2><form class="caja" id="fk"><p class="nota" id="kEstado">Revisando…</p><div class="rejilla"><div class="ancho"><label>Clave API de KoboToolbox (en Kobo: Configuración de la cuenta › Seguridad › Clave API)</label><input name="clave" type="password" autocomplete="off" required></div></div><div class="acciones"><button>Guardar clave</button></div></form>` : ''}
+  ${esAdmin() ? `<h2>Correos de aviso</h2><div class="caja"><p class="nota">Los avisos de solicitudes, créditos y quejas salen a: <b>${esc(S.cfg.CORREO_AVISOS || '(sin correo)')}</b>. Se cambia arriba en «Correo que recibe los avisos». Además, a cada persona le llega el resultado de lo que pidió si tiene correo en Usuarios.</p><div class="acciones"><button class="sec" id="probarCorreo">Mandar un correo de prueba</button></div></div>` : ''}
   <h2>Valores de ley</h2><div class="caja"><p class="nota">Estos valores los define la organización maestra y aplican a todas.</p><dl class="detalle">${Object.entries(S.leyes).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>${S.maestro ? '<a href="#/orgs">Cambiar valores de ley</a>' : ''}</div>`;
+  const pc = $('#probarCorreo');
+  if (pc) pc.onclick = async () => {
+    pc.disabled = true;
+    try { const { data, error } = await sb.functions.invoke('avisos', { body: { tipo: 'prueba', id: S.org.id } }); if (error) throw error; aviso(data.estado === 'enviado' ? 'Correo enviado a ' + data.para.join(', ') : 'No se envió: ' + (data.detalle || data.estado || data.error), data.estado !== 'enviado'); }
+    catch (e) { aviso(falla(e), true); } finally { pc.disabled = false; }
+  };
+  const fk = $('#fk');
+  if (fk) {
+    sb.rpc('tiene_secreto', { o: S.org.id, k: 'KOBO_TOKEN' }).then(({ data }) => { $('#kEstado').textContent = data ? 'Ya hay una clave guardada. Si escribís otra, reemplaza la anterior.' : 'Todavía no hay clave: sin ella Kobo no se conecta.'; });
+    fk.onsubmit = async ev => {
+      ev.preventDefault(); const v = fk.clave.value.trim();
+      if (v.length < 20) return aviso('Esa clave parece incompleta (la de Kobo tiene 40 caracteres).', true);
+      ocupado(fk, true);
+      try { await q(sb.from('configuracion').upsert({ org_id: S.org.id, clave: 'KOBO_TOKEN', valor: v, secreta: true }, { onConflict: 'org_id,clave' })); await q(sb.from('bitacora').insert({ org_id: S.org.id, usuario: nombreQuien(), accion: 'Guardó la clave de Kobo' })); aviso('Clave guardada. Abrí Certificaciones para traer los datos.'); verConfig(); }
+      catch (e) { ocupado(fk, false); aviso(falla(e), true); }
+    };
+  }
   $('#f').onsubmit = async ev => {
     ev.preventDefault(); const f = ev.target, d = datosForm(f); ocupado(f, true);
     const filasN = Object.entries(d).map(([clave, valor]) => ({ org_id: S.org.id, clave, valor: largo(clave) ? lista(valor).join('\n') : valor }));
@@ -562,6 +583,8 @@ async function verConfig() {
 }
 
 // ---------- usuarios ----------
+// Pide a la función «avisos» que mande el correo que corresponda (no detiene la pantalla si falla)
+const avisar = (tipo, id) => sb.functions.invoke('avisos', { body: { tipo, id } }).catch(() => {});
 async function funcionUsuarios(cuerpo) {
   const { data, error } = await sb.functions.invoke('usuarios', { body: cuerpo });
   if (error) { let m = error.message; try { m = (await error.context.json()).error || m; } catch (_) {} throw new Error(m); }
