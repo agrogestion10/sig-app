@@ -47,11 +47,16 @@ function cabecera(titulo, volver = S.seccion ? '#/' + S.seccion : '#/') { return
 // ---------- arranque ----------
 window.addEventListener('DOMContentLoaded', async () => {
   sb = supabase.createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
-  $('#salir').onclick = async () => { await sb.auth.signOut(); location.hash = '#/'; location.reload(); };
+  $('#salir').onclick = async () => { await sb.auth.signOut({ scope: 'local' }); location.hash = '#/'; location.reload(); };
   $('#cambioOrg').onchange = e => { cambiarOrg(e.target.value); };
   window.addEventListener('hashchange', ruta);
   const { data } = await sb.auth.getSession();
-  if (data.session) { try { await cargarUsuario(data.session.user); } catch (e) { await sb.auth.signOut(); } }
+  if (data.session) {
+    // Se pregunta al servidor si la sesión sigue abierta (pudo cerrarse desde otro equipo)
+    const g = await sb.auth.getUser();
+    if (g.error || !g.data?.user) await sb.auth.signOut({ scope: 'local' });
+    else { try { await cargarUsuario(g.data.user); } catch (e) { await sb.auth.signOut({ scope: 'local' }); } }
+  }
   ruta();
 });
 
@@ -141,7 +146,7 @@ function pantallaAcceso() {
     const { data, error } = await sb.auth.signInWithPassword({ email: correo, password: d.clave });
     if (error) { ocupado(f, false); $('#aErr').textContent = /invalid/i.test(error.message) ? 'Organización, usuario o contraseña incorrectos.' : falla(error); return; }
     try { await cargarUsuario(data.user); localStorage.setItem('sig_ultima_org', d.org); location.hash = '#/'; ruta(); }
-    catch (e) { await sb.auth.signOut(); ocupado(f, false); $('#aErr').textContent = 'Este usuario está desactivado. Hablá con el administrador.'; }
+    catch (e) { await sb.auth.signOut({ scope: 'local' }); ocupado(f, false); $('#aErr').textContent = 'Este usuario está desactivado. Hablá con el administrador.'; }
   };
 }
 
