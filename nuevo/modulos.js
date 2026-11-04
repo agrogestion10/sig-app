@@ -56,10 +56,11 @@ RUTAS[''] = async function portal() {
   ]);
   app().innerHTML = `<h1>${esc(S.org.nombre)}</h1>
   <div class="tarjetas portal">
-    ${tarjeta('#/adm', 'Administración', 'Compras, fondos, facturas, vacaciones, presupuesto', pend)}
-    ${tarjeta('#/cre', 'Crédito interno', 'De la solicitud del productor al desembolso y la recuperación', crePend)}
-    ${tarjeta('#/cer', 'Certificaciones', 'Padrón, inspecciones, acopio, balance de masas y prima', quejas)}
-    ${esJefe() ? tarjeta('#/panel', 'Panel de control', 'Los números de la organización en una sola vista') : ''}
+    ${puedeSec('adm') ? tarjeta('#/adm', 'Administración', 'Compras, fondos, facturas, vacaciones, presupuesto', pend) : ''}
+    ${puedeSec('cre') ? tarjeta('#/cre', 'Crédito interno', 'De la solicitud del productor al desembolso y la recuperación', crePend) : ''}
+    ${puedeSec('cer') ? tarjeta('#/cer', 'Certificaciones', 'Padrón, inspecciones, acopio, balance de masas y prima', quejas) : ''}
+    ${esAdmin() ? tarjeta('#/panel', 'Panel de control', 'Los números de la organización en una sola vista') : ''}
+    ${!puedeSec('adm') && !puedeSec('cre') && !puedeSec('cer') ? '<div class="caja">Todavía no tenés secciones habilitadas. Pedile al administrador que te las active.</div>' : ''}
   </div>
   ${esAdmin() ? `<h2>Configuración</h2><div class="tarjetas">
     ${tarjeta('#/usuarios', 'Usuarios', 'Accesos y roles')}
@@ -74,7 +75,7 @@ RUTAS[''] = async function portal() {
 // PANEL DE CONTROL
 // =====================================================================
 RUTAS.panel = async function panel() {
-  if (!esJefe()) return RUTAS['']();
+  if (!esAdmin()) return RUTAS['']();
   const anio = new Date().getFullYear(), mes = hoy().slice(0, 7), ini = anio + '-01-01';
   const [pend, aut, pres, fac, cre, pagos, nprod, ncert, aco, qAb, ncAb] = await Promise.all([
     cuenta('solicitudes', x => x.eq('estado', 'Pendiente')),
