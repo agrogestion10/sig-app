@@ -344,11 +344,11 @@ RUTAS.cre = async function menuCredito() {
   const n = esJefe() ? await cuenta('creditos', x => x.in('estado', ['Solicitado', 'En evaluación', 'Aprobado'])) : 0;
   app().innerHTML = cabecera('Crédito interno', '#/') + `<div class="tarjetas">
     ${tarjeta('#/prodf', 'Registrar productor', 'Datos del socio (también sirve para certificaciones)')}
-    ${tarjeta('#/credito', 'Solicitud de crédito', 'Monto, destino, plazo y garantía')}
-    ${tarjeta('#/creditos', esJefe() ? 'Créditos por resolver' : 'Mis solicitudes', 'Evaluación técnica, aprobación y desembolso', n)}
-    ${esJefe() ? tarjeta('#/cartera', 'Cartera y pagos', 'Saldos, mora y recuperación') : ''}
-    ${esJefe() ? tarjeta('#/recordatorios', 'Recordatorios de cuotas', 'Atrasados y cuotas por vencer, con WhatsApp') : ''}
-    ${esJefe() ? tarjeta('#/reportescre', 'Reportes de cartera', 'PAR 30 y 90, provisión, programado contra recuperado') : ''}
+    ${puede('credito.solicitar') ? tarjeta('#/credito', 'Solicitud de crédito', 'Monto, destino, plazo y garantía') : ''}
+    ${tarjeta('#/creditos', esJefe() ? 'Créditos por resolver' : puede('credito.evaluar') || puede('cartera.ver') ? 'Solicitudes y créditos' : 'Mis solicitudes', 'Evaluación técnica, aprobación y desembolso', n)}
+    ${puede('cartera.ver') ? tarjeta('#/cartera', 'Cartera y pagos', 'Saldos, mora y recuperación') : ''}
+    ${puede('credito.cobrar') ? tarjeta('#/recordatorios', 'Recordatorios de cuotas', 'Atrasados y cuotas por vencer, con WhatsApp') : ''}
+    ${puede('cartera.ver') ? tarjeta('#/reportescre', 'Reportes de cartera', 'PAR 30 y 90, provisión, programado contra recuperado') : ''}
     ${esJefe() ? tarjeta('#/fondos', 'Fondos de crédito', 'De dónde sale el dinero y cuánto queda') : ''}
     ${esJefe() ? tarjeta('#/carga/cartera', 'Saldos iniciales de cartera', 'Pasar desde Excel los créditos que ya estaban dados') : ''}
     ${esAdmin() ? tarjeta('#/condiciones', 'Condiciones y comité', 'Tasa, plazo y montos por destino; quién aprueba') : ''}
@@ -795,32 +795,32 @@ RUTAS.cer = async function menuCert() {
   app().innerHTML = cabecera('Certificaciones · café', '#/') + `<div class="caja nota" id="koboEstado" style="padding:10px 14px">Revisando Kobo…</div>
   <h2>Productores y fincas</h2><div class="tarjetas">
     ${tarjeta('#/padron', 'Padrón de productores', 'Socios, parcelas y certificaciones')}
-    ${tarjeta('#/prodf', 'Registrar productor', 'Socio nuevo')}
-    ${tarjeta('#/parcela', 'Registrar parcela', 'Punto GPS y polígono (obligatorio desde 4 ha)')}
-    ${tarjeta('#/carga', 'Carga masiva desde Excel', 'Productores, parcelas, polígonos, acopio anterior, inspecciones, insumos y documentos')}
+    ${puede('padron.crear') ? tarjeta('#/prodf', 'Registrar productor', 'Socio nuevo') : ''}
+    ${puede('padron.crear') ? tarjeta('#/parcela', 'Registrar parcela', 'Punto GPS y polígono (obligatorio desde 4 ha)') : ''}
+    ${puede('carga.masiva') ? tarjeta('#/carga', 'Carga masiva desde Excel', 'Productores, parcelas, polígonos, acopio anterior, inspecciones, insumos y documentos') : ''}
   </div>
   <h2>Control interno</h2><div class="tarjetas">
-    ${tarjeta('#/inspeccion', 'Inspección interna', 'Resultado anual y no conformidades')}
+    ${puede('inspeccion.registrar') ? tarjeta('#/inspeccion', 'Inspección interna', 'Resultado anual y no conformidades') : ''}
     ${tarjeta('#/inspecciones', 'Inspecciones', 'Historial')}
     ${tarjeta('#/nc', 'No conformidades', 'Seguimiento y cierre', nc)}
     ${tarjeta('#/insumos', 'Insumos aplicados', 'Qué se aplicó en cada parcela, revisado contra la lista')}
     ${tarjeta('#/capacitaciones', 'Capacitaciones', 'Ayudas memoria, asistencia y acuerdos')}
     ${tarjeta('#/guias', 'Guías y plan de capacitaciones', 'Lo que pide cada certificación y cuándo toca')}
     ${tarjeta('#/asistencia', 'Asistencia por productor', 'Quién llegó a cada capacitación')}
-    ${tarjeta('#/quejas', 'Quejas y reclamos', 'Buzón, también anónimo', qj)}
+    ${puede('quejas.gestionar') ? tarjeta('#/quejas', 'Quejas y reclamos', 'Buzón, también anónimo', qj) : tarjeta('#/queja', 'Registrar una queja', 'Buzón, también anónimo')}
   </div>
   <h2>Trazabilidad</h2><div class="tarjetas">
-    ${tarjeta('#/acopio', 'Registrar acopio', 'Entrega de cada socio')}
+    ${puede('acopio.registrar') ? tarjeta('#/acopio', 'Registrar acopio', 'Entrega de cada socio') : ''}
     ${tarjeta('#/acopios', 'Acopio', 'Entregas registradas, recibos y pagos')}
     ${tarjeta('#/inventario', 'Inventario por lote y bodega', 'Lo que entró, lo que salió y lo que queda')}
     ${tarjeta('#/basculas', 'Básculas', 'Calibración y vencimiento')}
     ${tarjeta('#/reg/beneficiado', cultivos().length === 1 && cultivos()[0] === 'Cacao' ? 'Fermentación y secado' : 'Beneficiado y secado', cultivos().includes('Cacao') ? 'Fermentación, secado y prueba de corte de cada lote' : 'Proceso de cada lote')}
-    ${tarjeta('#/despacho', 'Despacho y venta', 'Contratos y lotes vendidos')}
+    ${puede('despacho.registrar') ? tarjeta('#/despacho', 'Despacho y venta', 'Contratos y lotes vendidos') : ''}
     ${tarjeta('#/lotes', 'Trazabilidad por lote', 'De qué fincas salió cada lote y a quién se vendió')}
     ${tarjeta('#/balance', 'Balance de masas', 'Comprado contra vendido por certificación')}
     ${tarjeta('#/prima', 'Prima de Comercio Justo', 'Generada, usada y disponible')}
     ${tarjeta('#/actas', 'Actas de asamblea', 'Lo que aprueba la asamblea y lo que se gastó')}
-    ${esJefe() ? tarjeta('#/paquete', 'Paquete para la certificadora', 'Todo lo de la auditoría en un Excel y el mapa de parcelas') : ''}
+    ${puede('auditoria.paquete') ? tarjeta('#/paquete', 'Paquete para la certificadora', 'Todo lo de la auditoría en un Excel y el mapa de parcelas') : ''}
   </div>
   <h2>Formularios de campo</h2><div class="tarjetas">${tarjeta('#/bandeja', 'Trabajo sin señal', 'Preparar el teléfono y ver lo que falta mandar', OFF.cola().length)}${tarjeta('#/kobo', 'Formularios de KoboToolbox', 'Para llenar en el campo, con o sin señal')}${esAdmin() ? tarjeta('#/catalogo', 'Catálogo de certificaciones', 'Activar o desactivar') : ''}</div>
   ${puedePanel('cer') ? `<h2>Panel de control</h2><div class="tarjetas">${tarjeta('#/pnl/cer', 'Panel de control', 'Números de certificaciones y archivo de PDF')}</div>` : ''}`;

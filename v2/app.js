@@ -23,7 +23,16 @@ const opciones = (arr, sel) => arr.map(x => `<option ${x === sel ? 'selected' : 
 const esJefe = () => ['maestro', 'administrador', 'gerencia'].includes(S.rol);
 const esAdmin = () => ['maestro', 'administrador'].includes(S.rol);
 // Secciones que puede abrir el usuario (el administrador y el maestro ven todas)
-const puedeSec = s => S.maestro || S.rol === 'administrador' || (S.perfil?.secciones || []).includes(s);
+const puedeSec = s => S.maestro || S.rol === 'administrador' || (S.permisos || []).includes('sec.' + s) || (S.perfil?.secciones || []).includes(s);
+// Permiso por puesto (gerencia y administración pueden todo; sin roles instalados, como antes)
+const puede = p => S.maestro || esJefe() || !(S.roles || []).length || (S.permisos || []).includes(p);
+function aplicarRol() {
+  if (S.maestro) { S.rol = 'maestro'; S.puesto = null; S.permisos = []; return; }
+  const r = (S.roles || []).find(x => x.codigo === S.perfil.rol && x.activo);
+  S.puesto = r || null;
+  S.rol = r ? r.base : (['administrador', 'gerencia'].includes(S.perfil.rol) ? S.perfil.rol : 'personal');
+  S.permisos = [...(r?.permisos || []), ...(S.perfil.permisos_extra || []), ...(S.perfil.secciones || []).map(s => 'sec.' + s)];
+}
 const COMPARTIDAS = ['prodf', 'prod', 'padron'];
 const TIPOS = { compra: 'Compra', fondo: 'Solicitud de fondos', vacacion: 'Vacaciones', liquidacion: 'Liquidación de fondos', laboral: 'Laboral' };
 const ROLES = { administrador: 'Administrador', gerencia: 'Gerencia', personal: 'Personal', maestro: 'Usuario maestro' };
@@ -163,7 +172,7 @@ async function cargarUsuario(user) {
   if ((m.error && sinRed(m.error)) || (p.error && sinRed(p.error))) throw m.error || p.error;
   S.maestro = !!m.data; S.perfil = p.data;
   if (!S.maestro && (!S.perfil || !S.perfil.activo)) throw new Error('Usuario sin acceso');
-  S.rol = S.maestro ? 'maestro' : S.perfil.rol;
+  S.rol = S.maestro ? 'maestro' : 'personal';
   if (S.maestro) {
     S.orgs = await q(sb.from('organizaciones').select('id,nombre,es_maestra,activa').order('nombre'));
     const guardada = localStorage.getItem('sig_org');
@@ -177,21 +186,23 @@ async function cargarUsuario(user) {
 }
 // Lo mínimo para abrir la aplicación sin señal en este teléfono
 function guardarSesionLocal() {
-  try { localStorage.setItem('sig_sesion', JSON.stringify({ user: { id: S.user.id, email: S.user.email }, perfil: S.perfil, maestro: S.maestro, rol: S.rol, orgs: S.orgs, org: S.org, cfg: S.cfg, leyes: S.leyes })); } catch (_) { }
+  try { localStorage.setItem('sig_sesion', JSON.stringify({ user: { id: S.user.id, email: S.user.email }, perfil: S.perfil, maestro: S.maestro, rol: S.rol, roles: S.roles, orgs: S.orgs, org: S.org, cfg: S.cfg, leyes: S.leyes })); } catch (_) { }
 }
 function restaurarSinSenal(user) {
   let g = null; try { g = JSON.parse(localStorage.getItem('sig_sesion') || 'null'); } catch (_) { }
   if (!g || g.user?.id !== user?.id) return false;
-  Object.assign(S, { user: { ...user, ...g.user }, perfil: g.perfil, maestro: g.maestro, rol: g.rol, orgs: g.orgs || [], org: g.org, cfg: g.cfg || {}, leyes: g.leyes || {}, sinSenal: true });
-  pintarBarra(); return true;
+  Object.assign(S, { user: { ...user, ...g.user }, perfil: g.perfil, maestro: g.maestro, rol: g.rol, orgs: g.orgs || [], org: g.org, cfg: g.cfg || {}, leyes: g.leyes || {}, roles: g.roles || [], sinSenal: true });
+  aplicarRol(); pintarBarra(); return true;
 }
 
 async function cargarOrg() {
-  const [c, l] = await Promise.all([
+  const [c, l, ro] = await Promise.all([
     sb.from('configuracion').select('clave,valor').eq('org_id', S.org.id),
-    sb.from('leyes').select('clave,valor')
+    sb.from('leyes').select('clave,valor'),
+    sb.from('roles').select('*').eq('org_id', S.org.id).order('orden')
   ]);
   if (c.error && sinRed(c.error)) throw c.error;
+  S.roles = ro.error ? [] : ro.data || []; aplicarRol();
   S.cfg = Object.fromEntries((c.data || []).map(x => [x.clave, x.valor]));
   S.leyes = Object.fromEntries((l.data || []).map(x => [x.clave, x.valor]));
   pintarBarra(); if (S.user) guardarSesionLocal();
@@ -208,7 +219,7 @@ function pintarBarra() {
   // Con selector de organización el nombre no se repite al lado del logo
   $('#nombreOrg').hidden = !!S.maestro;
   // En Usuario maestro no se repite el nombre (ya está en el selector de organización)
-  $('#quien').textContent = S.maestro ? '' : S.perfil.nombre + ' · ' + ROLES[S.rol];
+  $('#quien').textContent = S.maestro ? '' : S.perfil.nombre + ' · ' + (S.puesto?.nombre || ROLES[S.rol]);
   $('#quien').hidden = S.maestro;
   const sel = $('#cambioOrg');
   if (S.maestro) { sel.hidden = false; sel.innerHTML = S.orgs.map(o => `<option value="${o.id}" ${o.id === S.org.id ? 'selected' : ''}>${esc(o.nombre)}</option>`).join(''); }
@@ -238,6 +249,7 @@ function pintarEngrane() {
       <div class="titEng">Configuración de ${esc(S.org?.nombre || '')}</div>
       ${op('#/config', 'Configuración', 'Montos, listas, claves de paneles, Kobo y copias de seguridad')}
       ${op('#/usuarios', 'Usuarios', 'Accesos, roles, paneles y comité')}
+      ${op('#/roles', 'Roles y permisos', 'Qué puede hacer cada puesto')}
       ${op('#/catalogo', 'Catálogo de certificaciones', 'Cuáles se usan en esta organización')}
       ${op('#/bitacora', 'Bitácora', 'Quién hizo qué')}
       ${S.maestro ? op('#/orgs', 'Organizaciones', 'Altas y valores de ley') : ''}
@@ -654,7 +666,7 @@ async function formProveedor(id) {
 // ---------- empleados ----------
 async function verEmpleados() {
   const filas = await q(sb.from('empleados').select('*').eq('org_id', S.org.id).order('nombre'));
-  app().innerHTML = cabecera('Empleados') + `<div class="filtros"><a class="boton" href="#/empleado">+ Nuevo empleado</a>${esJefe() ? '<a class="boton sec" href="#/carga/empleados">Subir varios desde Excel</a>' : ''}</div>
+  app().innerHTML = cabecera('Empleados') + `<div class="filtros"><a class="boton" href="#/empleado">+ Nuevo empleado</a>${puede('empleados.gestionar') ? '<a class="boton sec" href="#/carga/empleados">Subir varios desde Excel</a>' : ''}</div>
   <div class="tabla"><table><thead><tr><th>Nombre</th><th>Cargo</th><th>Ingreso</th><th class="n">Salario</th><th class="n">Días de vacaciones</th><th></th></tr></thead><tbody>
   ${filas.map(e => `<tr${e.activo ? '' : ' style="opacity:.5"'}><td>${esc(e.nombre)}</td><td>${esc(e.cargo)}</td><td>${esc(e.fecha_ingreso)}</td><td class="n">${e.salario ? L(e.salario) : ''}</td><td class="n">${e.dias_vacaciones ?? ''}</td><td><a href="#/empleado/${e.id}">Editar</a></td></tr>`).join('') || '<tr><td colspan="6" class="nota">Sin empleados.</td></tr>'}
   </tbody></table></div>`;
@@ -778,6 +790,9 @@ async function funcionUsuarios(cuerpo) {
   return data;
 }
 const SECCIONES = { adm: 'Administración', cre: 'Crédito interno', cer: 'Certificaciones' };
+const rolDe = c => (S.roles || []).find(r => r.codigo === c);
+const opcionesRol = sel => (S.roles?.length ? S.roles.filter(r => r.activo || r.codigo === sel).map(r => [r.codigo, r.nombre]) : Object.entries(ROLES).filter(([k]) => k !== 'maestro')).map(([k, v]) => `<option value="${esc(k)}" ${k === sel ? 'selected' : ''}>${esc(v)}</option>`).join('');
+const seccionesRol = c => { const r = rolDe(c); return r ? ['adm', 'cre', 'cer'].filter(s => r.permisos.includes('sec.' + s)).map(s => SECCIONES[s]).join(', ') : ''; };
 // Tipos de registro que pueden pedir aprobación (perfiles.aprueba)
 const TIPOS_REV = { productores: 'Padrón de productores', inspecciones: 'Inspecciones internas', no_conformidades: 'No conformidades', insumos_aplicados: 'Insumos aplicados', capacitaciones: 'Ayudas memoria de capacitación', acopio: 'Acopio', beneficiado: 'Beneficiado y secado', despachos: 'Despachos', prima_uso: 'Uso de la prima', quejas: 'Quejas' };
 const checksSec = (marcadas, attr, extra = '') => Object.entries(SECCIONES).map(([k, v]) => `<label style="font-weight:400;color:var(--texto);display:inline-flex;gap:5px;align-items:center;margin:0 10px 4px 0"><input type="checkbox" ${attr}="${k}" ${extra} style="width:auto" ${marcadas.includes(k) ? 'checked' : ''}>${v}</label>`).join('');
@@ -785,11 +800,12 @@ async function verUsuarios() {
   const filas = await q(sb.from('perfiles').select('*').eq('org_id', S.org.id).order('nombre'));
   const yo = nombreQuien();
   app().innerHTML = cabecera('Usuarios de ' + S.org.nombre, '#/') + `
-  <p class="nota">El rol dice qué puede hacer (Personal registra; Gerencia además autoriza; Administrador además maneja usuarios, configuración y el Panel de control). Las secciones dicen a qué partes entra. «Ve el panel de» dice quién entra al panel de control de cada sección (además necesita la clave del panel). «Comité de crédito» marca a quienes votan los créditos. «Aprueba» dice qué registros revisa y aprueba cada persona: lo que llega de Kobo o se registra de ese tipo queda pendiente hasta que alguien lo apruebe, y al aprobarlo se guarda el PDF final. Si nadie aprueba un tipo, ese tipo no se detiene.</p>
+  <p class="nota">El rol va según el puesto (técnico, encargado de acopio, contabilidad, junta…) y dice a qué secciones entra y qué puede hacer; la base de datos lo revisa en cada registro. Los roles y sus permisos se ven y se cambian en <a href="#/roles">Roles y permisos</a>. A una persona se le pueden dar secciones o permisos extra sin cambiarle el rol. «Ve el panel de» dice quién entra al panel de control de cada sección (además necesita la clave del panel). «Comité de crédito» marca a quienes votan los créditos. «Aprueba» dice qué tipos de registro revisa y aprueba esa persona.</p>
   <div class="tabla"><table><thead><tr><th>Persona</th><th>Usuario</th><th>Rol</th><th>Secciones</th><th>Aprueba</th><th>Último acceso</th><th>Estado</th><th></th></tr></thead><tbody>
   ${filas.map(u => `<tr><td><b>${esc(u.nombre)}</b>${u.cargo ? '<br><span class="nota">' + esc(u.cargo) + '</span>' : ''}${u.correo ? '<br><span class="nota">' + esc(u.correo) + '</span>' : ''}</td><td>${esc(u.usuario)}</td>
-  <td><select data-rol="${u.id}" ${u.id === S.user.id ? 'disabled' : ''}>${Object.entries(ROLES).filter(([k]) => k !== 'maestro').map(([k, v]) => `<option value="${k}" ${k === u.rol ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
-  <td style="min-width:170px">${u.rol === 'administrador' ? '<span class="nota">Todas</span><br>' : checksSec(u.secciones || [], 'data-sec', `data-u="${u.id}"`)}${u.rol === 'administrador' ? '' : `<br><span class="nota">Ve el panel de:</span><br>${checksSec(u.paneles || [], 'data-pnl', `data-u="${u.id}"`)}`}<label style="font-weight:400;color:var(--texto);display:inline-flex;gap:5px;align-items:center;margin:0"><input type="checkbox" data-comite="${u.id}" style="width:auto" ${u.comite_credito ? 'checked' : ''}>Comité de crédito</label></td>
+  <td style="min-width:190px"><select data-rol="${u.id}" ${u.id === S.user.id ? 'disabled' : ''}>${opcionesRol(u.rol)}</select>${rolDe(u.rol)?.descripcion ? `<br><span class="nota">${esc(rolDe(u.rol).descripcion)}</span>` : ''}
+    ${S.roles?.length && rolDe(u.rol)?.base === 'personal' ? `<details style="margin-top:4px"><summary class="nota">Permisos extra${(u.permisos_extra || []).length ? ' (' + u.permisos_extra.length + ')' : ''}</summary>${PERMISOS.flatMap(([, l]) => l).filter(([k]) => !k.startsWith('sec.') && !rolDe(u.rol).permisos.includes(k)).map(([k, t]) => `<label style="font-weight:400;color:var(--texto);display:flex;gap:5px;align-items:center;margin:2px 0"><input type="checkbox" data-px="${k}" data-u="${u.id}" style="width:auto" ${(u.permisos_extra || []).includes(k) ? 'checked' : ''}>${esc(t)}</label>`).join('')}</details>` : ''}</td>
+  <td style="min-width:170px">${['administrador', 'gerencia'].includes(rolDe(u.rol)?.base || u.rol) ? '<span class="nota">Todas</span><br>' : `${seccionesRol(u.rol) ? `<span class="nota">Por su rol: ${esc(seccionesRol(u.rol))}</span><br><span class="nota">Además:</span><br>` : ''}${checksSec(u.secciones || [], 'data-sec', `data-u="${u.id}"`)}`}${u.rol === 'administrador' ? '' : `<br><span class="nota">Ve el panel de:</span><br>${checksSec(u.paneles || [], 'data-pnl', `data-u="${u.id}"`)}`}<label style="font-weight:400;color:var(--texto);display:inline-flex;gap:5px;align-items:center;margin:0"><input type="checkbox" data-comite="${u.id}" style="width:auto" ${u.comite_credito ? 'checked' : ''}>Comité de crédito</label></td>
   <td style="min-width:190px">${Object.entries(TIPOS_REV).map(([k, v]) => `<label style="font-weight:400;color:var(--texto);display:flex;gap:5px;align-items:center;margin:0 0 3px"><input type="checkbox" data-apr="${k}" data-u="${u.id}" style="width:auto" ${(u.aprueba || []).includes(k) ? 'checked' : ''}>${v}</label>`).join('')}</td>
   <td>${fechaHora(u.ultimo_acceso) || 'Nunca'}</td><td>${u.activo ? 'Activo' : '<span class="error">Desactivado</span>'}</td>
   <td style="white-space:nowrap"><button class="sec" data-datos="${u.id}">Datos</button> <button class="sec" data-clave="${u.id}">Clave</button> ${u.id !== S.user.id ? `<button class="sec" data-activo="${u.id}" data-v="${!u.activo}">${u.activo ? 'Desactivar' : 'Activar'}</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="8" class="nota">Todavía no hay usuarios.</td></tr>'}
@@ -798,21 +814,28 @@ async function verUsuarios() {
     <div><label>Nombre completo</label><input name="nombre" required></div>
     <div><label>Cargo</label><input name="cargo" placeholder="Ej.: Contadora, Técnico de campo"></div>
     <div><label>Usuario (para entrar)</label><input name="usuario" required autocapitalize="none" placeholder="Ej.: maria"></div>
-    <div><label>Rol</label><select name="rol"><option value="personal">Personal</option><option value="gerencia">Gerencia</option><option value="administrador">Administrador</option></select></div>
+    <div><label>Rol (según su puesto)</label><select name="rol">${opcionesRol(S.roles?.length ? 'tecnico' : 'personal')}</select><p class="nota" id="rolDesc"></p></div>
     <div><label>Correo (para avisos)</label><input name="correo" type="email"></div>
     <div><label>Contraseña inicial</label><input name="clave" type="password" minlength="8" required autocomplete="new-password"></div>
-    <div class="ancho"><label>Secciones a las que entra</label>${checksSec(['adm', 'cre', 'cer'], 'name="sec" value')}</div>
+    <div class="ancho"><label>${S.roles?.length ? 'Secciones extra (además de las de su rol)' : 'Secciones a las que entra'}</label>${checksSec(S.roles?.length ? [] : ['adm', 'cre', 'cer'], 'name="sec" value')}</div>
   </div><p class="nota">La persona entra con Organización: <b>${esc(S.org.nombre)}</b>, su usuario y esta contraseña.</p><div class="acciones"><button>Crear usuario</button></div></form>`;
   const bit = (accion, detalle) => q(sb.from('bitacora').insert({ org_id: S.org.id, usuario: yo, accion, detalle }));
   $('#f').onsubmit = async ev => {
     ev.preventDefault(); const f = ev.target, d = datosForm(f), secciones = [...f.querySelectorAll('input[name=sec]:checked')].map(x => x.value); delete d.sec;
     const cargo = d.cargo; delete d.cargo; ocupado(f, true);
     try {
-      await funcionUsuarios({ accion: 'crear', org_id: S.org.id, ...d });
-      await q(sb.from('perfiles').update({ secciones, cargo: cargo || null, correo: d.correo || null }).eq('org_id', S.org.id).eq('usuario', norm(d.usuario)));
+      const rol = d.rol, legado = ['administrador', 'gerencia', 'personal'].includes(rol);
+      await funcionUsuarios({ accion: 'crear', org_id: S.org.id, ...d, rol: legado ? rol : 'personal' });
+      await q(sb.from('perfiles').update({ secciones, cargo: cargo || null, correo: d.correo || null, ...(legado ? {} : { rol }) }).eq('org_id', S.org.id).eq('usuario', norm(d.usuario)));
       aviso('Usuario creado.'); verUsuarios();
     } catch (e) { ocupado(f, false); aviso(falla(e), true); }
   };
+  const fr = $('#f').rol, desc = () => { $('#rolDesc').textContent = rolDe(fr.value)?.descripcion || ''; }; fr.onchange = desc; desc();
+  app().querySelectorAll('[data-px]').forEach(c => c.onchange = async () => {
+    const id = c.dataset.u, permisos_extra = [...app().querySelectorAll(`[data-px][data-u="${id}"]:checked`)].map(x => x.dataset.px);
+    try { await q(sb.from('perfiles').update({ permisos_extra }).eq('id', id)); await bit('Cambió permisos extra', c.closest('tr').cells[1].textContent + ' → ' + (permisos_extra.map(p => NOMBRE_PERMISO[p]).join(', ') || 'ninguno')); aviso('Permisos actualizados.'); }
+    catch (e) { aviso(falla(e), true); verUsuarios(); }
+  });
   app().querySelectorAll('[data-rol]').forEach(s => s.onchange = async () => {
     try { await q(sb.from('perfiles').update({ rol: s.value }).eq('id', s.dataset.rol)); await bit('Cambió un rol', s.closest('tr').cells[1].textContent + ' → ' + s.value); aviso('Rol actualizado.'); verUsuarios(); }
     catch (e) { aviso(falla(e), true); verUsuarios(); }

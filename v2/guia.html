@@ -4,6 +4,12 @@
 
 <section id="novedades" data-para="todos">
 <h2>Novedades</h2>
+<h3>5 de noviembre de 2026 · Roles por puesto</h3>
+<ul>
+<li>Cada usuario tiene ahora un <b>rol según su puesto</b>: técnico de campo, inspector interno, coordinación de certificaciones, encargado de centro de acopio, comercialización, oficial de crédito, administración y contabilidad, secretaría, junta directiva, junta de vigilancia, consulta para auditores, gerencia y administrador.</li>
+<li>El rol dice a qué secciones entra y qué puede hacer, y la base de datos lo revisa en cada registro. Por ejemplo, el técnico solo puede crear <b>solicitudes</b> de crédito: no puede dejar un crédito aprobado ni desembolsado.</li>
+<li>En el engranaje › <b>Roles y permisos</b> se ve qué hace cada rol, se cambian sus permisos y se crean roles nuevos para otros puestos.</li>
+</ul>
 <h3>5 de noviembre de 2026 · Acopio anterior, cartera inicial y polígonos</h3>
 <ul>
 <li><b>Acopio histórico</b>: las entregas que ya se recibieron se suben desde Excel (Acopio › «Subir entregas anteriores desde Excel»), con las mismas reglas de certificación y sin descontar crédito.</li>
@@ -309,12 +315,40 @@
 <p>La organización se compromete a informar a sus productores qué datos suyos se registran y a contar con su autorización, por ejemplo en el compromiso firmado o la ficha de afiliación.</p>
 </section>
 
+<section id="roles" data-para="todos">
+<h2>Roles: qué hace cada quien</h2>
+<p>Cada persona entra con un rol según su puesto. El rol dice a qué secciones entra y qué puede registrar, corregir o aprobar. No depende solo de los botones: la base de datos revisa el permiso en cada registro, aunque alguien intente entrar por otro lado.</p>
+<div class="tabla"><table><thead><tr><th>Rol</th><th>Qué hace</th></tr></thead><tbody>
+<tr><td><b>Administrador del sistema</b></td><td>Todo: usuarios, roles, configuración, Kobo y claves de los paneles.</td></tr>
+<tr><td><b>Gerencia</b></td><td>Hace y autoriza todo lo operativo: aprueba créditos dentro de su límite, compras, pagos, correcciones y registros. No maneja usuarios ni configuración.</td></tr>
+<tr><td><b>Administración y contabilidad</b></td><td>Facturas, proveedores, empleados y presupuesto; ve las solicitudes de fondos; registra pagos de crédito y marca como pagadas las entregas de acopio. No aprueba ni cambia pesos.</td></tr>
+<tr><td><b>Coordinación de certificaciones</b></td><td>El sistema de control interno: padrón, parcelas, inspecciones y su corrección, cierre de no conformidades, capacitaciones, quejas, guías, certificaciones, prima, actas y paquete para la certificadora.</td></tr>
+<tr><td><b>Inspector interno</b></td><td>Inspecciones internas, no conformidades, insumos y actualización de las parcelas que revisa.</td></tr>
+<tr><td><b>Técnico de campo</b></td><td>Productores y parcelas nuevas, insumos, ayudas memoria y asistencia, solicitudes de crédito y su evaluación técnica.</td></tr>
+<tr><td><b>Encargado de centro de acopio</b></td><td>Recibe las entregas y hace los recibos, lleva las básculas y el beneficiado o fermentación y secado. No corrige entregas ya guardadas.</td></tr>
+<tr><td><b>Comercialización</b></td><td>Despachos y ventas, trazabilidad por lote y balance de masas.</td></tr>
+<tr><td><b>Oficial de crédito</b></td><td>Solicitudes y evaluación, desembolso de lo aprobado, pagos, cartera y mora. No aprueba créditos.</td></tr>
+<tr><td><b>Secretaría y oficina</b></td><td>Actas, productores nuevos y listas de asistencia.</td></tr>
+<tr><td><b>Junta directiva</b></td><td>Consulta todo (padrón, acopio, cartera, certificaciones, informes) y registra actas. No cambia registros.</td></tr>
+<tr><td><b>Junta de vigilancia</b></td><td>Consulta todo y ve la bitácora de cambios. No cambia registros.</td></tr>
+<tr><td><b>Consulta (auditor o certificadora)</b></td><td>Solo lectura de certificaciones y trazabilidad, y el paquete para la auditoría.</td></tr>
+<tr><td><b>Personal general</b></td><td>Registra en las secciones que se le marquen (como funcionaba antes de los roles).</td></tr>
+</tbody></table></div>
+<ul>
+<li><b>Asignar el rol</b>: en el engranaje › Usuarios, columna «Rol». Debajo sale lo que hace ese rol.</li>
+<li><b>Algo más para una sola persona</b>: en Usuarios se le pueden marcar secciones o «Permisos extra» sin cambiarle el rol.</li>
+<li><b>Cambiar un rol o crear otro</b>: engranaje › <b>Roles y permisos</b>. Ahí está el cuadro de qué permiso tiene cada rol. Los roles nuevos pueden ser de nivel «Gerencia» o «Según sus permisos».</li>
+<li>Aparte del rol siguen igual: quién <b>aprueba</b> cada tipo de registro, quién es del <b>comité de crédito</b> y quién ve cada <b>panel de control</b>.</li>
+</ul>
+</section>
+
 <section id="config" data-para="admin">
 <h2>Configuración (administrador)</h2>
 <p>Está en el <b>engranaje</b> de arriba a la derecha.</p>
 <ul>
 <li><b>Configuración</b>: el cultivo que acopia la organización (café, cacao o los dos) y sus factores, montos, listas (insumos permitidos y prohibidos, bodegas…), parámetros de acopio (humedad base, descuentos, sobreprecios, % de abono al crédito) y de crédito (mora, días de gracia, capacidad, precio de referencia, provisión), claves de los paneles, clave de Kobo, correo de avisos y copias de seguridad.</li>
-<li><b>Usuarios</b>: altas, rol, secciones, de qué panel ve cada quien y comité de crédito.</li>
+<li><b>Usuarios</b>: altas, rol según el puesto, secciones y permisos extra, de qué panel ve cada quien, qué aprueba y comité de crédito.</li>
+<li><b>Roles y permisos</b>: qué puede hacer cada rol y roles nuevos (ver «Roles: qué hace cada quien»).</li>
 <li><b>Catálogo de certificaciones</b>: cuáles usa la organización.</li>
 <li><b>Bitácora</b>: quién hizo qué y cuándo.</li>
 <li><b>Copias de seguridad</b>: un Excel con todas las tablas y un respaldo completo de la organización.</li>

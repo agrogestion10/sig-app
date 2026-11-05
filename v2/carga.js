@@ -46,7 +46,7 @@ function leerCerts(v, cs) {
 // Cada columna: k (campo), t (encabezado), req, tipo (texto, num, fecha, lista, certs, prod), ops, ayuda, ej
 const TIPOS_CARGA = {
   productores: {
-    sec: 'cer', titulo: 'Productores', volver: '#/padron',
+    perm: 'padron.crear', sec: 'cer', titulo: 'Productores', volver: '#/padron',
     nota: 'Si el código de socio o la identidad ya existen, se actualizan los datos de ese productor con lo que venga lleno. Si el código va vacío, el sistema le pone uno.',
     cols: () => [
       { k: 'codigo', t: 'Código de socio', ayuda: 'Vacío = el sistema le pone el siguiente (PRD-0001…)', ej: 'PRD-0101' },
@@ -91,7 +91,7 @@ const TIPOS_CARGA = {
   },
 
   parcelas: {
-    sec: 'cer', titulo: 'Parcelas', volver: '#/padron',
+    perm: 'padron.crear', sec: 'cer', titulo: 'Parcelas', volver: '#/padron',
     nota: 'Si el productor ya tiene una parcela con el mismo nombre, se actualiza. Las de 4 ha o más necesitan polígono para EUDR: se pueden subir sin él, pero quedan marcadas en el padrón.',
     cols: () => [
       { k: 'productor', t: 'Productor', req: 1, tipo: 'prod', ayuda: 'Código de socio (o identidad, o nombre si no se repite)', ej: 'PRD-0101' },
@@ -139,7 +139,7 @@ const TIPOS_CARGA = {
   },
 
   inspecciones: {
-    sec: 'cer', titulo: 'Inspecciones internas (historial)', volver: '#/inspecciones',
+    perm: 'inspeccion.registrar', sec: 'cer', titulo: 'Inspecciones internas (historial)', volver: '#/inspecciones',
     nota: 'Para pasar al sistema las inspecciones que ya se hicieron. Las no conformidades se registran aparte. Si sos de gerencia, el resultado más reciente de cada productor queda como su estado de inspección.',
     cols: () => [
       { k: 'productor', t: 'Productor', req: 1, tipo: 'prod', ayuda: 'Código de socio (o identidad)', ej: 'PRD-0101' },
@@ -178,7 +178,7 @@ const TIPOS_CARGA = {
   },
 
   insumos: {
-    sec: 'cer', titulo: 'Insumos aplicados', volver: '#/insumos',
+    perm: 'insumos.registrar', sec: 'cer', titulo: 'Insumos aplicados', volver: '#/insumos',
     nota: 'Cada producto se revisa contra las listas de permitidos y prohibidos de Configuración. Si alguno está prohibido, la parcela vuelve a empezar la transición y se abre la no conformidad, igual que al registrarlo uno por uno.',
     cols: () => [
       { k: 'productor', t: 'Productor', req: 1, tipo: 'prod', ayuda: 'Código de socio (o identidad)', ej: 'PRD-0101' },
@@ -211,7 +211,7 @@ const TIPOS_CARGA = {
   },
 
   documentos: {
-    sec: 'cer', titulo: 'Documentos de productores', volver: '#/padron',
+    perm: 'padron.crear', sec: 'cer', titulo: 'Documentos de productores', volver: '#/padron',
     nota: 'Para llevar el control de compromisos firmados, contratos y documentos de la tierra con su fecha de vencimiento. El archivo escaneado se sube después en la ficha del productor.',
     cols: () => [
       { k: 'productor', t: 'Productor', req: 1, tipo: 'prod', ayuda: 'Código de socio (o identidad)', ej: 'PRD-0101' },
@@ -238,7 +238,7 @@ const TIPOS_CARGA = {
   },
 
   asistencia: {
-    sec: 'cer', titulo: 'Lista de asistencia', volver: '#/asistencia', conCap: true,
+    perm: 'capacitacion.registrar', sec: 'cer', titulo: 'Lista de asistencia', volver: '#/asistencia', conCap: true,
     nota: 'Para pasar una lista de asistencia completa a la capacitación. Los que ya están en la lista se saltan.',
     cols: () => [
       { k: 'productor', t: 'Productor', tipo: 'prod', ayuda: 'Código de socio, identidad o nombre. Vacío si no es socio', ej: 'PRD-0101' },
@@ -263,7 +263,7 @@ const TIPOS_CARGA = {
   },
 
   acopio: {
-    sec: 'cer', titulo: 'Acopio histórico (entregas anteriores)', volver: '#/acopios',
+    perm: 'acopio.editar', sec: 'cer', titulo: 'Acopio histórico (entregas anteriores)', volver: '#/acopios',
     nota: 'Para pasar al sistema las entregas que ya se recibieron (por ejemplo, de Aspel o de los cuadernos de acopio). No se descuenta nada del crédito. Cada entrega pasa por las mismas reglas de certificación que en la recepción: si el productor no puede entregar como certificado, entra como convencional y queda anotado. Las entregas que ya estén (mismo productor, fecha, peso y recibo) se saltan.',
     cols: () => [
       { k: 'productor', t: 'Productor', req: 1, tipo: 'prod', ayuda: 'Código de socio (o identidad)', ej: 'PRD-0101' },
@@ -314,7 +314,7 @@ const TIPOS_CARGA = {
   },
 
   cartera: {
-    sec: 'cre', titulo: 'Saldos iniciales de la cartera de crédito', volver: '#/cartera', soloJefe: true,
+    perm: 'credito.desembolsar', sec: 'cre', titulo: 'Saldos iniciales de la cartera de crédito', volver: '#/cartera', soloJefe: true,
     nota: 'Para pasar los créditos que ya están dados y todavía deben. Cada uno entra como desembolsado por el saldo de capital que queda, con un plan nuevo de las cuotas que faltan desde la próxima cuota. El monto original, el número anterior y la fecha del desembolso quedan anotados. No pasa por el comité porque ya estaba aprobado. Los que ya se cargaron (mismo productor y número anterior) se saltan.',
     cols: () => [
       { k: 'productor', t: 'Productor', req: 1, tipo: 'prod', ayuda: 'Código de socio (o identidad)', ej: 'PRD-0101' },
@@ -364,7 +364,7 @@ const TIPOS_CARGA = {
   },
 
   proveedores: {
-    sec: 'adm', titulo: 'Proveedores', volver: '#/proveedores',
+    perm: 'proveedores.editar', sec: 'adm', titulo: 'Proveedores', volver: '#/proveedores',
     nota: 'Si el RTN ya existe, se actualizan los datos de ese proveedor con lo que venga lleno.',
     cols: () => [
       { k: 'nombre', t: 'Nombre o razón social', req: 1, ej: 'Agroservicio El Campo' },
@@ -394,7 +394,7 @@ const TIPOS_CARGA = {
   },
 
   empleados: {
-    sec: 'adm', titulo: 'Empleados', volver: '#/empleados', soloJefe: true,
+    perm: 'empleados.gestionar', sec: 'adm', titulo: 'Empleados', volver: '#/empleados',
     nota: 'Si la identidad ya existe, se actualizan los datos de ese empleado con lo que venga lleno.',
     cols: () => [
       { k: 'nombre', t: 'Nombre completo', req: 1, ej: 'Ana Martínez' }, { k: 'correo', t: 'Correo', ej: '' }, { k: 'cargo', t: 'Cargo', ej: 'Técnico de campo' },
@@ -438,7 +438,7 @@ async function actualizarUno(tabla, cambios) {
   }
 }
 
-const puedeCarga = t => t && puedeSec(t.sec) && (!t.soloJefe || esJefe());
+const puedeCarga = t => t && puedeSec(t.sec) && puede(t.perm) && (t.perm === 'capacitacion.registrar' || puede('carga.masiva')) && (!t.soloJefe || esJefe());
 
 // ---------- plantilla ----------
 async function bajarPlantilla(tipo) {
@@ -477,13 +477,13 @@ async function leerArchivo(archivo, cols) {
 
 // ---------- pantalla ----------
 RUTAS.carga = async function cargaMasiva(tipo, capId) {
-  if (tipo === 'poligonos') return cargaPoligonos();
+  if (tipo === 'poligonos') return puede('padron.editar') ? cargaPoligonos() : (app().innerHTML = cabecera('Sin acceso', '#/') + '<div class="caja">Tu rol no permite cambiar parcelas.</div>');
   const t = TIPOS_CARGA[tipo];
   if (!t) {
     const vis = Object.entries(TIPOS_CARGA).filter(([, x]) => puedeCarga(x) && !x.conCap);
     const grupo = (sec, nom) => { const l = vis.filter(([, x]) => x.sec === sec); return l.length ? `<h2>${nom}</h2><div class="tarjetas">${l.map(([k, x]) => tarjeta('#/carga/' + k, x.titulo, 'Plantilla de Excel y carga de varios a la vez')).join('')}</div>` : ''; };
     app().innerHTML = cabecera('Carga masiva desde Excel') + `<p class="nota">Bajá la plantilla, llenala en Excel (o pegá ahí lo que ya tengan) y subila. Antes de guardar, el sistema revisa cada fila y muestra lo que está mal.</p>
-      ${grupo('cer', 'Certificaciones')}${puedeSec('cer') ? `<div class="tarjetas" style="margin-top:10px">${tarjeta('#/carga/poligonos', 'Polígonos de parcelas', 'Varios polígonos a la vez desde un KML o GeoJSON del GPS')}</div>` : ''}${grupo('cre', 'Crédito')}${grupo('adm', 'Administración')}
+      ${grupo('cer', 'Certificaciones')}${puedeSec('cer') && puede('padron.editar') && puede('carga.masiva') ? `<div class="tarjetas" style="margin-top:10px">${tarjeta('#/carga/poligonos', 'Polígonos de parcelas', 'Varios polígonos a la vez desde un KML o GeoJSON del GPS')}</div>` : ''}${grupo('cre', 'Crédito')}${grupo('adm', 'Administración')}
       <p class="nota">La lista de asistencia se sube desde cada capacitación, en Asistencia por productor.</p>` + (vis.length ? '' : '<div class="caja">No tenés acceso a ninguna carga masiva.</div>');
     return;
   }
