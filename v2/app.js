@@ -134,7 +134,7 @@ function datosForm(f) { const o = {}; new FormData(f).forEach((v, k) => o[k] = t
 function ocupado(f, si) { f.querySelectorAll('button').forEach(b => b.disabled = si); }
 // Qué parte de la guía de uso explica cada pantalla
 const GUIA_DE = { adm: 'adm', compra: 'adm', fondo: 'adm', liquidacion: 'adm', vacacion: 'adm', laboral: 'adm', factura: 'adm', facturas: 'adm', presupuesto: 'adm', empleados: 'adm', proveedores: 'adm', solicitudes: 'adm', solicitud: 'adm',
-  cre: 'cre', credito: 'cre', creditos: 'cre', cred: 'cre', cartera: 'cre', recordatorios: 'cre', reportescre: 'cre', fondos: 'cre', condiciones: 'cre', edocta: 'cre',
+  cre: 'cre', credito: 'cre', creditos: 'cre', cred: 'cre', cartera: 'cre', recordatorios: 'cre', reportescre: 'cre', pago: 'cre', fondos: 'cre', condiciones: 'cre', edocta: 'cre',
   cer: 'padron', padron: 'padron', prod: 'padron', prodf: 'padron', parcela: 'padron', inspeccion: 'insp', inspecciones: 'insp', insp: 'insp', nc: 'insp', insumos: 'insp', reg: 'insp',
   asistencia: 'capac', quejas: 'capac', queja: 'capac', acopio: 'acopio', acopios: 'acopio', recibo: 'acopio', inventario: 'acopio', basculas: 'acopio',
   despacho: 'venta', eudr: 'venta', lotes: 'venta', lote: 'venta', balance: 'venta', prima: 'prima', actas: 'prima', paquete: 'auditoria', kobo: 'kobo', bandeja: 'campo',

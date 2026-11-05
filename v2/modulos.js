@@ -28,7 +28,7 @@ Object.assign(CFG_TEXTO, {
 });
 
 const SEC = { cre: 'Crédito interno', cer: 'Certificaciones', adm: 'Administración' };
-['credito', 'creditos', 'cred', 'cartera', 'condiciones', 'edocta', 'recordatorios', 'fondos', 'reportescre'].forEach(r => SECCION_DE[r] = 'cre');
+['credito', 'creditos', 'cred', 'cartera', 'condiciones', 'edocta', 'recordatorios', 'fondos', 'reportescre', 'pago'].forEach(r => SECCION_DE[r] = 'cre');
 ['padron', 'prod', 'prodf', 'parcela', 'inspeccion', 'insp', 'inspecciones', 'nc', 'acopio', 'acopios', 'despacho', 'balance', 'prima', 'reg', 'quejas', 'queja', 'catalogo', 'kobo', 'eudr', 'insumos', 'lotes', 'lote', 'recibo', 'inventario', 'basculas', 'actas', 'asistencia', 'paquete'].forEach(r => SECCION_DE[r] = 'cer');
 SECCION_DE.panel = ''; SECCION_DE.bandeja = '';
 
@@ -327,16 +327,29 @@ const r2 = x => Math.round(x * 100) / 100;
 function estadoCredito(c, pagos, al = hoy()) {
   const plan = c.plan || [], pagado = pagos.reduce((t, p) => t + num(p.capital) + num(p.interes), 0);
   const capPag = pagos.reduce((t, p) => t + num(p.capital), 0), intPag = pagos.reduce((t, p) => t + num(p.interes), 0);
+  const saldo = r2(Math.max(0, num(c.monto_aprobado) - capPag));
   let acum = 0, primeraImpaga = null, vencidas = 0, intVencido = 0;
   for (const cu of plan) { if (cu.fecha > al) break; acum += cu.cuota; intVencido += cu.interes; if (acum - pagado > 0.5) { vencidas++; if (!primeraImpaga) primeraImpaga = cu.fecha; } }
   const atraso = Math.max(0, acum - pagado), dias = primeraImpaga ? diasEntre(primeraImpaga, al) : 0;
-  const prox = plan.find(q => q.fecha > al);
+  // Interés corriente: lo que lleva ganado la cuota que está corriendo, en proporción a los días y al saldo que de verdad se debe
+  const iProx = plan.findIndex(q => q.fecha > al);
+  let intCorriente = 0;
+  if (iProx >= 0 && saldo > 0) {
+    const cu = plan[iProx], inicio = iProx > 0 ? plan[iProx - 1].fecha : (c.fecha_desembolso || cu.fecha);
+    const largo = Math.max(1, diasEntre(inicio, cu.fecha)), corridos = Math.min(largo, Math.max(0, diasEntre(inicio, al)));
+    const saldoPlan = num(cu.saldo) + num(cu.capital);
+    intCorriente = num(cu.interes) * corridos / largo * (saldoPlan > 0 ? Math.min(1, saldo / saldoPlan) : 1);
+  }
+  // Próxima cuota: lo que falta de la siguiente que no está cubierta (si adelantó, es menos que la cuota del plan)
+  let prox = null, cubre = pagado - acum;
+  for (let k = Math.max(0, iProx); iProx >= 0 && k < plan.length; k++) { const falta = num(plan[k].cuota) - Math.max(0, cubre); cubre -= num(plan[k].cuota); if (falta > 0.5) { prox = { ...plan[k], cuota: r2(Math.min(falta, num(plan[k].cuota))), cuotaPlan: num(plan[k].cuota) }; break; } }
   // Mora: lo que falta de cada cuota vencida × tasa diaria × días de atraso después de la gracia
   const tasaDia = cfgN('CREDITO_MORA_PCT_MENSUAL', 2) / 100 / 30, gracia = cfgN('CREDITO_DIAS_GRACIA', 0);
   let cubierto = pagado, moraCalc = 0;
   for (const cu of plan) { if (cu.fecha > al) break; const falta = Math.max(0, num(cu.cuota) - Math.max(0, cubierto)); cubierto -= num(cu.cuota); const d = diasEntre(cu.fecha, al) - gracia; if (falta > 0.5 && d > 0) moraCalc += falta * tasaDia * d; }
   const moraPend = r2(Math.max(0, moraCalc - pagos.reduce((t, p) => t + num(p.mora), 0)));
-  return { saldo: r2(Math.max(0, num(c.monto_aprobado) - capPag)), atraso: r2(atraso), dias: Math.max(0, dias), vencidas, prox, intPend: r2(Math.max(0, intVencido - intPag)), capPag, intPag, moraPend, primeraImpaga };
+  const intPend = r2(Math.max(0, intVencido - intPag)), intAlDia = r2(Math.max(0, intVencido + intCorriente - intPag));
+  return { saldo, atraso: r2(atraso), dias: Math.max(0, dias), vencidas, prox, intPend, intAlDia, capPag, intPag, moraPend, primeraImpaga, liquida: r2(saldo + intAlDia + moraPend) };
 }
 
 RUTAS.cre = async function menuCredito() {
@@ -346,10 +359,11 @@ RUTAS.cre = async function menuCredito() {
     ${tarjeta('#/prodf', 'Registrar productor', 'Datos del socio (también sirve para certificaciones)')}
     ${puede('credito.solicitar') ? tarjeta('#/credito', 'Solicitud de crédito', 'Monto, destino, plazo y garantía') : ''}
     ${tarjeta('#/creditos', esJefe() ? 'Créditos por resolver' : puede('credito.evaluar') || puede('cartera.ver') ? 'Solicitudes y créditos' : 'Mis solicitudes', 'Evaluación técnica, aprobación y desembolso', n)}
-    ${puede('cartera.ver') ? tarjeta('#/cartera', 'Cartera y pagos', 'Saldos, mora y recuperación') : ''}
+    ${puede('cartera.ver') || puede('credito.cobrar') ? tarjeta('#/cartera', 'Cartera y pagos', 'Saldos, mora y recuperación') : ''}
     ${puede('credito.cobrar') ? tarjeta('#/recordatorios', 'Recordatorios de cuotas', 'Atrasados y cuotas por vencer, con WhatsApp') : ''}
     ${puede('cartera.ver') ? tarjeta('#/reportescre', 'Reportes de cartera', 'PAR 30 y 90, provisión, programado contra recuperado') : ''}
-    ${esJefe() ? tarjeta('#/fondos', 'Fondos de crédito', 'De dónde sale el dinero y cuánto queda') : ''}
+    ${puede('credito.cobrar') ? tarjeta('#/pago', 'Registrar pago', 'Cobrar una cuota o cancelar un crédito') : ''}
+    ${puede('cartera.ver') ? tarjeta('#/fondos', 'Fondos de crédito', 'De dónde sale el dinero y cuánto queda') : ''}
     ${esJefe() ? tarjeta('#/carga/cartera', 'Saldos iniciales de cartera', 'Pasar desde Excel los créditos que ya estaban dados') : ''}
     ${esAdmin() ? tarjeta('#/condiciones', 'Condiciones y comité', 'Tasa, plazo y montos por destino; quién aprueba') : ''}
     ${tarjeta('#/padron', 'Productores', 'Padrón de socios')}
@@ -444,11 +458,12 @@ const claseCre = e => ({ 'Solicitado': 'Pendiente', 'En evaluación': 'Pendiente
 
 RUTAS.cred = async function verCredito(id) {
   const c = await q(sb.from('creditos').select('*, productores(*)').eq('id', id).single());
-  const pagos = esJefe() ? await q(sb.from('pagos_credito').select('*').eq('credito_id', id).order('fecha')) : [];
-  const p = c.productores, ev = c.evaluacion || {}, est = ['Desembolsado', 'Pagado', 'Castigado', 'Reestructurado'].includes(c.estado) && c.plan ? estadoCredito(c, pagos) : null;
+  const verPagos = puede('cartera.ver') || puede('credito.cobrar');
+  const pagos = verPagos ? await q(sb.from('pagos_credito').select('*').eq('credito_id', id).order('fecha')) : [];
+  const p = c.productores, ev = c.evaluacion || {}, est = verPagos && ['Desembolsado', 'Pagado', 'Castigado', 'Reestructurado'].includes(c.estado) && c.plan ? estadoCredito(c, pagos) : null;
   const [otros, garantias, fondos] = await Promise.all([q(sb.from('creditos').select('id,numero,estado,plan,monto_aprobado').eq('productor_id', c.productor_id)), q(sb.from('credito_garantias').select('*').eq('credito_id', id).order('creado')).catch(() => []), q(sb.from('fondos_credito').select('id,nombre,activo').eq('org_id', S.org.id).order('nombre')).catch(() => [])]);
-  const pagosOtros = esJefe() ? await q(sb.from('pagos_credito').select('credito_id,fecha,capital,interes,mora').in('credito_id', otros.map(o => o.id))) : [];
-  const calif = esJefe() ? calificacion(otros.filter(o => o.id !== id || ['Pagado', 'Castigado', 'Reestructurado', 'Desembolsado'].includes(o.estado)), pagosOtros) : null;
+  const pagosOtros = verPagos ? await q(sb.from('pagos_credito').select('credito_id,fecha,capital,interes,mora').in('credito_id', otros.map(o => o.id))) : [];
+  const calif = verPagos ? calificacion(otros.filter(o => o.id !== id || ['Pagado', 'Castigado', 'Reestructurado', 'Desembolsado'].includes(o.estado)), pagosOtros) : null;
   const optFondo = sel => `<option value="">Sin fondo</option>${fondos.filter(f => f.activo || f.id === sel).map(f => `<option value="${f.id}" ${f.id === sel ? 'selected' : ''}>${esc(f.nombre)}</option>`).join('')}`;
   const tasa = c.tasa_anual ?? cfgN('CREDITO_TASA_ANUAL', 18), limGer = cfgN('CREDITO_GERENCIA_HASTA', 50000);
   // Comité de crédito: si este crédito lo vota el comité, cuántos votos hacen falta y quién ya votó
@@ -485,20 +500,20 @@ RUTAS.cred = async function verCredito(id) {
     ${votos.length ? `<div class="tabla"><table><thead><tr><th>Miembro</th><th>Voto</th><th class="n">Monto que propone</th><th>Comentario</th><th>Fecha</th></tr></thead><tbody>${votos.map(v => `<tr><td>${esc(v.nombre)}</td><td>${estadoChip(v.voto, v.voto === 'A favor' ? 'Autorizada' : 'Rechazada')}</td><td class="n">${v.monto ? L(v.monto) : ''}</td><td>${esc(v.comentario)}</td><td>${fechaHora(v.fecha)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="nota">Todavía nadie ha votado.</p>'}
     ${abierto && porComite && com.soy && !votos.some(v => v.user_id === S.user.id) ? `<form id="fVoto" style="margin-top:12px"><div class="rejilla"><div><label>Tu voto</label><select name="voto"><option>A favor</option><option>En contra</option></select></div><div><label>Monto que aprobás (L)</label><input name="monto" inputmode="decimal" value="${montoRef}"></div><div class="ancho"><label>Comentario</label><input name="comentario"></div></div><div class="acciones"><button>Votar</button></div></form>` : ''}
     ${abierto && porComite && !com.soy ? '<p class="nota">Votan solo los miembros del comité (el administrador los marca en Usuarios).</p>' : ''}</div>`;
-  if (esJefe() && c.estado === 'Aprobado') acc += `<h2>Desembolso</h2><form class="caja" id="fDes"><div class="rejilla">
+  if (puede('credito.desembolsar') && c.estado === 'Aprobado') acc += `<h2>Desembolso</h2><form class="caja" id="fDes"><div class="rejilla">
     <div><label>Fecha del desembolso</label><input type="date" name="fecha" required value="${hoy()}"></div>
     <div><label>Fecha de la primera cuota</label><input type="date" name="primera" required value="${sumarMeses(hoy(), MESES_FREC[c.frecuencia] || c.plazo_meses)}"></div>
     <div><label>Fondo</label><select name="fondo_id">${optFondo(c.fondo_id)}</select></div>
     <div class="ancho"><label>Forma de entrega (cheque, transferencia, efectivo) y referencia</label><input name="referencia"></div>
   </div><div id="planPrev"></div><div class="acciones"><button>Registrar desembolso</button></div></form>`;
-  if (esJefe() && ['Desembolsado', 'Castigado'].includes(c.estado) && est) {
-    const moraSug = est.moraPend;
-    acc += `<h2>Registrar pago</h2><form class="caja" id="fPag"><div class="rejilla">
+  if (puede('credito.cobrar') && ['Desembolsado', 'Castigado'].includes(c.estado) && est) {
+    const sugerido = est.atraso > 0.5 ? r2(est.atraso + est.moraPend) : est.prox?.cuota || '';
+    acc += `<h2 id="pago">Registrar pago</h2><form class="caja" id="fPag"><div class="rejilla">
     <div><label>Fecha</label><input type="date" name="fecha" required value="${hoy()}"></div>
-    <div><label>Monto recibido (L)</label><input name="monto" required inputmode="decimal" value="${est.atraso || est.prox?.cuota || ''}"></div>
-    <div><label>Recargo por mora (L)</label><input name="mora" inputmode="decimal" value="${moraSug}"><p class="nota">Calculada: ${cfgN('CREDITO_MORA_PCT_MENSUAL', 2)} % mensual sobre lo atrasado, después de ${cfgN('CREDITO_DIAS_GRACIA', 0)} días de gracia.</p></div>
+    <div><label>Monto recibido (L)</label><input name="monto" required inputmode="decimal" value="${sugerido}"><p class="nota">Para dejarlo en cero hoy: <a href="#" id="todo">${L(est.liquida)}</a></p></div>
+    <div><label>Recargo por mora (L)</label><input name="mora" inputmode="decimal" value="${est.moraPend}"><p class="nota">Calculada: ${cfgN('CREDITO_MORA_PCT_MENSUAL', 2)} % mensual sobre lo atrasado, después de ${cfgN('CREDITO_DIAS_GRACIA', 0)} días de gracia.</p></div>
     <div><label>Número de recibo</label><input name="recibo"></div>
-  </div><p class="nota" id="repart"></p><div class="acciones"><button>Registrar pago</button></div></form>`;
+  </div><p class="nota" id="repart"></p><p class="nota">El pago se aplica primero a la mora, después al interés que lleva ganado a esa fecha y el resto al capital.</p><div class="acciones"><button>Registrar pago</button></div></form>`;
   }
   acc += `<h2>Garantías y fiadores</h2>${garantias.length ? `<div class="tabla"><table><thead><tr><th>Tipo</th><th>Nombre o bien</th><th>Identidad</th><th>Teléfono</th><th>Detalle</th><th class="n">qq</th><th class="n">Valor</th><th>Documento</th></tr></thead><tbody>${garantias.map(g => `<tr><td>${esc(g.tipo)}</td><td>${esc(g.nombre || '')}</td><td>${esc(g.identidad || '')}</td><td>${esc(g.telefono || '')}</td><td>${esc(g.descripcion || '')}</td><td class="n">${g.qq_comprometidos ?? ''}</td><td class="n">${g.valor ? L(g.valor) : ''}</td><td>${g.documento ? `<a href="#" data-doc="${esc(g.documento)}">Ver</a>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="nota">Todavía no se han registrado garantías.</p>'}
   ${!['Anulado', 'Rechazado', 'Pagado', 'Reestructurado'].includes(c.estado) ? `<form class="caja" id="fGar"><div class="rejilla">
@@ -527,7 +542,7 @@ RUTAS.cred = async function verCredito(id) {
   ${otros.find(o => o.estado === 'Desembolsado' && o.id !== id && c.estado === 'Reestructurado') ? `<dt>Pasó a</dt><dd>${otros.filter(o => o.estado === 'Desembolsado' && o.id !== id).map(o => `<a href="#/cred/${o.id}">${esc(o.numero)}</a>`).join(', ')}</dd>` : ''}
   ${c.castigo_fecha ? `<dt>Castigado</dt><dd>${esc(c.castigo_fecha)} · ${esc(c.castigo_motivo || '')}</dd>` : ''}
   ${calif ? `<dt>Historial</dt><dd>${chipCalif(calif)}</dd>` : ''}</dl>
-  ${esJefe() ? `<p><a href="#/edocta/${p.id}">Ver estado de cuenta del productor</a></p>` : ''}
+  ${verPagos ? `<p><a href="#/edocta/${p.id}">Ver estado de cuenta del productor</a></p>` : ''}
   ${est ? `<div class="tarjetas" style="margin-top:12px"><div class="tarjeta"><span>Saldo de capital</span><b>${L(est.saldo)}</b></div><div class="tarjeta"><span>Atrasado</span><b class="${est.atraso ? 'error' : ''}">${L(est.atraso)}</b><span>${est.dias ? est.dias + ' días de mora' : 'Al día'}</span></div>${est.moraPend ? `<div class="tarjeta"><span>Mora</span><b class="error">${L(est.moraPend)}</b></div>` : ''}<div class="tarjeta"><span>Próxima cuota</span><b>${est.prox ? L(est.prox.cuota) : '—'}</b><span>${est.prox ? esc(est.prox.fecha) : ''}</span></div></div>` : ''}
   </div>
   ${c.plan ? `<h2>Plan de pagos</h2><div class="tabla"><table><thead><tr><th>#</th><th>Fecha</th><th class="n">Capital</th><th class="n">Interés</th><th class="n">Cuota</th><th class="n">Saldo</th></tr></thead><tbody>${c.plan.map(x => `<tr${x.fecha < hoy() ? ' style="color:var(--gris)"' : ''}><td>${x.n}</td><td>${esc(x.fecha)}</td><td class="n">${L(x.capital)}</td><td class="n">${L(x.interes)}</td><td class="n">${L(x.cuota)}</td><td class="n">${L(x.saldo)}</td></tr>`).join('')}</tbody></table></div>` : ''}
@@ -535,6 +550,7 @@ RUTAS.cred = async function verCredito(id) {
   ${acc}<div class="acciones"><button class="sec" onclick="print()">Imprimir</button>${esJefe() && ['Solicitado', 'En evaluación', 'Aprobado'].includes(c.estado) ? '<button class="sec" id="anular">Anular solicitud</button>' : ''}</div>`;
 
   const recargar = () => { avisar('credito', id); RUTAS.cred(id); };
+  if (location.hash.endsWith('/pago') && $('#pago')) setTimeout(() => { $('#pago').scrollIntoView({ behavior: 'smooth' }); $('#fPag').monto.focus(); }, 50);
   const fVoto = $('#fVoto'); if (fVoto) fVoto.onsubmit = async e => {
     e.preventDefault(); const d = datosForm(fVoto);
     if (d.voto === 'A favor' && num(d.monto) <= 0) return aviso('Poné el monto que aprobás.', true);
@@ -573,9 +589,10 @@ RUTAS.cred = async function verCredito(id) {
     const repartir = () => {
       const d = datosForm(fPag), e2 = estadoCredito(c, pagos, d.fecha || hoy());
       let resto = num(d.monto), mora = Math.min(resto, num(d.mora)); resto -= mora;
-      const interes = Math.min(resto, e2.intPend); resto -= interes;
-      const capital = Math.min(resto, e2.saldo); return { mora: r2(mora), interes: r2(interes), capital: r2(capital), sobra: r2(resto - capital) };
+      const interes = Math.min(resto, e2.intAlDia); resto -= interes;
+      const capital = Math.min(resto, e2.saldo); return { mora: r2(mora), interes: r2(interes), capital: r2(capital), sobra: r2(resto - capital), e2 };
     };
+    $('#todo').onclick = ev => { ev.preventDefault(); const e2 = estadoCredito(c, pagos, fPag.fecha.value || hoy()); fPag.mora.value = e2.moraPend; fPag.monto.value = e2.liquida; fPag.oninput(); };
     fPag.oninput = () => { const r = repartir(); $('#repart').textContent = `Se aplica: mora ${L(r.mora)} · interés ${L(r.interes)} · capital ${L(r.capital)}${r.sobra > 0 ? ` · sobran ${L(r.sobra)} (más que el saldo)` : ''}.`; };
     fPag.oninput();
     fPag.onsubmit = async e => {
@@ -584,8 +601,10 @@ RUTAS.cred = async function verCredito(id) {
       if (r.sobra > 0) return aviso('El pago es mayor que lo que se debe.', true);
       ocupado(fPag, true);
       try {
-        await q(sb.from('pagos_credito').insert({ org_id: S.org.id, credito_id: id, fecha: d.fecha, monto: num(d.monto), mora: r.mora, interes: r.interes, capital: r.capital, recibo: d.recibo }));
-        if (est.saldo - r.capital <= 0.01) await q(sb.from('creditos').update({ estado: 'Pagado' }).eq('id', id));
+        if (d.fecha > hoy()) { ocupado(fPag, false); return aviso('La fecha del pago no puede ser futura.', true); }
+        await q(sb.from('pagos_credito').insert({ org_id: S.org.id, credito_id: id, fecha: d.fecha, monto: num(d.monto), mora: r.mora, interes: r.interes, capital: r.capital, recibo: d.recibo || null }));
+        // Al quedar en cero la base de datos lo pasa a «Pagado»; si todavía no tiene esa regla, lo hace gerencia desde aquí
+        if (r.e2.saldo - r.capital <= 0.01 && esJefe()) await q(sb.from('creditos').update({ estado: 'Pagado' }).eq('id', id).eq('estado', 'Desembolsado')).catch(() => {});
         await q(sb.from('bitacora').insert({ org_id: S.org.id, usuario: nombreUsuario(), accion: 'Pago de crédito', detalle: `${c.numero} · ${L(d.monto)}${d.recibo ? ' · recibo ' + d.recibo : ''}` }));
         aviso('Pago registrado.'); recargar();
       } catch (er) { ocupado(fPag, false); aviso(falla(er), true); }
@@ -677,7 +696,7 @@ async function creditosConPagos(filtro) {
 }
 
 RUTAS.edocta = async function estadoDeCuenta(prodId) {
-  if (!esJefe()) return RUTAS.cre();
+  if (!puede('cartera.ver') && !puede('credito.cobrar')) return RUTAS.cre();
   const p = await q(sb.from('productores').select('*').eq('id', prodId).single());
   const { cre, de } = await creditosConPagos(x => x.eq('productor_id', prodId).in('estado', ['Desembolsado', 'Pagado', 'Reestructurado', 'Castigado', 'Aprobado']).order('creado'));
   const allP = cre.flatMap(c => de(c.id)), k = calificacion(cre, allP);
@@ -695,8 +714,20 @@ RUTAS.edocta = async function estadoDeCuenta(prodId) {
   <div class="acciones"><button onclick="print()">Imprimir</button><a class="boton sec" target="_blank" rel="noopener" href="${esc(waLink(p.telefono, texto))}">Mandar por WhatsApp</a></div>`;
 };
 
+// Registrar pago: buscar al productor o el crédito y cobrar
+RUTAS.pago = async function registrarPago() {
+  if (!puede('credito.cobrar')) return RUTAS.cre();
+  const { cre, de } = await creditosConPagos(x => x.in('estado', ['Desembolsado', 'Castigado']));
+  const filas = cre.map(c => ({ c, e: estadoCredito(c, de(c.id)) })).sort((a, b) => b.e.dias - a.e.dias || (a.c.productores?.nombre || '').localeCompare(b.c.productores?.nombre || ''));
+  app().innerHTML = cabecera('Registrar pago de crédito', '#/cre') + `<div class="filtros"><input id="bus" placeholder="Buscar por nombre, código, comunidad o número de crédito" autofocus></div>
+  <div class="tabla"><table><thead><tr><th>Productor</th><th>Crédito</th><th class="n">Saldo</th><th class="n">Atrasado</th><th>Próxima cuota</th><th></th></tr></thead><tbody id="cuerpo"></tbody></table></div>
+  <p class="nota">Tocá «Cobrar» para registrar el pago en ese crédito. Lo que se descuenta en el acopio se registra solo.</p>`;
+  const pintar = t => { t = norm(t); $('#cuerpo').innerHTML = filas.filter(({ c }) => !t || norm([c.productores?.nombre, c.productores?.codigo, c.productores?.comunidad, c.numero].join(' ')).includes(t)).map(({ c, e }) => `<tr><td><b>${esc(c.productores?.nombre || '')}</b><br><span class="nota">${esc(c.productores?.codigo || '')} ${esc(c.productores?.comunidad || '')}</span></td><td><a href="#/cred/${c.id}">${esc(c.numero)}</a>${c.estado === 'Castigado' ? ' <span class="nota">(castigado)</span>' : ''}</td><td class="n">${L(e.saldo)}</td><td class="n ${e.atraso ? 'error' : ''}">${e.atraso ? L(e.atraso + e.moraPend) + `<br><span class="nota">${e.dias} días</span>` : 'Al día'}</td><td>${e.prox ? `${L(e.prox.cuota)} el ${esc(e.prox.fecha)}` : ''}</td><td><a class="boton" href="#/cred/${c.id}/pago">Cobrar</a></td></tr>`).join('') || '<tr><td colspan="6" class="nota">No hay créditos con saldo.</td></tr>'; };
+  $('#bus').oninput = ev => pintar(ev.target.value); pintar('');
+};
+
 RUTAS.recordatorios = async function verRecordatorios() {
-  if (!esJefe()) return RUTAS.cre();
+  if (!puede('credito.cobrar') && !puede('cartera.ver')) return RUTAS.cre();
   const dias = cfgN('CREDITO_DIAS_RECORDATORIO', 7), { cre, de } = await creditosConPagos(x => x.in('estado', ['Desembolsado', 'Castigado']));
   const filas = cre.map(c => ({ c, e: estadoCredito(c, de(c.id)) })).map(x => ({ ...x, tipo: x.e.atraso > 0.5 ? 'Atrasado' : x.e.prox && diasEntre(hoy(), x.e.prox.fecha) <= dias ? 'Vence pronto' : null })).filter(x => x.tipo)
     .sort((a, b) => (a.tipo === b.tipo ? 0 : a.tipo === 'Atrasado' ? -1 : 1) || b.e.dias - a.e.dias);
@@ -711,7 +742,7 @@ RUTAS.recordatorios = async function verRecordatorios() {
 };
 
 RUTAS.fondos = async function verFondos() {
-  if (!esJefe()) return RUTAS.cre();
+  if (!puede('cartera.ver')) return RUTAS.cre();
   const [fondos, { cre, pagos }] = await Promise.all([q(sb.from('fondos_credito').select('*').eq('org_id', S.org.id).order('nombre')), creditosConPagos(x => x.not('fondo_id', 'is', null))]);
   const calc = f => {
     const cs = cre.filter(c => c.fondo_id === f.id), ids = new Set(cs.map(c => c.id));
@@ -735,7 +766,7 @@ RUTAS.fondos = async function verFondos() {
 };
 
 RUTAS.reportescre = async function reportesCartera() {
-  if (!esJefe()) return RUTAS.cre();
+  if (!puede('cartera.ver')) return RUTAS.cre();
   const [{ cre, pagos, de }, fondos] = await Promise.all([creditosConPagos(x => x.in('estado', ['Desembolsado', 'Pagado', 'Reestructurado', 'Castigado'])), q(sb.from('fondos_credito').select('id,nombre').eq('org_id', S.org.id))]);
   const vig = cre.filter(c => c.estado === 'Desembolsado').map(c => ({ c, e: estadoCredito(c, de(c.id)) }));
   const cast = cre.filter(c => c.estado === 'Castigado').map(c => ({ c, e: estadoCredito(c, de(c.id)) }));
@@ -765,7 +796,7 @@ RUTAS.reportescre = async function reportesCartera() {
 };
 
 RUTAS.cartera = async function verCartera() {
-  if (!esJefe()) return RUTAS.cre();
+  if (!puede('cartera.ver') && !puede('credito.cobrar')) return RUTAS.cre();
   const [cre, pagos] = await Promise.all([
     q(sb.from('creditos').select('id,numero,productor_id,monto_aprobado,plan,estado,fecha_desembolso,productores(nombre,comunidad)').eq('org_id', S.org.id).eq('estado', 'Desembolsado')),
     q(sb.from('pagos_credito').select('credito_id,capital,interes,mora,fecha').eq('org_id', S.org.id))
@@ -780,8 +811,8 @@ RUTAS.cartera = async function verCartera() {
     <div class="tarjeta"><span>Recuperado este mes</span><b style="font-size:22px">${L(recMes.reduce((s, p) => s + num(p.capital), 0))}</b><span>Intereses ${L(recMes.reduce((s, p) => s + num(p.interes), 0))}</span></div>
   </div>
   <h2>Antigüedad de la mora</h2><div class="tabla"><table><thead><tr>${t.map(x => `<th class="n">${x[0]}</th>`).join('')}</tr></thead><tbody><tr>${t.map(x => `<td class="n">${L(x[1])}<br><span class="nota">${total ? (x[1] / total * 100).toFixed(1) : 0} %</span></td>`).join('')}</tr></tbody></table></div>
-  <h2>Créditos vigentes</h2><div class="tabla"><table><thead><tr><th>Número</th><th>Productor</th><th>Comunidad</th><th class="n">Desembolsado</th><th class="n">Saldo</th><th class="n">Atrasado</th><th class="n">Días</th><th>Próxima cuota</th></tr></thead><tbody>
-  ${filas.map(({ c, e }) => `<tr><td><a href="#/cred/${c.id}">${esc(c.numero)}</a></td><td><a href="#/edocta/${c.productor_id}">${esc(c.productores?.nombre)}</a></td><td>${esc(c.productores?.comunidad)}</td><td class="n">${L(c.monto_aprobado)}</td><td class="n">${L(e.saldo)}</td><td class="n ${e.atraso ? 'error' : ''}">${e.atraso ? L(e.atraso) : ''}</td><td class="n">${e.dias || ''}</td><td>${e.prox ? esc(e.prox.fecha) + ' · ' + L(e.prox.cuota) : ''}</td></tr>`).join('') || '<tr><td colspan="8" class="nota">No hay créditos desembolsados.</td></tr>'}
+  <h2>Créditos vigentes</h2><div class="tabla"><table><thead><tr><th>Número</th><th>Productor</th><th>Comunidad</th><th class="n">Desembolsado</th><th class="n">Saldo</th><th class="n">Atrasado</th><th class="n">Días</th><th>Próxima cuota</th>${puede('credito.cobrar') ? '<th></th>' : ''}</tr></thead><tbody>
+  ${filas.map(({ c, e }) => `<tr><td><a href="#/cred/${c.id}">${esc(c.numero)}</a></td><td><a href="#/edocta/${c.productor_id}">${esc(c.productores?.nombre)}</a></td><td>${esc(c.productores?.comunidad)}</td><td class="n">${L(c.monto_aprobado)}</td><td class="n">${L(e.saldo)}</td><td class="n ${e.atraso ? 'error' : ''}">${e.atraso ? L(e.atraso) : ''}</td><td class="n">${e.dias || ''}</td><td>${e.prox ? esc(e.prox.fecha) + ' · ' + L(e.prox.cuota) : ''}</td>${puede('credito.cobrar') ? `<td><a class="boton sec" href="#/cred/${c.id}/pago">Cobrar</a></td>` : ''}</tr>`).join('') || '<tr><td colspan="9" class="nota">No hay créditos desembolsados.</td></tr>'}
   </tbody></table></div>`;
 };
 
