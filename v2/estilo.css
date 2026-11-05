@@ -150,3 +150,7 @@ legend{font-weight:600;padding:0 6px}
 .revision{display:flex;flex-wrap:wrap;align-items:center;gap:6px;border-left:4px solid var(--ambar)}
 .revision .acciones{flex-basis:100%}
 @media print{.revision .acciones{display:none}}
+
+/* Recibo de acopio: al imprimir solo sale el recibo */
+@media print{body.impRecibo #barra,body.impRecibo header,body.impRecibo #app>*:not(#recibo){display:none!important}body.impRecibo #recibo{max-width:none!important;border:0;box-shadow:none;margin:0;padding:0}body.impRecibo main{padding:0}
+body.impTicket #recibo{width:72mm;font-size:11px}body.impTicket #recibo table{font-size:11px}body.impTicket #recibo th,body.impTicket #recibo td{padding:2px 3px}body.impTicket #recibo>div:last-child{margin-top:28px!important}}

@@ -22,7 +22,7 @@ Object.assign(CFG_TEXTO, {
   RETENCION_CREDITO_PCT: 'Acopio: % de cada entrega que se descuenta para el crédito interno (0 = solo si se escribe)', BODEGAS: 'Bodegas o centros de acopio (una por renglón)', BASCULA_DIAS_AVISO: 'Avisar cuántos días antes de que venza la calibración de una báscula',
   DOCUMENTOS_DIAS_AVISO: 'Avisar cuántos días antes de que venza un documento del productor',
   INSUMOS_PROHIBIDOS: 'Insumos prohibidos para orgánico (uno por renglón)', INSUMOS_PERMITIDOS: 'Insumos permitidos (uno por renglón)',
-  CULTIVO_ACOPIO: 'Cultivo que acopia la organización', FACTOR_CACAO_BABA: 'Factor de cacao en baba a cacao seco (0.35 = 35 %)', CACAO_HUMEDAD_BASE: 'Cacao: humedad base; arriba de esta se descuenta (%)',
+  CULTIVO_ACOPIO: 'Cultivo que acopia la organización', ACOPIO_UNIDAD: 'Unidad que sale primero al registrar acopio (lb, qq o kg); cada quien la puede cambiar', FACTOR_CACAO_BABA: 'Factor de cacao en baba a cacao seco (0.35 = 35 %)', CACAO_HUMEDAD_BASE: 'Cacao: humedad base; arriba de esta se descuenta (%)',
   CACAO_FERMENTADO_MIN: 'Cacao: mínimo de granos bien fermentados en la prueba de corte (%)', CACAO_MOHO_MAX: 'Cacao: máximo de granos con moho en la prueba de corte (%)', PRIMA_FT_CACAO_USD_LB: 'Prima de Comercio Justo del cacao (USD por libra de cacao seco)',
   CORREO_AVISOS: 'Correo que recibe los avisos (separar varios con coma)', QUEJAS_CORREO: 'Correo del comité de quejas (si es distinto)'
 });
@@ -1118,21 +1118,26 @@ function aPergaminoSeco(estado, lb) {
   return r2(estado === 'Uva' ? p * cfgN('FACTOR_CAFE_UVA', 0.2) : estado === 'Pergamino húmedo' ? p * cfgN('FACTOR_CAFE_PERGAMINO_HUMEDO', 0.8) : estado === 'Oro' ? p / cfgN('RENDIMIENTO_PERGAMINO_ORO', 0.8) : estado === 'Cacao en baba' ? p * cfgN('FACTOR_CACAO_BABA', 0.35) : p);
 }
 const CORTE = [['fermentado', 'Bien fermentado'], ['violeta', 'Violeta'], ['pizarra', 'Pizarroso'], ['moho', 'Con moho'], ['danado', 'Dañado (insectos o germinado)']];
+// Unidades para registrar el acopio: todo se guarda en libras y se muestra en la que escogió quien recibe
+const UNIDADES = { lb: ['Libras', 'lb', 1], qq: ['Quintales', 'qq', 100], kg: ['Kilogramos', 'kg', 2.20462] };
+const unidadAcopio = () => { try { return localStorage.getItem('sig_unidad_acopio') || S.cfg.ACOPIO_UNIDAD || 'lb'; } catch (_) { return S.cfg.ACOPIO_UNIDAD || 'lb'; } };
+const nUni = (lb, u) => (num(lb) / UNIDADES[u || 'lb'][2]).toLocaleString('es-HN', { maximumFractionDigits: u === 'lb' ? 0 : 2 });
 RUTAS.acopio = async function formAcopio(prodId) {
   const [ps, bas] = await Promise.all([prods(), basculasActivas(), certs()]);
   const bodegas = lista(S.cfg.BODEGAS); const pctRet = cfgN('RETENCION_CREDITO_PCT', 0);
   app().innerHTML = cabecera('Registrar acopio') + `<form class="caja" id="f"><div class="rejilla">
     <div class="ancho"><label>Productor</label>${campoProd(ps, prodId)}</div>
     <div><label>Fecha</label><input type="date" name="fecha" required value="${hoy()}"></div>
-    <div><label>Certificación</label><select name="certificacion" id="cert"><option value="">Convencional</option></select></div>
+    <div><label>Unidad para pesar y pagar</label><select name="unidad">${Object.entries(UNIDADES).map(([k, [n, a]]) => `<option value="${k}" ${k === unidadAcopio() ? 'selected' : ''}>${n} (${a})</option>`).join('')}</select></div>
     <div><label>${cultivos().length > 1 ? 'Producto' : 'Estado del ' + cultivos()[0].toLowerCase()}</label><select name="estado_cafe">${opcionesEstado()}</select></div>
     <div><label>Bodega o centro de acopio</label><select name="bodega">${opciones(['', ...bodegas], bodegas[0])}</select></div>
     <div><label>Báscula</label><select name="bascula_id"><option value="">—</option>${bas.map(b => `<option value="${b.id}" data-bodega="${esc(b.bodega || '')}">${esc(b.nombre)}${b.vence && b.vence < hoy() ? ' (calibración vencida)' : ''}</option>`).join('')}</select></div>
-    <div><label>Peso neto (libras)</label><input name="peso_lb" required inputmode="decimal"></div>
+    <div class="ancho"><label>Certificaciones con que entra</label><div id="certBox" class="nota">Elegí el productor.</div></div>
+    <div><label id="lPeso">Peso neto</label><input name="peso" required inputmode="decimal"></div>
     <div><label>Humedad (%)</label><input name="humedad" inputmode="decimal"></div>
     <div><label>Impurezas (%)</label><input name="impurezas" inputmode="decimal" placeholder="0"></div>
     <div><label>Defectos (%)</label><input name="defectos" inputmode="decimal" placeholder="0"></div>
-    <div><label>Precio por libra (L)</label><input name="precio_lb" inputmode="decimal"></div>
+    <div><label id="lPrecio">Precio</label><input name="precio" inputmode="decimal"></div>
     <div><label>Lote</label><input name="lote"></div>
     <fieldset class="ancho" id="corteBox" hidden><legend>Prueba de corte (% de los granos cortados)</legend><div class="rejilla">${CORTE.map(([k, n]) => `<div><label>${n}</label><input name="corte_${k}" inputmode="decimal"></div>`).join('')}</div><p class="nota">Se cortan a lo largo unos 100 granos y se cuenta cuántos hay de cada tipo.</p></fieldset>
     <div class="ancho" id="crBox" hidden><label>Descontar del crédito interno (L)</label><input name="retencion_credito" inputmode="decimal"><p class="nota" id="crNota"></p></div>
@@ -1140,8 +1145,18 @@ RUTAS.acopio = async function formAcopio(prodId) {
   </div><p class="nota" id="calc"></p><p class="nota" id="estim"></p><p class="nota" id="basN"></p><div class="acciones"><button>Registrar entrega</button></div></form>`;
   const f = $('#f'); let exig = null;
   const verCorte = () => { $('#corteBox').hidden = f.estado_cafe.value !== 'Cacao seco'; };
-  const opc = () => { const p = leerProd(ps, f.productor_txt.value), v = f.certificacion.value;
-    if (p && cultivos().length > 1 && productoDe(f.estado_cafe.value) !== cultivoProd(p)) { f.estado_cafe.value = ESTADOS[cultivoProd(p)][0]; verCorte(); } f.certificacion.innerHTML = '<option value="">Convencional</option>' + (p?.certificaciones || []).map(c => `<option value="${esc(c)}">${esc(nombreCert(c))}</option>`).join(''); if (p?.certificaciones.includes(v)) f.certificacion.value = v; };
+  let ultimoProd = null;
+  const opc = () => { const p = leerProd(ps, f.productor_txt.value);
+    if (p && cultivos().length > 1 && productoDe(f.estado_cafe.value) !== cultivoProd(p)) { f.estado_cafe.value = ESTADOS[cultivoProd(p)][0]; verCorte(); }
+    if (p?.id === ultimoProd) return; ultimoProd = p?.id || null;
+    const cs = p?.certificaciones || [], bloq = p?.estado_cert === 'No aprobado';
+    $('#certBox').innerHTML = !p ? 'Elegí el productor.' : !cs.length ? 'Este productor no tiene certificaciones: entra como <b>convencional</b>.'
+      : cs.map(c => `<label style="font-weight:400;color:var(--texto);display:inline-flex;gap:6px;align-items:center;margin:2px 14px 2px 0"><input type="checkbox" name="cert" value="${esc(c)}" style="width:auto" ${bloq ? 'disabled' : 'checked'}>${esc(nombreCert(c))}</label>`).join('') + (bloq ? '<br><span class="error">No aprobó la inspección interna: entra como convencional.</span>' : '<br><span class="nota">Quitá la marca de las que no apliquen a esta entrega. Sin ninguna marcada, entra como convencional.</span>');
+  };
+  const certsSel = () => [...f.querySelectorAll('[name=cert]:checked')].map(x => x.value);
+  // Pasa el peso y el precio de la unidad escogida a libras
+  const enLb = d => { const u = UNIDADES[d.unidad || 'lb'][2]; return { ...d, peso_lb: d.peso ? num(d.peso) * u : '', precio_lb: d.precio ? r2(num(d.precio) / u * 10000) / 10000 : '' }; };
+  const verUnidad = () => { const u = f.unidad.value; $('#lPeso').textContent = `Peso neto (${UNIDADES[u][0].toLowerCase()})`; $('#lPrecio').textContent = `Precio por ${{ lb: 'libra', qq: 'quintal', kg: 'kilogramo' }[u]} (L)`; };
   const verEstim = async () => { const p = leerProd(ps, f.productor_txt.value); if (!p) { $('#estim').textContent = ''; return; } const e = await estimadoProductor(p.id); $('#estim').innerHTML = e.est ? `Esta cosecha ha entregado <b>${qqTxt(e.ent)}</b> de un estimado de <b>${qqTxt(e.est)}</b> (puede llegar a ${qqTxt(e.tope)} con la tolerancia del ${e.tol} %).` : 'Este productor no tiene estimado de cosecha en sus parcelas.'; };
   const verCredito = async () => {
     const p = leerProd(ps, f.productor_txt.value); exig = null; $('#crBox').hidden = true; if (!p) return;
@@ -1151,20 +1166,21 @@ RUTAS.acopio = async function formAcopio(prodId) {
   const liquidar = d => {
     const peso = num(d.peso_lb), cac = d.estado_cafe === 'Cacao seco', hb = cac ? cfgN('CACAO_HUMEDAD_BASE', 7) : cfgN('HUMEDAD_BASE_ACOPIO', cfgN('HUMEDAD_MAXIMA', 12)), dp = cfgN('DESCUENTO_PUNTO_HUMEDAD', 1);
     const desc = Math.min(100, ((cac || ['Pergamino seco', 'Oro'].includes(d.estado_cafe)) && num(d.humedad) > hb ? (num(d.humedad) - hb) * dp : 0) + num(d.impurezas));
-    const pag = r2(peso * (1 - desc / 100)), certsSel = d.certificacion ? [d.certificacion] : [];
-    const sobre = (certsSel.some(esOrganica) ? cfgN('SOBREPRECIO_ORGANICO_LB', 0) : 0) + (certsSel.includes('fairtrade') ? cfgN('SOBREPRECIO_FT_LB', 0) : 0);
+    const pag = r2(peso * (1 - desc / 100)), cs = d.certs || certsSel();
+    const sobre = (cs.some(esOrganica) ? cfgN('SOBREPRECIO_ORGANICO_LB', 0) : 0) + (cs.includes('fairtrade') ? cfgN('SOBREPRECIO_FT_LB', 0) : 0);
     const total = d.precio_lb ? r2(pag * (num(d.precio_lb) + sobre)) : 0;
     return { desc: r2(desc), pag, sobre, total };
   };
   const calcular = () => {
-    const d = datosForm(f), ps2 = aPergaminoSeco(d.estado_cafe, d.peso_lb), cac = d.estado_cafe === 'Cacao seco', hm = cac ? cfgN('CACAO_HUMEDAD_BASE', 7) : cfgN('HUMEDAD_MAXIMA', 12), l = liquidar(d);
+    const d = enLb(datosForm(f)), ps2 = aPergaminoSeco(d.estado_cafe, d.peso_lb), cac = d.estado_cafe === 'Cacao seco', hm = cac ? cfgN('CACAO_HUMEDAD_BASE', 7) : cfgN('HUMEDAD_MAXIMA', 12), l = liquidar(d);
     if (exig) {
       const sug = r2(Math.min(num(exig.exigible), l.total * (pctRet || 100) / 100));
       if (!f.retencion_credito.dataset.tocado) f.retencion_credito.value = pctRet ? (l.total ? sug : '') : '';
       $('#crNota').innerHTML = `Tiene el crédito <b>${esc(exig.numero)}</b> con <b>${L(exig.exigible)}</b> por pagar (cuotas vencidas y la del próximo mes). ${pctRet ? `Se sugiere descontar el ${pctRet} % de la entrega.` : 'Escribí cuánto descontar, o dejalo vacío para no descontar.'}`;
     }
     const ret = Math.min(num(f.retencion_credito.value), l.total);
-    $('#calc').innerHTML = num(d.peso_lb) ? `Equivale a <b>${ps2.toLocaleString('es-HN')} lb (${(ps2 / 100).toFixed(2)} qq)</b> de ${secoTxt(productoDe(d.estado_cafe))}` +
+    const uq = d.unidad || 'lb';
+    $('#calc').innerHTML = num(d.peso_lb) ? (uq !== 'lb' ? `${nUni(d.peso_lb, uq)} ${UNIDADES[uq][1]} = <b>${num(d.peso_lb).toLocaleString('es-HN', { maximumFractionDigits: 2 })} lb</b> · ` : '') + `Equivale a <b>${ps2.toLocaleString('es-HN')} lb (${(ps2 / 100).toFixed(2)} qq)</b> de ${secoTxt(productoDe(d.estado_cafe))}` +
       (l.desc ? ` · descuento por calidad <b>${l.desc} %</b> · peso pagable <b>${l.pag.toLocaleString('es-HN')} lb</b>` : '') +
       (l.total ? ` · total <b>${L(l.total)}</b>${l.sobre ? ` (incluye sobreprecio de L ${l.sobre} por libra)` : ''}${ret ? ` · menos crédito ${L(ret)} · <b>neto a pagar ${L(l.total - ret)}</b>` : ''}` : '') +
       ((cac || ['Pergamino seco', 'Oro'].includes(d.estado_cafe)) && num(d.humedad) > hm ? ` · <span class="error">humedad arriba del ${hm} %</span>` : '') +
@@ -1178,14 +1194,15 @@ RUTAS.acopio = async function formAcopio(prodId) {
   f.retencion_credito.oninput = () => { f.retencion_credito.dataset.tocado = '1'; };
   f.productor_txt.oninput = () => { opc(); verEstim(); verCredito(); }; opc(); verEstim(); verCredito();
   f.estado_cafe.onchange = () => { verCorte(); calcular(); }; verCorte();
+  f.unidad.onchange = () => { try { localStorage.setItem('sig_unidad_acopio', f.unidad.value); } catch (_) { } verUnidad(); calcular(); }; verUnidad();
   f.oninput = calcular;
   f.onsubmit = async ev => {
-    ev.preventDefault(); const d = datosForm(f), p = leerProd(ps, d.productor_txt);
+    ev.preventDefault(); const d0 = datosForm(f), d = enLb(d0), p = leerProd(ps, d.productor_txt); d.certs = certsSel(); d.certificacion = d.certs[0] || '';
     const corte = d.estado_cafe === 'Cacao seco' ? Object.fromEntries(CORTE.map(([k]) => [k, d['corte_' + k]]).filter(([, v]) => v !== '' && v != null).map(([k, v]) => [k, num(v)])) : null;
     CORTE.forEach(([k]) => delete d['corte_' + k]);
     if (!p) return aviso('Elegí un productor de la lista.', true);
-    if (d.certificacion && !p.certificaciones.includes(d.certificacion)) return aviso('Ese productor no está en esa certificación.', true);
-    if (d.certificacion && p.estado_cert === 'No aprobado') return aviso('El productor no aprobó la inspección interna: su entrega entra como convencional.', true);
+    if (d.certs.some(c => !p.certificaciones.includes(c))) return aviso('Ese productor no está en esa certificación.', true);
+    if (d.certs.length && p.estado_cert === 'No aprobado') return aviso('El productor no aprobó la inspección interna: su entrega entra como convencional.', true);
     if (num(d.peso_lb) <= 0) return aviso('Poné el peso.', true);
     const e = await estimadoProductor(p.id), nuevo = aPergaminoSeco(d.estado_cafe, d.peso_lb) / 100;
     if (e.est > 0 && e.ent + nuevo > e.tope) {
@@ -1193,22 +1210,29 @@ RUTAS.acopio = async function formAcopio(prodId) {
       if (!motivo) return aviso('No se registró la entrega.', true);
       d.observaciones = [d.observaciones, 'Pasa el estimado de cosecha: ' + motivo].filter(Boolean).join(' · ');
     }
-    if (esOrganica(d.certificacion) && e.parc.length) {
+    if (d.certs.some(esOrganica) && e.parc.length) {
       const eo = e.parc.map(estadoOrganico), orgs = eo.filter(x => x.ok).length;
       if (!orgs && !eo.some(x => x.ok === null)) return aviso('Ninguna parcela de este productor ha terminado la transición orgánica: su producto no se puede recibir como orgánico.', true);
-      if (orgs < eo.length && !confirm(`${eo.length - orgs} de las ${eo.length} parcelas de este productor no están confirmadas como orgánicas (en transición o sin dato). ¿Registrar la entrega como ${nombreCert(d.certificacion)} de todos modos?`)) return;
+      if (orgs < eo.length && !confirm(`${eo.length - orgs} de las ${eo.length} parcelas de este productor no están confirmadas como orgánicas (en transición o sin dato). ¿Registrar la entrega como ${d.certs.filter(esOrganica).map(nombreCert).join(' y ')} de todos modos?`)) return;
     }
     const l = liquidar(d), ret = exig && d.retencion_credito ? Math.min(num(d.retencion_credito), l.total) : 0;
     if (ret > num(exig?.exigible) + 0.01 && !confirm(`Vas a descontar ${L(ret)} y lo que está por pagar del crédito es ${L(exig.exigible)}. ¿Descontar de todos modos?`)) return;
     ocupado(f, true);
     try {
-      const r = await q(sb.from('acopio').insert({ id: nuevoId(), descuento_pct: l.desc, peso_pagable_lb: l.pag, sobreprecio_lb: d.precio_lb ? l.sobre : null, total: d.precio_lb ? l.total : null, neto_pagar: d.precio_lb ? r2(l.total - (exig ? ret : 0)) : null, org_id: S.org.id, productor_id: p.id, fecha: d.fecha, certificacion: d.certificacion || null, certificaciones: d.certificacion ? [d.certificacion] : [], estado_cafe: d.estado_cafe, peso_lb: num(d.peso_lb), humedad: d.humedad ? num(d.humedad) : null, impurezas: d.impurezas ? num(d.impurezas) : null, defectos: d.defectos ? num(d.defectos) : null, precio_lb: d.precio_lb ? num(d.precio_lb) : null, psec_lb: aPergaminoSeco(d.estado_cafe, d.peso_lb), producto: productoDe(d.estado_cafe), ...(corte && Object.keys(corte).length ? { datos: { corte } } : {}), lote: d.lote, bodega: d.bodega || null, bascula_id: d.bascula_id || null, retencion_credito: exig ? ret : 0, credito_id: ret ? exig.credito_id : null, observaciones: d.observaciones }).select('id,numero').single());
+      const r = await q(sb.from('acopio').insert({ id: nuevoId(), descuento_pct: l.desc, peso_pagable_lb: l.pag, sobreprecio_lb: d.precio_lb ? l.sobre : null, total: d.precio_lb ? l.total : null, neto_pagar: d.precio_lb ? r2(l.total - (exig ? ret : 0)) : null, org_id: S.org.id, productor_id: p.id, fecha: d.fecha, certificacion: d.certificacion || null, certificaciones: d.certs, estado_cafe: d.estado_cafe, peso_lb: r2(num(d.peso_lb)), humedad: d.humedad ? num(d.humedad) : null, impurezas: d.impurezas ? num(d.impurezas) : null, defectos: d.defectos ? num(d.defectos) : null, precio_lb: d.precio_lb ? num(d.precio_lb) : null, psec_lb: aPergaminoSeco(d.estado_cafe, d.peso_lb), producto: productoDe(d.estado_cafe), datos: { ...(corte && Object.keys(corte).length ? { corte } : {}), unidad: d.unidad || 'lb', peso_unidad: num(d0.peso), ...(d0.precio ? { precio_unidad: num(d0.precio) } : {}) }, lote: d.lote, bodega: d.bodega || null, bascula_id: d.bascula_id || null, retencion_credito: exig ? ret : 0, credito_id: ret ? exig.credito_id : null, observaciones: d.observaciones }).select('id,numero').single());
       if (r._local) aviso('Sin señal: la entrega quedó en el teléfono y se manda sola al volver la señal. El número oficial sale al mandarla.');
       else { aviso('Entrega registrada: ' + r.numero); archivarLuego(true); }
       location.hash = '#/recibo/' + r.id;
     } catch (e) { ocupado(f, false); aviso(falla(e), true); }
   };
 };
+// Imprime solo el recibo: en hoja carta o en impresora de tickets de 80 mm
+function imprimirRecibo(ticket) {
+  const st = document.createElement('style'); st.textContent = ticket ? '@page{size:80mm auto;margin:3mm}' : '@page{size:letter;margin:15mm}';
+  document.head.appendChild(st); document.body.classList.add('impRecibo'); if (ticket) document.body.classList.add('impTicket');
+  const fin = () => { document.body.classList.remove('impRecibo', 'impTicket'); st.remove(); window.removeEventListener('afterprint', fin); };
+  window.addEventListener('afterprint', fin); window.print(); setTimeout(fin, 60000);
+}
 RUTAS.recibo = async function verRecibo(id) {
   let a;
   try { a = await q(sb.from('acopio').select('*, productores(codigo,nombre,comunidad,telefono,identidad)').eq('id', id).single()); }
@@ -1221,10 +1245,13 @@ RUTAS.recibo = async function verRecibo(id) {
   const cr = a.credito_id ? (await sb.from('creditos').select('numero').eq('id', a.credito_id).maybeSingle().then(r => r, () => ({}))).data : null;
   const pr = a.productores || {}, fila = (k, v) => v === '' || v == null ? '' : `<tr><th style="text-align:left;width:45%">${k}</th><td>${v}</td></tr>`;
   const ps2 = num(a.psec_lb), certTxt = (a.certificaciones || []).map(nombreCert).join(', ') || 'Convencional';
+  const un = UNIDADES[a.datos?.unidad] ? a.datos.unidad : 'lb', fu = UNIDADES[un][2], ab = UNIDADES[un][1];
+  const pesoTxt = lb => un === 'lb' ? `${num(lb).toLocaleString('es-HN')} lb` : `${nUni(lb, un)} ${ab} (${num(lb).toLocaleString('es-HN', { maximumFractionDigits: 2 })} lb)`;
+  const precioU = a.precio_lb != null ? (a.datos?.precio_unidad ?? r2(num(a.precio_lb) * fu * 10000) / 10000) : null;
   const prodA = a.producto || productoDe(a.estado_cafe), deQue = prodA === 'Cacao' ? 'cacao' : 'café', corte = a.datos?.corte;
   const corteTxt = corte ? CORTE.filter(([k]) => corte[k] != null).map(([k, n]) => `${n.split(' (')[0].toLowerCase()} ${corte[k]} %`).join(', ') : '';
-  const texto = [`*${S.org.nombre}*`, `Recibo de ${deQue} ${a.numero} · ${a.fecha}`, `${pr.codigo || ''} ${pr.nombre || ''}`, `${a.estado_cafe}: ${num(a.peso_lb).toLocaleString('es-HN')} lb${a.humedad != null ? ' · humedad ' + a.humedad + ' %' : ''}`,
-    corteTxt ? `Prueba de corte: ${corteTxt}` : '', num(a.descuento_pct) ? `Descuento por calidad: ${a.descuento_pct} % · peso pagable ${num(a.peso_pagable_lb).toLocaleString('es-HN')} lb` : '', `Certificación: ${certTxt}`,
+  const texto = [`*${S.org.nombre}*`, `Recibo de ${deQue} ${a.numero} · ${a.fecha}`, `${pr.codigo || ''} ${pr.nombre || ''}`, `${a.estado_cafe}: ${pesoTxt(a.peso_lb)}${a.humedad != null ? ' · humedad ' + a.humedad + ' %' : ''}`, precioU != null ? `Precio: L ${num(precioU).toLocaleString('es-HN', { minimumFractionDigits: 2 })} por ${{ lb: 'libra', qq: 'quintal', kg: 'kilogramo' }[un]}` : '',
+    corteTxt ? `Prueba de corte: ${corteTxt}` : '', num(a.descuento_pct) ? `Descuento por calidad: ${a.descuento_pct} % · peso pagable ${pesoTxt(a.peso_pagable_lb)}` : '', `Certificación: ${certTxt}`,
     a.total != null ? `Total: ${L(a.total)}` : '', num(a.retencion_credito) ? `Abono al crédito ${cr?.numero || ''}: ${L(a.retencion_credito)}` : '', a.neto_pagar != null ? `*Neto a pagar: ${L(a.neto_pagar)}*` : '', a.lote ? `Lote: ${a.lote}` : ''].filter(Boolean).join('\n');
   const tel = String(pr.telefono || '').replace(/\D/g, ''), wa = 'https://wa.me/' + (tel ? (tel.length === 8 ? '504' + tel : tel) : '') + '?text=' + encodeURIComponent(texto);
   app().innerHTML = cabecera('Recibo de ' + deQue, '#/acopios') + revisionHTML('acopio', a) + `<div class="caja" id="recibo" style="max-width:560px">
@@ -1233,17 +1260,18 @@ RUTAS.recibo = async function verRecibo(id) {
     <div class="tabla"><table><tbody>
       ${fila('Fecha', esc(a.fecha))}${fila('Productor', `${esc(pr.codigo || '')} ${esc(pr.nombre || '')}`)}${fila('Comunidad', esc(pr.comunidad || ''))}${fila('Identidad', esc(pr.identidad || ''))}
       ${fila('Bodega', esc(a.bodega || ''))}${fila(prodA, esc(a.estado_cafe))}${fila('Certificación', esc(certTxt))}${fila('Lote', esc(a.lote || ''))}
-      ${fila('Peso neto', num(a.peso_lb).toLocaleString('es-HN') + ' lb')}${fila('Humedad', a.humedad != null ? a.humedad + ' %' : '')}${fila('Impurezas', a.impurezas != null ? a.impurezas + ' %' : '')}${fila('Defectos', a.defectos != null ? a.defectos + ' %' : '')}${corteTxt ? fila('Prueba de corte', esc(corteTxt)) : ''}
-      ${num(a.descuento_pct) ? fila('Descuento por calidad', a.descuento_pct + ' %') + fila('Peso pagable', num(a.peso_pagable_lb).toLocaleString('es-HN') + ' lb') : ''}
+      ${fila('Peso neto', pesoTxt(a.peso_lb))}${fila('Humedad', a.humedad != null ? a.humedad + ' %' : '')}${fila('Impurezas', a.impurezas != null ? a.impurezas + ' %' : '')}${fila('Defectos', a.defectos != null ? a.defectos + ' %' : '')}${corteTxt ? fila('Prueba de corte', esc(corteTxt)) : ''}
+      ${num(a.descuento_pct) ? fila('Descuento por calidad', a.descuento_pct + ' %') + fila('Peso pagable', pesoTxt(a.peso_pagable_lb)) : ''}
       ${fila('Equivale en ' + secoTxt(prodA), `${ps2.toLocaleString('es-HN')} lb (${(ps2 / 100).toFixed(2)} qq)`)}
-      ${a.precio_lb != null ? fila('Precio por libra', 'L ' + num(a.precio_lb).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 4 })) : ''}${num(a.sobreprecio_lb) ? fila('Sobreprecio por libra', 'L ' + num(a.sobreprecio_lb).toFixed(2)) : ''}
+      ${precioU != null ? fila('Precio por ' + { lb: 'libra', qq: 'quintal', kg: 'kilogramo' }[un], 'L ' + num(precioU).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 4 })) : ''}${num(a.sobreprecio_lb) ? fila('Sobreprecio por ' + { lb: 'libra', qq: 'quintal', kg: 'kilogramo' }[un], 'L ' + (num(a.sobreprecio_lb) * fu).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : ''}
       ${a.total != null ? fila('Total', `<b>${L(a.total)}</b>`) : ''}${num(a.retencion_credito) ? fila('Abono al crédito ' + esc(cr?.numero || ''), '− ' + L(a.retencion_credito)) : ''}
       ${a.neto_pagar != null ? fila('Neto a pagar', `<b style="font-size:1.15em">${L(a.neto_pagar)}</b>`) : ''}${fila('Pago', esc(a.estado_pago || 'Pendiente') + (a.pagado_fecha ? ' el ' + esc(a.pagado_fecha) : ''))}
     </tbody></table></div>
     ${a.observaciones ? `<p class="nota">${esc(a.observaciones)}</p>` : ''}
     <div style="display:flex;justify-content:space-between;gap:24px;margin-top:48px"><div style="flex:1;border-top:1px solid #333;text-align:center;padding-top:4px">Recibió</div><div style="flex:1;border-top:1px solid #333;text-align:center;padding-top:4px">Productor</div></div>
-  </div><div class="acciones"><button id="imp">Imprimir</button><a class="boton sec" target="_blank" rel="noopener" href="${esc(wa)}">Mandar por WhatsApp</a>${esJefe() && a.estado_pago !== 'Pagado' && !a._local ? '<button class="sec" id="pagar">Marcar como pagado</button>' : ''}<a class="boton sec" href="#/acopio">Registrar otra entrega</a></div>`;
-  $('#imp').onclick = () => window.print();
+  </div><div class="acciones"><button id="imp">Imprimir (carta)</button><button class="sec" id="impT">Imprimir ticket (80 mm)</button><a class="boton sec" target="_blank" rel="noopener" href="${esc(wa)}">Mandar por WhatsApp</a>${esJefe() && a.estado_pago !== 'Pagado' && !a._local ? '<button class="sec" id="pagar">Marcar como pagado</button>' : ''}<a class="boton sec" href="#/acopio">Registrar otra entrega</a></div>`;
+  $('#imp').onclick = () => imprimirRecibo(false); $('#impT').onclick = () => imprimirRecibo(true);
+  if (location.hash.endsWith('/imprimir')) setTimeout(() => imprimirRecibo(false), 300);
   const pg = $('#pagar'); if (pg) pg.onclick = async () => { if (!confirm(`¿Se le pagó ${a.neto_pagar != null ? L(a.neto_pagar) : 'la entrega'} a ${pr.nombre}?`)) return; try { await q(sb.from('acopio').update({ estado_pago: 'Pagado', pagado_fecha: hoy() }).eq('id', id)); aviso('Pago registrado.'); RUTAS.recibo(id); } catch (e) { aviso(falla(e), true); } };
   conectarRevision('acopio', id);
 };
@@ -1253,7 +1281,7 @@ RUTAS.acopios = async function verAcopios(mes) {
   const s = k => filas.reduce((t, x) => t + num(x[k]), 0);
   app().innerHTML = cabecera('Acopio') + `<div class="filtros"><input type="month" id="mes" value="${mes}"><a class="boton" href="#/acopio">+ Registrar entrega</a><a class="boton sec" href="#/carga/acopio">Subir entregas anteriores desde Excel</a></div>
   <div class="tabla"><table><thead><tr><th>Número</th><th>Fecha</th><th>Productor</th><th>Producto</th><th class="n">Peso (lb)</th><th class="n">Humedad</th><th class="n">${mayus(secoTxt())} (lb)</th><th>Certificación</th><th class="n">Total</th><th class="n">Neto a pagar</th><th>Pago</th></tr></thead><tbody>
-  ${filas.map(x => `<tr><td><a href="#/recibo/${x.id}">${esc(x.numero)}</a></td><td>${esc(x.fecha)}</td><td>${esc(x.productores?.nombre)}</td><td>${esc(x.estado_cafe)}</td><td class="n">${num(x.peso_lb).toLocaleString('es-HN')}</td><td class="n">${x.humedad ?? ''}</td><td class="n">${num(x.psec_lb).toLocaleString('es-HN')}</td><td>${esc(nombreCert(x.certificacion))}${x.lote ? `<br><a class="nota" href="#/lote/${encodeURIComponent(x.lote)}">Lote ${esc(x.lote)}</a>` : ''}</td><td class="n">${x.total ? L(x.total) : ''}</td><td class="n">${x.neto_pagar != null ? L(x.neto_pagar) : ''}${num(x.retencion_credito) ? `<br><span class="nota">crédito ${L(x.retencion_credito)}</span>` : ''}</td><td>${esc(x.estado_pago || '')}</td></tr>`).join('') || '<tr><td colspan="11" class="nota">Sin entregas en este mes.</td></tr>'}
+  ${filas.map(x => `<tr><td><a href="#/recibo/${x.id}">${esc(x.numero)}</a> <a class="nota" href="#/recibo/${x.id}/imprimir" title="Imprimir recibo">🖨</a></td><td>${esc(x.fecha)}</td><td>${esc(x.productores?.nombre)}</td><td>${esc(x.estado_cafe)}</td><td class="n">${num(x.peso_lb).toLocaleString('es-HN')}</td><td class="n">${x.humedad ?? ''}</td><td class="n">${num(x.psec_lb).toLocaleString('es-HN')}</td><td>${esc((x.certificaciones?.length ? x.certificaciones : [x.certificacion]).filter(Boolean).map(nombreCert).join(', ') || 'Convencional')}${x.lote ? `<br><a class="nota" href="#/lote/${encodeURIComponent(x.lote)}">Lote ${esc(x.lote)}</a>` : ''}</td><td class="n">${x.total ? L(x.total) : ''}</td><td class="n">${x.neto_pagar != null ? L(x.neto_pagar) : ''}${num(x.retencion_credito) ? `<br><span class="nota">crédito ${L(x.retencion_credito)}</span>` : ''}</td><td>${esc(x.estado_pago || '')}</td></tr>`).join('') || '<tr><td colspan="11" class="nota">Sin entregas en este mes.</td></tr>'}
   </tbody>${filas.length ? `<tfoot><tr><th colspan="6">Total del mes</th><th class="n">${s('psec_lb').toLocaleString('es-HN')} lb (${(s('psec_lb') / 100).toFixed(2)} qq)</th><th></th><th class="n">${L(s('total'))}</th><th class="n">${L(s('neto_pagar'))}</th><th></th></tr></tfoot>` : ''}</table></div>`;
   $('#mes').onchange = e => location.hash = '#/acopios/' + e.target.value;
 };
