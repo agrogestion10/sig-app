@@ -350,6 +350,7 @@ RUTAS.cre = async function menuCredito() {
     ${esJefe() ? tarjeta('#/recordatorios', 'Recordatorios de cuotas', 'Atrasados y cuotas por vencer, con WhatsApp') : ''}
     ${esJefe() ? tarjeta('#/reportescre', 'Reportes de cartera', 'PAR 30 y 90, provisión, programado contra recuperado') : ''}
     ${esJefe() ? tarjeta('#/fondos', 'Fondos de crédito', 'De dónde sale el dinero y cuánto queda') : ''}
+    ${esJefe() ? tarjeta('#/carga/cartera', 'Saldos iniciales de cartera', 'Pasar desde Excel los créditos que ya estaban dados') : ''}
     ${esAdmin() ? tarjeta('#/condiciones', 'Condiciones y comité', 'Tasa, plazo y montos por destino; quién aprueba') : ''}
     ${tarjeta('#/padron', 'Productores', 'Padrón de socios')}
     ${puedePanel('cre') ? tarjeta('#/pnl/cre', 'Panel de control', 'Cartera, mora y archivo de PDF') : ''}
@@ -796,7 +797,7 @@ RUTAS.cer = async function menuCert() {
     ${tarjeta('#/padron', 'Padrón de productores', 'Socios, parcelas y certificaciones')}
     ${tarjeta('#/prodf', 'Registrar productor', 'Socio nuevo')}
     ${tarjeta('#/parcela', 'Registrar parcela', 'Punto GPS y polígono (obligatorio desde 4 ha)')}
-    ${tarjeta('#/carga', 'Carga masiva desde Excel', 'Productores, parcelas, inspecciones, insumos y documentos de varios a la vez')}
+    ${tarjeta('#/carga', 'Carga masiva desde Excel', 'Productores, parcelas, polígonos, acopio anterior, inspecciones, insumos y documentos')}
   </div>
   <h2>Control interno</h2><div class="tarjetas">
     ${tarjeta('#/inspeccion', 'Inspección interna', 'Resultado anual y no conformidades')}
@@ -829,7 +830,7 @@ RUTAS.padron = async function verPadron() {
   const [ps, parc, cs] = await Promise.all([prods(true), q(sb.from('parcelas').select('productor_id,area_ha,poligono').eq('org_id', S.org.id)), certs()]);
   const ha = {}, np = {}, sinPol = {};
   parc.forEach(p => { ha[p.productor_id] = (ha[p.productor_id] || 0) + num(p.area_ha); np[p.productor_id] = (np[p.productor_id] || 0) + 1; if (num(p.area_ha) >= 4 && !p.poligono) sinPol[p.productor_id] = 1; });
-  app().innerHTML = cabecera('Padrón de productores') + `<div class="filtros"><input id="bus" placeholder="Buscar por nombre, código o comunidad"><select id="fc"><option value="">Todas las certificaciones</option>${cs.map(c => `<option value="${c.codigo}">${esc(c.nombre)}</option>`).join('')}</select><a class="boton" href="#/prodf">+ Nuevo productor</a><a class="boton sec" href="#/carga/productores">Subir varios desde Excel</a><a class="boton sec" href="#/carga/parcelas">Subir parcelas desde Excel</a><button class="sec" id="csv">Descargar CSV</button></div>
+  app().innerHTML = cabecera('Padrón de productores') + `<div class="filtros"><input id="bus" placeholder="Buscar por nombre, código o comunidad"><select id="fc"><option value="">Todas las certificaciones</option>${cs.map(c => `<option value="${c.codigo}">${esc(c.nombre)}</option>`).join('')}</select><a class="boton" href="#/prodf">+ Nuevo productor</a><a class="boton sec" href="#/carga/productores">Subir varios desde Excel</a><a class="boton sec" href="#/carga/parcelas">Subir parcelas desde Excel</a><a class="boton sec" href="#/carga/poligonos">Subir polígonos (KML o GeoJSON)</a><button class="sec" id="csv">Descargar CSV</button></div>
   <div class="tabla"><table><thead><tr><th>Código</th><th>Nombre</th><th>Comunidad</th><th class="n">Parcelas</th><th class="n">Hectáreas</th><th>Certificaciones</th><th>Inspección</th></tr></thead><tbody id="cuerpo"></tbody></table></div><p class="nota" id="tot"></p>`;
   const filtrar = () => { const t = norm($('#bus').value), c = $('#fc').value; return ps.filter(p => (!t || norm(p.nombre + p.codigo + p.comunidad).includes(t)) && (!c || p.certificaciones.includes(c))); };
   const pintar = () => {
@@ -1219,7 +1220,7 @@ RUTAS.acopios = async function verAcopios(mes) {
   mes = mes || hoy().slice(0, 7); await certs();
   const filas = await q(sb.from('acopio').select('*, productores(nombre)').eq('org_id', S.org.id).gte('fecha', mes + '-01').lt('fecha', sumarMeses(mes + '-01', 1)).order('fecha', { ascending: false }));
   const s = k => filas.reduce((t, x) => t + num(x[k]), 0);
-  app().innerHTML = cabecera('Acopio') + `<div class="filtros"><input type="month" id="mes" value="${mes}"><a class="boton" href="#/acopio">+ Registrar entrega</a></div>
+  app().innerHTML = cabecera('Acopio') + `<div class="filtros"><input type="month" id="mes" value="${mes}"><a class="boton" href="#/acopio">+ Registrar entrega</a><a class="boton sec" href="#/carga/acopio">Subir entregas anteriores desde Excel</a></div>
   <div class="tabla"><table><thead><tr><th>Número</th><th>Fecha</th><th>Productor</th><th>Producto</th><th class="n">Peso (lb)</th><th class="n">Humedad</th><th class="n">${mayus(secoTxt())} (lb)</th><th>Certificación</th><th class="n">Total</th><th class="n">Neto a pagar</th><th>Pago</th></tr></thead><tbody>
   ${filas.map(x => `<tr><td><a href="#/recibo/${x.id}">${esc(x.numero)}</a></td><td>${esc(x.fecha)}</td><td>${esc(x.productores?.nombre)}</td><td>${esc(x.estado_cafe)}</td><td class="n">${num(x.peso_lb).toLocaleString('es-HN')}</td><td class="n">${x.humedad ?? ''}</td><td class="n">${num(x.psec_lb).toLocaleString('es-HN')}</td><td>${esc(nombreCert(x.certificacion))}${x.lote ? `<br><a class="nota" href="#/lote/${encodeURIComponent(x.lote)}">Lote ${esc(x.lote)}</a>` : ''}</td><td class="n">${x.total ? L(x.total) : ''}</td><td class="n">${x.neto_pagar != null ? L(x.neto_pagar) : ''}${num(x.retencion_credito) ? `<br><span class="nota">crédito ${L(x.retencion_credito)}</span>` : ''}</td><td>${esc(x.estado_pago || '')}</td></tr>`).join('') || '<tr><td colspan="11" class="nota">Sin entregas en este mes.</td></tr>'}
   </tbody>${filas.length ? `<tfoot><tr><th colspan="6">Total del mes</th><th class="n">${s('psec_lb').toLocaleString('es-HN')} lb (${(s('psec_lb') / 100).toFixed(2)} qq)</th><th></th><th class="n">${L(s('total'))}</th><th class="n">${L(s('neto_pagar'))}</th><th></th></tr></tfoot>` : ''}</table></div>`;

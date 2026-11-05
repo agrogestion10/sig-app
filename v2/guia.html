@@ -4,6 +4,12 @@
 
 <section id="novedades" data-para="todos">
 <h2>Novedades</h2>
+<h3>5 de noviembre de 2026 · Acopio anterior, cartera inicial y polígonos</h3>
+<ul>
+<li><b>Acopio histórico</b>: las entregas que ya se recibieron se suben desde Excel (Acopio › «Subir entregas anteriores desde Excel»), con las mismas reglas de certificación y sin descontar crédito.</li>
+<li><b>Saldos iniciales de la cartera</b>: los créditos que ya estaban dados entran como desembolsados por lo que deben, con el plan de las cuotas que faltan (Crédito › «Saldos iniciales de cartera»).</li>
+<li><b>Polígonos de varias parcelas a la vez</b> desde el KML o GeoJSON del GPS (Padrón › «Subir polígonos»), con mapa y área calculada.</li>
+</ul>
 <h3>5 de noviembre de 2026 · Carga masiva desde Excel</h3>
 <ul>
 <li><b>Subir varios de un solo</b>: productores, parcelas, inspecciones ya hechas, insumos aplicados, documentos de productores, listas de asistencia, proveedores y empleados. Cada uno tiene su plantilla de Excel para descargar.</li>
@@ -160,7 +166,11 @@
 <li><b>Insumos</b>: se revisan contra las listas de Configuración. Un producto prohibido abre la no conformidad igual que al registrarlo uno por uno.</li>
 <li><b>Asistencia</b>: se sube desde la capacitación (Asistencia por productor › la capacitación › «Subir la lista desde Excel»). Los que ya están se saltan.</li>
 <li><b>Proveedores</b> (se reconocen por RTN) y <b>empleados</b> (por identidad, solo gerencia).</li>
+<li><b>Acopio histórico</b>: entregas que ya se recibieron, con producto, peso, humedad, precio pagado, certificación y el número de recibo anterior. Cada entrega pasa por las mismas reglas de certificación de la recepción (si el productor no podía entregar como certificado, entra como convencional y queda anotado). No descuenta nada del crédito. Las que ya están (mismo productor, fecha, peso y recibo) se saltan. Reciben número nuevo del sistema y el recibo anterior queda anotado.</li>
+<li><b>Saldos iniciales de la cartera</b> (solo gerencia): por cada crédito que ya estaba dado se pone el saldo de capital, la tasa, la forma de pago, los meses que faltan y la fecha de la próxima cuota. Entra como desembolsado por ese saldo, con un plan nuevo de las cuotas que faltan; el monto original, el número anterior y la fecha del desembolso quedan en el comentario. No pasa por el comité porque ya estaba aprobado.</li>
 </ul>
+<h3>Polígonos desde el GPS</h3>
+<p>En el padrón, «Subir polígonos (KML o GeoJSON)» recibe el archivo del GPS, de Google Earth, de QGIS o de la aplicación de levantamiento (si es KMZ, guardalo antes como KML en Google Earth). Cada polígono tiene que traer el código de socio en su nombre o en un campo; si el productor tiene varias parcelas, también el nombre de la parcela. El sistema adivina qué campo trae cada cosa y se puede cambiar. Muestra los polígonos en el mapa, calcula el área y avisa si es muy distinta a la registrada. Si la parcela no tiene punto GPS, le pone el centro del polígono. Los polígonos de parcelas que no existen se pueden crear como parcela nueva.</p>
 <p>Lo que se sube pasa por la aprobación igual que lo demás, si alguien aprueba ese tipo de registro. Para subir se necesita señal.</p>
 </section>
 

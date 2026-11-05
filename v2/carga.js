@@ -262,6 +262,107 @@ const TIPOS_CARGA = {
     async guardar(listos) { await insertarEnBloques('capacitacion_asistentes', listos.map(r => ({ ...r.d, org_id: S.org.id }))); }
   },
 
+  acopio: {
+    sec: 'cer', titulo: 'Acopio histórico (entregas anteriores)', volver: '#/acopios',
+    nota: 'Para pasar al sistema las entregas que ya se recibieron (por ejemplo, de Aspel o de los cuadernos de acopio). No se descuenta nada del crédito. Cada entrega pasa por las mismas reglas de certificación que en la recepción: si el productor no puede entregar como certificado, entra como convencional y queda anotado. Las entregas que ya estén (mismo productor, fecha, peso y recibo) se saltan.',
+    cols: () => [
+      { k: 'productor', t: 'Productor', req: 1, tipo: 'prod', ayuda: 'Código de socio (o identidad)', ej: 'PRD-0101' },
+      { k: 'fecha', t: 'Fecha de la entrega', req: 1, tipo: 'fecha', ej: '12/01/2026' },
+      { k: 'estado_cafe', t: 'Producto', req: 1, tipo: 'lista', ops: cultivos().flatMap(c => ESTADOS[c]), ej: ESTADOS[cultivos()[0]][0] },
+      { k: 'peso_lb', t: 'Peso (lb)', req: 1, tipo: 'num', ej: '450' },
+      { k: 'humedad', t: 'Humedad (%)', tipo: 'num', ej: '12' },
+      { k: 'impurezas', t: 'Impurezas (%)', tipo: 'num', ej: '' },
+      { k: 'precio_lb', t: 'Precio pagado por libra (L)', tipo: 'num', ayuda: 'Con el sobreprecio incluido. Vacío si no se sabe', ej: '55' },
+      { k: 'certificacion', t: 'Certificación', tipo: 'certs', ayuda: 'Una o varias, separadas por coma. Vacío = convencional', ej: 'Orgánico UE' },
+      { k: 'lote', t: 'Lote', ej: '' },
+      { k: 'bodega', t: 'Bodega', ej: '' },
+      { k: 'recibo', t: 'Número de recibo anterior', ayuda: 'El del sistema o cuaderno de donde viene', ej: 'R-00123' },
+      { k: 'pagado', t: 'Ya se pagó', tipo: 'lista', ops: ['Sí', 'No'], ayuda: 'Vacío = Sí', ej: 'Sí' },
+      { k: 'observaciones', t: 'Observaciones', ej: '' }
+    ],
+    async preparar(filas, cols) {
+      const [ps, cs] = await Promise.all([q(sb.from('productores').select('id,codigo,identidad,nombre,certificaciones,estado_cert,cultivo').eq('org_id', S.org.id)), certs()]);
+      const buscar = buscadorProd(ps), fs = filas.map(f => leerFecha(f.v.fecha)).filter(Boolean).sort();
+      const ya = fs.length ? await q(sb.from('acopio').select('productor_id,fecha,peso_lb,datos').eq('org_id', S.org.id).gte('fecha', fs[0]).lte('fecha', fs[fs.length - 1]).limit(50000)) : [];
+      const clave = (p, f, w, r) => [p, f, Number(w).toFixed(2), norm(r || '')].join('|'), hay = new Set(ya.map(x => clave(x.productor_id, x.fecha, x.peso_lb, x.datos?.recibo_anterior))), vistos = {};
+      return filas.map(f => {
+        const r = { d: {}, err: [], av: [], accion: 'Nuevo' }, v = f.v, b = buscar(v.productor);
+        if (b.err) r.err.push(b.err); else r.d.productor_id = b.p.id;
+        fechas(r, v, cols); listas(r, v, cols); numeros(r, v, cols, ['peso_lb', 'humedad', 'impurezas', 'precio_lb']);
+        if (!r.d.fecha) r.err.push('Falta la fecha'); else if (r.d.fecha > hoy()) r.err.push('La fecha es futura');
+        if (!r.d.estado_cafe) r.err.push('Falta el producto');
+        if (!(r.d.peso_lb > 0)) r.err.push('Falta el peso');
+        if (r.d.humedad != null && (r.d.humedad < 0 || r.d.humedad > 80)) r.err.push('Humedad fuera de rango');
+        if (b.p && r.d.estado_cafe && cultivoProd(b.p) !== (/cacao/i.test(r.d.estado_cafe) ? 'Cacao' : 'Café')) r.err.push(`El productor es de ${cultivoProd(b.p).toLowerCase()} y la entrega dice ${r.d.estado_cafe.toLowerCase()}`);
+        const c = leerCerts(v.certificacion, cs); if (c.malas.length) r.err.push('Certificación no encontrada: ' + c.malas.join(', '));
+        if (b.p) { const no = c.ok.filter(x => !(b.p.certificaciones || []).includes(x)); if (no.length) r.av.push('El productor no tiene ' + no.map(nombreCert).join(', ') + ': entra sin esa certificación'); if (c.ok.length && b.p.estado_cert === 'No aprobado') r.av.push('No aprobó la inspección: entra como convencional'); }
+        const pagado = r.d.pagado !== 'No'; delete r.d.pagado;
+        const rec = texto(v.recibo);
+        Object.assign(r.d, { certificaciones: c.ok, certificacion: c.ok[0] || null, lote: texto(v.lote) || null, bodega: texto(v.bodega) || null, retencion_credito: 0, sobreprecio_lb: r.d.precio_lb != null ? 0 : null,
+          estado_pago: pagado ? 'Pagado' : 'Pendiente', pagado_fecha: pagado ? r.d.fecha || null : null,
+          observaciones: [texto(v.observaciones), 'Entrega anterior cargada desde Excel' + (rec ? ' (recibo ' + rec + ')' : '')].filter(Boolean).join(' · '),
+          datos: { origen: 'Carga masiva', recibo_anterior: rec || null } });
+        if (r.d.estado_cafe && r.d.peso_lb) r.d.psec_lb = aPergaminoSeco(r.d.estado_cafe, r.d.peso_lb);
+        const k = clave(r.d.productor_id, r.d.fecha, r.d.peso_lb || 0, rec);
+        if (!r.err.length && hay.has(k)) { r.accion = 'Ya está'; r.salta = 1; }
+        else if (vistos[k]) r.err.push(`Repetida en la fila ${vistos[k]}`); else vistos[k] = f.n;
+        r.ver = [b.p ? `${b.p.codigo || ''} ${b.p.nombre}` : texto(v.productor), r.d.fecha, r.d.peso_lb ? `${r.d.peso_lb} lb ${r.d.estado_cafe || ''}` : ''];
+        return r;
+      });
+    },
+    async guardar(listos) { await insertarEnBloques('acopio', listos.map(r => ({ ...r.d, id: nuevoId(), org_id: S.org.id }))); }
+  },
+
+  cartera: {
+    sec: 'cre', titulo: 'Saldos iniciales de la cartera de crédito', volver: '#/cartera', soloJefe: true,
+    nota: 'Para pasar los créditos que ya están dados y todavía deben. Cada uno entra como desembolsado por el saldo de capital que queda, con un plan nuevo de las cuotas que faltan desde la próxima cuota. El monto original, el número anterior y la fecha del desembolso quedan anotados. No pasa por el comité porque ya estaba aprobado. Los que ya se cargaron (mismo productor y número anterior) se saltan.',
+    cols: () => [
+      { k: 'productor', t: 'Productor', req: 1, tipo: 'prod', ayuda: 'Código de socio (o identidad)', ej: 'PRD-0101' },
+      { k: 'anterior', t: 'Número del crédito anterior', ayuda: 'El del sistema o libro de donde viene', ej: 'C-2024-015' },
+      { k: 'destino', t: 'Destino', ej: 'Mantenimiento de finca' },
+      { k: 'monto_original', t: 'Monto original (L)', tipo: 'num', ej: '30000' },
+      { k: 'fecha_original', t: 'Fecha del desembolso original', tipo: 'fecha', ej: '15/03/2025' },
+      { k: 'saldo', t: 'Saldo de capital que debe (L)', req: 1, tipo: 'num', ej: '18500' },
+      { k: 'tasa', t: 'Tasa de interés anual (%)', req: 1, tipo: 'num', ej: '18' },
+      { k: 'frecuencia', t: 'Forma de pago', tipo: 'lista', ops: Object.keys(MESES_FREC), ayuda: 'Vacío = Mensual', ej: 'Mensual' },
+      { k: 'meses', t: 'Meses que faltan', req: 1, tipo: 'num', ayuda: 'Desde la próxima cuota hasta la última', ej: '12' },
+      { k: 'primera', t: 'Fecha de la próxima cuota', req: 1, tipo: 'fecha', ej: '30/11/2026' },
+      { k: 'fecha_corte', t: 'Fecha del saldo', tipo: 'fecha', ayuda: 'A qué fecha es el saldo. Vacío = hoy', ej: '' },
+      { k: 'fondo', t: 'Fondo', ayuda: 'Nombre del fondo de crédito, si se usa', ej: '' },
+      { k: 'garantia', t: 'Garantía', ej: 'Fiador' }
+    ],
+    async preparar(filas, cols) {
+      const [ps, fondos, ya] = await Promise.all([q(sb.from('productores').select('id,codigo,identidad,nombre').eq('org_id', S.org.id)), q(sb.from('fondos_credito').select('id,nombre').eq('org_id', S.org.id)).catch(() => []), q(sb.from('creditos').select('productor_id,evaluacion').eq('org_id', S.org.id).limit(20000))]);
+      const buscar = buscadorProd(ps), hay = new Set(ya.filter(x => x.evaluacion?.origen === 'Saldo inicial').map(x => x.productor_id + '|' + norm(x.evaluacion.numero_anterior || ''))), vistos = {};
+      return filas.map(f => {
+        const r = { d: {}, err: [], av: [], accion: 'Nuevo' }, v = f.v, b = buscar(v.productor), x = {};
+        if (b.err) r.err.push(b.err);
+        const t = { d: x, err: r.err }; fechas(t, v, cols); listas(t, v, cols); numeros(t, v, cols, ['monto_original', 'saldo', 'tasa', 'meses']);
+        if (!(x.saldo > 0)) r.err.push('El saldo debe ser mayor que cero');
+        if (x.tasa == null || x.tasa < 0 || x.tasa > 100) r.err.push('Falta la tasa o no es válida');
+        if (!(x.meses >= 1)) r.err.push('Faltan los meses que quedan'); else x.meses = Math.round(x.meses);
+        if (!x.primera) r.err.push('Falta la fecha de la próxima cuota');
+        if (x.monto_original && x.saldo > x.monto_original) r.av.push('El saldo es mayor que el monto original');
+        const corte = x.fecha_corte || hoy(); if (x.primera && x.primera < corte) r.av.push('La próxima cuota es anterior a la fecha del saldo: sale vencida');
+        let fondo = null; if (texto(v.fondo)) { fondo = fondos.find(z => norm(z.nombre) === norm(texto(v.fondo))); if (!fondo) r.err.push(`No existe el fondo «${texto(v.fondo)}»`); }
+        const ant = texto(v.anterior), k = (b.p?.id || '') + '|' + norm(ant);
+        if (b.p && hay.has(k)) { r.accion = 'Ya está'; r.salta = 1; } else if (b.p && vistos[k]) r.err.push(`Repetido en la fila ${vistos[k]}`); else vistos[k] = f.n;
+        if (!r.err.length) {
+          const frec = x.frecuencia || 'Mensual';
+          r.d = { productor_id: b.p.id, estado: 'Desembolsado', monto_solicitado: x.saldo, monto_aprobado: x.saldo, tasa_anual: x.tasa, plazo_meses: x.meses, frecuencia: frec,
+            destino: texto(v.destino) || 'Saldo inicial', garantia: texto(v.garantia) || null, fondo_id: fondo?.id || null, fecha_desembolso: corte, primera_cuota: x.primera,
+            plan: armarPlan(x.saldo, x.tasa, x.meses, frec, x.primera), resuelto: new Date().toISOString(), resuelto_por: 'Saldo inicial',
+            evaluacion: { origen: 'Saldo inicial', numero_anterior: ant || null, monto_original: x.monto_original ?? null, fecha_original: x.fecha_original || null, fecha_saldo: corte },
+            comentario: `Saldo inicial al ${corte}` + (ant ? ` del crédito ${ant}` : '') + (x.monto_original ? `, monto original ${L(x.monto_original)}` : '') + (x.fecha_original ? `, desembolsado el ${x.fecha_original}` : '') };
+          r.av.push(`${r.d.plan.length} cuota${r.d.plan.length > 1 ? 's' : ''} de ${L(r.d.plan[0].cuota)}`);
+        }
+        r.ver = [b.p ? `${b.p.codigo || ''} ${b.p.nombre}` : texto(v.productor), ant, x.saldo ? L(x.saldo) : ''];
+        return r;
+      });
+    },
+    async guardar(listos) { await insertarEnBloques('creditos', listos.map(r => ({ ...r.d, org_id: S.org.id }))); }
+  },
+
   proveedores: {
     sec: 'adm', titulo: 'Proveedores', volver: '#/proveedores',
     nota: 'Si el RTN ya existe, se actualizan los datos de ese proveedor con lo que venga lleno.',
@@ -376,12 +477,13 @@ async function leerArchivo(archivo, cols) {
 
 // ---------- pantalla ----------
 RUTAS.carga = async function cargaMasiva(tipo, capId) {
+  if (tipo === 'poligonos') return cargaPoligonos();
   const t = TIPOS_CARGA[tipo];
   if (!t) {
     const vis = Object.entries(TIPOS_CARGA).filter(([, x]) => puedeCarga(x) && !x.conCap);
     const grupo = (sec, nom) => { const l = vis.filter(([, x]) => x.sec === sec); return l.length ? `<h2>${nom}</h2><div class="tarjetas">${l.map(([k, x]) => tarjeta('#/carga/' + k, x.titulo, 'Plantilla de Excel y carga de varios a la vez')).join('')}</div>` : ''; };
     app().innerHTML = cabecera('Carga masiva desde Excel') + `<p class="nota">Bajá la plantilla, llenala en Excel (o pegá ahí lo que ya tengan) y subila. Antes de guardar, el sistema revisa cada fila y muestra lo que está mal.</p>
-      ${grupo('cer', 'Certificaciones')}${grupo('adm', 'Administración')}
+      ${grupo('cer', 'Certificaciones')}${puedeSec('cer') ? `<div class="tarjetas" style="margin-top:10px">${tarjeta('#/carga/poligonos', 'Polígonos de parcelas', 'Varios polígonos a la vez desde un KML o GeoJSON del GPS')}</div>` : ''}${grupo('cre', 'Crédito')}${grupo('adm', 'Administración')}
       <p class="nota">La lista de asistencia se sube desde cada capacitación, en Asistencia por productor.</p>` + (vis.length ? '' : '<div class="caja">No tenés acceso a ninguna carga masiva.</div>');
     return;
   }
@@ -433,3 +535,114 @@ function pintarRevision(t, rs, nombre, volver) {
   };
 }
 SECCION_DE.carga = '';
+
+// ---------- polígonos desde KML o GeoJSON ----------
+// Área en hectáreas de un anillo [lon, lat] sobre la esfera (mismo método que usan los GPS y QGIS para áreas chicas)
+function areaAnillo(c) {
+  const R = 6378137, rad = Math.PI / 180; let s = 0;
+  for (let i = 0; i < c.length - 1; i++) { const [x1, y1] = c[i], [x2, y2] = c[i + 1]; s += (x2 - x1) * rad * (2 + Math.sin(y1 * rad) + Math.sin(y2 * rad)); }
+  return Math.abs(s * R * R / 2) / 10000;
+}
+function areaGeo(g) {
+  const pol = p => areaAnillo(p[0]) - p.slice(1).reduce((t, h) => t + areaAnillo(h), 0);
+  return g.type === 'Polygon' ? pol(g.coordinates) : g.coordinates.reduce((t, p) => t + pol(p), 0);
+}
+function centroGeo(g) {
+  const pts = (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).flatMap(p => p[0].slice(0, -1));
+  return [pts.reduce((t, p) => t + p[0], 0) / pts.length, pts.reduce((t, p) => t + p[1], 0) / pts.length];
+}
+// Deja cada anillo cerrado, en 2D y con al menos 4 puntos
+function limpiarGeo(g) {
+  const anillo = a => { const r = a.map(p => [Number(p[0]), Number(p[1])]).filter(p => isFinite(p[0]) && isFinite(p[1])); if (r.length && (r[0][0] !== r[r.length - 1][0] || r[0][1] !== r[r.length - 1][1])) r.push([...r[0]]); return r; };
+  const pol = p => p.map(anillo).filter(a => a.length >= 4);
+  if (g.type === 'Polygon') { const p = pol(g.coordinates); return p.length ? { type: 'Polygon', coordinates: p } : null; }
+  if (g.type === 'MultiPolygon') { const m = g.coordinates.map(pol).filter(p => p.length); return m.length ? (m.length === 1 ? { type: 'Polygon', coordinates: m[0] } : { type: 'MultiPolygon', coordinates: m }) : null; }
+  return null;
+}
+function leerKML(txt) {
+  const doc = new DOMParser().parseFromString(txt, 'application/xml');
+  if (doc.querySelector('parsererror')) throw new Error('El archivo KML no se pudo leer.');
+  const coords = el => (el?.textContent || '').trim().split(/\s+/).map(t => t.split(',').map(Number)).filter(p => p.length >= 2);
+  return [...doc.getElementsByTagName('Placemark')].map(pm => {
+    const props = {}; const nm = pm.getElementsByTagName('name')[0]; if (nm) props.name = nm.textContent.trim();
+    const de = pm.getElementsByTagName('description')[0]; if (de) props.description = de.textContent.replace(/<[^>]+>/g, ' ').trim();
+    [...pm.getElementsByTagName('Data')].forEach(d => props[d.getAttribute('name')] = (d.getElementsByTagName('value')[0]?.textContent || '').trim());
+    [...pm.getElementsByTagName('SimpleData')].forEach(d => props[d.getAttribute('name')] = d.textContent.trim());
+    const polys = [...pm.getElementsByTagName('Polygon')].map(p => [coords(p.getElementsByTagName('outerBoundaryIs')[0]?.getElementsByTagName('coordinates')[0]), ...[...p.getElementsByTagName('innerBoundaryIs')].map(i => coords(i.getElementsByTagName('coordinates')[0]))]);
+    return { props, geom: polys.length === 1 ? { type: 'Polygon', coordinates: polys[0] } : polys.length ? { type: 'MultiPolygon', coordinates: polys } : null };
+  });
+}
+function leerGeoJSON(txt) {
+  let j; try { j = JSON.parse(txt); } catch (_) { throw new Error('El archivo GeoJSON no se pudo leer.'); }
+  const fs = j.type === 'FeatureCollection' ? j.features : j.type === 'Feature' ? [j] : [{ type: 'Feature', properties: {}, geometry: j }];
+  return fs.map(f => ({ props: f.properties || {}, geom: f.geometry }));
+}
+
+async function cargaPoligonos() {
+  app().innerHTML = cabecera('Carga masiva · Polígonos de parcelas', '#/padron') + `<div class="caja">
+    <p>Subí el archivo que sale del GPS, de Google Earth, de QGIS o de la aplicación con que levantan las parcelas: <b>KML</b> o <b>GeoJSON</b> (si es KMZ, abrilo en Google Earth y guardalo como KML). Cada polígono se pone en su parcela según el código del productor y el nombre de la parcela que traiga.</p>
+    <ul class="nota" style="margin:6px 0 10px 18px"><li>Si el productor tiene una sola parcela, basta con el código de socio.</li><li>Si tiene varias, el polígono tiene que traer también el nombre de la parcela, igual que en el sistema.</li><li>Se calcula el área de cada polígono y, si la parcela no tiene punto GPS, se le pone el centro del polígono.</li></ul>
+    <div class="acciones" style="justify-content:flex-start"><label class="boton" style="cursor:pointer">Subir archivo<input type="file" id="arch" accept=".kml,.geojson,.json" hidden></label></div>
+  </div><div id="rev"></div>`;
+  $('#arch').onchange = async ev => {
+    const a = ev.target.files[0]; ev.target.value = ''; if (!a) return;
+    const rev = $('#rev'); rev.innerHTML = '<p class="nota">Leyendo el archivo…</p>';
+    try {
+      if (/\.kmz$/i.test(a.name)) throw new Error('Es un KMZ: abrilo en Google Earth y guardalo como KML.');
+      const txt = await a.text(), feats = (/\.kml$/i.test(a.name) || /^\s*<\?xml|<kml/i.test(txt) ? leerKML(txt) : leerGeoJSON(txt)).filter(f => f.geom);
+      if (!feats.length) throw new Error('El archivo no trae polígonos.');
+      const [ps, pa] = await Promise.all([q(sb.from('productores').select('id,codigo,identidad,nombre').eq('org_id', S.org.id)), parcelasOrg(true)]);
+      const claves = [...new Set(feats.flatMap(f => Object.keys(f.props)))];
+      // Adivina qué campo trae el código: el que más coincide con códigos de socio
+      const codigos = new Set(ps.filter(p => p.codigo).map(p => norm(p.codigo)));
+      const puntaje = k => feats.filter(f => { const t = texto(f.props[k]); return codigos.has(norm(t)) || ps.some(p => p.codigo && new RegExp('(^|[^A-Za-z0-9])' + p.codigo.replace(/[-]/g, '\\-') + '([^A-Za-z0-9]|$)', 'i').test(t)); }).length;
+      const kCod = claves.slice().sort((x, y) => puntaje(y) - puntaje(x))[0] || 'name';
+      const kPar = claves.find(k => /parcel|lote|finca/i.test(k)) || '';
+      pintarPoligonos(feats, ps, pa, claves, kCod, kPar, a.name);
+    } catch (e) { rev.innerHTML = `<div class="caja error">${esc(falla(e))}</div>`; }
+  };
+}
+
+function pintarPoligonos(feats, ps, pa, claves, kCod, kPar, nombre) {
+  const opc = (sel, vacio) => (vacio ? `<option value="">${vacio}</option>` : '') + claves.map(k => `<option ${k === sel ? 'selected' : ''}>${esc(k)}</option>`).join('');
+  const conCodigo = ps.filter(p => p.codigo).sort((x, y) => y.codigo.length - x.codigo.length);
+  const rs = feats.map((f, i) => {
+    const r = { n: i + 1, err: [], av: [] }, tCod = texto(f.props[kCod]), tPar = kPar ? texto(f.props[kPar]) : '';
+    const g = limpiarGeo(f.geom); if (!g) { r.err.push('No es un polígono válido'); r.ver = [tCod, tPar, '']; return r; }
+    const [lon, lat] = centroGeo(g); if (lat < 12.9 || lat > 16.6 || lon > -82.9 || lon < -89.5) r.err.push('El polígono no cae en Honduras');
+    r.geo = g; r.ha = Math.round(areaGeo(g) * 100) / 100; r.lat = +lat.toFixed(7); r.lon = +lon.toFixed(7);
+    const p = conCodigo.find(p => norm(p.codigo) === norm(tCod)) || conCodigo.find(p => new RegExp('(^|[^A-Za-z0-9])' + p.codigo.replace(/[-]/g, '\\-') + '([^A-Za-z0-9]|$)', 'i').test(tCod));
+    if (!p) r.err.push(`No se encontró el código de socio en «${tCod || '(vacío)'}»`);
+    else {
+      r.p = p; const suyas = pa.filter(x => x.productor_id === p.id), resto = norm(tCod.replace(new RegExp(p.codigo.replace(/[-]/g, '\\-'), 'i'), ''));
+      const restoTxt = tCod.replace(new RegExp(p.codigo.replace(/[-]/g, '\\-'), 'i'), '').replace(/^[\s\-_·,:;|]+|[\s\-_·,:;|]+$/g, '').trim();
+      r.par = (tPar && suyas.find(x => norm(x.nombre) === norm(tPar))) || (!tPar && resto && suyas.find(x => norm(x.nombre) === resto || resto.includes(norm(x.nombre)))) || (!tPar && !resto && suyas.length === 1 ? suyas[0] : null);
+      if (!r.par) { if (r.nuevoNombre = tPar || restoTxt || (suyas.length ? '' : 'Parcela 1')) r.accion = 'Parcela nueva'; else r.err.push(suyas.length ? `${p.nombre} tiene ${suyas.length} parcelas: falta el nombre de la parcela (${suyas.map(x => x.nombre).join(', ')})` : 'Falta el nombre de la parcela'); }
+      else { r.accion = r.par.poligono ? 'Cambia el polígono' : 'Pone el polígono'; const reg = num(r.par.area_ha); if (reg && Math.abs(r.ha - reg) / reg > 0.2) r.av.push(`Área registrada ${reg} ha, el polígono mide ${r.ha} ha`); }
+    }
+    r.ver = [p ? `${p.codigo} ${p.nombre}` : tCod, r.par?.nombre || r.nuevoNombre || tPar, r.ha != null ? r.ha + ' ha' : ''];
+    return r;
+  });
+  const malas = rs.filter(r => r.err.length), listos = rs.filter(r => !r.err.length);
+  const dobles = {}; listos.forEach(r => { if (r.par) (dobles[r.par.id] ||= []).push(r); }); Object.values(dobles).filter(l => l.length > 1).forEach(l => l.forEach(r => r.err.push('Hay otro polígono para la misma parcela')));
+  const ok = rs.filter(r => !r.err.length), nuevas = ok.filter(r => !r.par).length;
+  $('#rev').innerHTML = `<div class="caja"><p><b>${esc(nombre)}</b>: ${rs.length} polígonos · <span class="estado e-Autorizada">${ok.length} listos</span> ${nuevas ? `(${nuevas} como parcela nueva)` : ''} ${rs.length - ok.length ? `<span class="estado e-Rechazada">${rs.length - ok.length} con errores</span>` : ''}</p>
+    <div class="rejilla"><div><label>Campo con el código de socio</label><select id="kCod">${opc(kCod)}</select></div><div><label>Campo con el nombre de la parcela</label><select id="kPar">${opc(kPar, '(no trae, o viene junto al código)')}</select></div>
+    <div><label>Polígonos sin parcela</label><select id="crear"><option value="si">Crear la parcela con el área del polígono</option><option value="no">No subirlos</option></select></div></div>
+    <div class="acciones" style="justify-content:flex-start">${ok.length ? `<button id="guardar">Guardar ${ok.length} polígono${ok.length > 1 ? 's' : ''}</button>` : ''}</div></div>
+    <div id="mapaPol" style="height:340px;border-radius:12px;border:1px solid var(--borde);margin-bottom:10px"></div>
+    <div class="tabla"><table><thead><tr><th class="n">#</th><th>Qué pasa</th><th>Productor</th><th>Parcela</th><th class="n">Área</th><th>Revisión</th></tr></thead><tbody>
+    ${[...rs.filter(r => r.err.length), ...rs.filter(r => !r.err.length)].slice(0, 500).map(r => `<tr><td class="n">${r.n}</td><td>${r.err.length ? '<span class="error">No se guarda</span>' : esc(r.accion)}</td>${r.ver.map(x => `<td>${esc(x)}</td>`).join('')}<td>${r.err.length ? `<span class="error">${esc(r.err.join(' · '))}</span>` : r.av.length ? `<span style="color:#b45309">${esc(r.av.join(' · '))}</span>` : 'Bien'}</td></tr>`).join('')}</tbody></table></div>`;
+  dibujarMapa($('#mapaPol'), rs.filter(r => r.geo).map(r => ({ nombre: r.ver.slice(0, 2).join(' · '), poligono: r.geo })));
+  $('#kCod').onchange = $('#kPar').onchange = () => pintarPoligonos(feats, ps, pa, claves, $('#kCod').value, $('#kPar').value, nombre);
+  if ($('#guardar')) $('#guardar').onclick = async () => {
+    if (navigator.onLine === false) return aviso('Para la carga se necesita señal.', true);
+    const crear = $('#crear').value === 'si', subir = ok.filter(r => r.par || crear), b = $('#guardar'); b.disabled = true; b.textContent = 'Guardando…';
+    try {
+      await insertarEnBloques('parcelas', subir.filter(r => !r.par).map(r => ({ org_id: S.org.id, productor_id: r.p.id, nombre: r.nuevoNombre, area_ha: r.ha, lat: r.lat, lon: r.lon, poligono: r.geo, datos: { origen_poligono: 'Carga masiva' } })));
+      await actualizarUno('parcelas', subir.filter(r => r.par).map(r => ({ id: r.par.id, d: { poligono: r.geo, ...(r.par.lat ? {} : { lat: r.lat, lon: r.lon }), ...(num(r.par.area_ha) ? {} : { area_ha: r.ha }), datos: { ...(r.par.datos || {}), area_poligono_ha: r.ha, origen_poligono: 'Carga masiva' } } })));
+      S._parcs = null; aviso('Polígonos guardados.');
+      $('#rev').innerHTML = `<div class="caja"><p><b>Listo.</b> Se guardaron ${subir.length} polígonos.</p><div class="acciones" style="justify-content:flex-start"><a class="boton" href="#/padron">Ver el padrón</a><a class="boton sec" href="#/eudr">Ver EUDR</a></div></div>`;
+    } catch (e) { b.disabled = false; b.textContent = 'Guardar'; aviso('No se pudo terminar de guardar: ' + falla(e), true); }
+  };
+}
