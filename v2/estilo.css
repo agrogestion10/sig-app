@@ -146,3 +146,7 @@ section h2{margin:22px 0 10px}
 @media print{#barra,.guiaIndice,.volver,.ayudaSec{display:none!important}.guia{display:block}.guiaTexto section{break-inside:avoid;box-shadow:none}}
 fieldset{border:1px solid var(--borde);border-radius:10px;padding:10px 14px;margin:0}
 legend{font-weight:600;padding:0 6px}
+/* Aprobación */
+.revision{display:flex;flex-wrap:wrap;align-items:center;gap:6px;border-left:4px solid var(--ambar)}
+.revision .acciones{flex-basis:100%}
+@media print{.revision .acciones{display:none}}

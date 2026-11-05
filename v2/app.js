@@ -129,6 +129,7 @@ const GUIA_DE = { adm: 'adm', compra: 'adm', fondo: 'adm', liquidacion: 'adm', v
   cer: 'padron', padron: 'padron', prod: 'padron', prodf: 'padron', parcela: 'padron', inspeccion: 'insp', inspecciones: 'insp', insp: 'insp', nc: 'insp', insumos: 'insp', reg: 'insp',
   asistencia: 'capac', quejas: 'capac', queja: 'capac', acopio: 'acopio', acopios: 'acopio', recibo: 'acopio', inventario: 'acopio', basculas: 'acopio',
   despacho: 'venta', eudr: 'venta', lotes: 'venta', lote: 'venta', balance: 'venta', prima: 'prima', actas: 'prima', paquete: 'auditoria', kobo: 'kobo', bandeja: 'campo',
+  capacitacion: 'capac', capacitaciones: 'capac', cap: 'capac', guias: 'capac', aprobar: 'aprobacion', rev: 'aprobacion',
   panel: 'paneles', pnl: 'paneles', config: 'config', usuarios: 'config', catalogo: 'config', bitacora: 'config', orgs: 'config' };
 function cabecera(titulo, volver = S.seccion ? '#/' + S.seccion : '#/') {
   const g = GUIA_DE[location.hash.replace(/^#\/?/, '').split('/')[0]];
@@ -261,7 +262,7 @@ const RUTAS = {
 // A qué sección vuelve el botón «Volver» de cada pantalla ('' = portal)
 // Claves de Configuración que se escogen de una lista
 const CFG_OPC = { CULTIVO_ACOPIO: ['Café', 'Cacao', 'Café y cacao'] };
-const SECCION_DE = { '': '', adm: 'adm', config: '', usuarios: '', bitacora: '', orgs: '', guia: '' };
+const SECCION_DE = { '': '', adm: 'adm', config: '', usuarios: '', bitacora: '', orgs: '', guia: '', aprobar: '', rev: '' };
 ['compra', 'fondo', 'liquidacion', 'vacacion', 'factura', 'facturas', 'solicitudes', 'solicitud', 'proveedores', 'proveedor', 'empleados', 'empleado', 'presupuesto', 'laboral'].forEach(r => SECCION_DE[r] = 'adm');
 async function ruta() {
   if (!S.user) return pantallaAcceso();
@@ -777,18 +778,21 @@ async function funcionUsuarios(cuerpo) {
   return data;
 }
 const SECCIONES = { adm: 'Administración', cre: 'Crédito interno', cer: 'Certificaciones' };
+// Tipos de registro que pueden pedir aprobación (perfiles.aprueba)
+const TIPOS_REV = { productores: 'Padrón de productores', inspecciones: 'Inspecciones internas', no_conformidades: 'No conformidades', insumos_aplicados: 'Insumos aplicados', capacitaciones: 'Ayudas memoria de capacitación', acopio: 'Acopio', beneficiado: 'Beneficiado y secado', despachos: 'Despachos', prima_uso: 'Uso de la prima', quejas: 'Quejas' };
 const checksSec = (marcadas, attr, extra = '') => Object.entries(SECCIONES).map(([k, v]) => `<label style="font-weight:400;color:var(--texto);display:inline-flex;gap:5px;align-items:center;margin:0 10px 4px 0"><input type="checkbox" ${attr}="${k}" ${extra} style="width:auto" ${marcadas.includes(k) ? 'checked' : ''}>${v}</label>`).join('');
 async function verUsuarios() {
   const filas = await q(sb.from('perfiles').select('*').eq('org_id', S.org.id).order('nombre'));
   const yo = nombreQuien();
   app().innerHTML = cabecera('Usuarios de ' + S.org.nombre, '#/') + `
-  <p class="nota">El rol dice qué puede hacer (Personal registra; Gerencia además autoriza; Administrador además maneja usuarios, configuración y el Panel de control). Las secciones dicen a qué partes entra. «Ve el panel de» dice quién entra al panel de control de cada sección (además necesita la clave del panel). «Comité de crédito» marca a quienes votan los créditos.</p>
-  <div class="tabla"><table><thead><tr><th>Persona</th><th>Usuario</th><th>Rol</th><th>Secciones</th><th>Último acceso</th><th>Estado</th><th></th></tr></thead><tbody>
+  <p class="nota">El rol dice qué puede hacer (Personal registra; Gerencia además autoriza; Administrador además maneja usuarios, configuración y el Panel de control). Las secciones dicen a qué partes entra. «Ve el panel de» dice quién entra al panel de control de cada sección (además necesita la clave del panel). «Comité de crédito» marca a quienes votan los créditos. «Aprueba» dice qué registros revisa y aprueba cada persona: lo que llega de Kobo o se registra de ese tipo queda pendiente hasta que alguien lo apruebe, y al aprobarlo se guarda el PDF final. Si nadie aprueba un tipo, ese tipo no se detiene.</p>
+  <div class="tabla"><table><thead><tr><th>Persona</th><th>Usuario</th><th>Rol</th><th>Secciones</th><th>Aprueba</th><th>Último acceso</th><th>Estado</th><th></th></tr></thead><tbody>
   ${filas.map(u => `<tr><td><b>${esc(u.nombre)}</b>${u.cargo ? '<br><span class="nota">' + esc(u.cargo) + '</span>' : ''}${u.correo ? '<br><span class="nota">' + esc(u.correo) + '</span>' : ''}</td><td>${esc(u.usuario)}</td>
   <td><select data-rol="${u.id}" ${u.id === S.user.id ? 'disabled' : ''}>${Object.entries(ROLES).filter(([k]) => k !== 'maestro').map(([k, v]) => `<option value="${k}" ${k === u.rol ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
   <td style="min-width:170px">${u.rol === 'administrador' ? '<span class="nota">Todas</span><br>' : checksSec(u.secciones || [], 'data-sec', `data-u="${u.id}"`)}${u.rol === 'administrador' ? '' : `<br><span class="nota">Ve el panel de:</span><br>${checksSec(u.paneles || [], 'data-pnl', `data-u="${u.id}"`)}`}<label style="font-weight:400;color:var(--texto);display:inline-flex;gap:5px;align-items:center;margin:0"><input type="checkbox" data-comite="${u.id}" style="width:auto" ${u.comite_credito ? 'checked' : ''}>Comité de crédito</label></td>
+  <td style="min-width:190px">${Object.entries(TIPOS_REV).map(([k, v]) => `<label style="font-weight:400;color:var(--texto);display:flex;gap:5px;align-items:center;margin:0 0 3px"><input type="checkbox" data-apr="${k}" data-u="${u.id}" style="width:auto" ${(u.aprueba || []).includes(k) ? 'checked' : ''}>${v}</label>`).join('')}</td>
   <td>${fechaHora(u.ultimo_acceso) || 'Nunca'}</td><td>${u.activo ? 'Activo' : '<span class="error">Desactivado</span>'}</td>
-  <td style="white-space:nowrap"><button class="sec" data-datos="${u.id}">Datos</button> <button class="sec" data-clave="${u.id}">Clave</button> ${u.id !== S.user.id ? `<button class="sec" data-activo="${u.id}" data-v="${!u.activo}">${u.activo ? 'Desactivar' : 'Activar'}</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="nota">Todavía no hay usuarios.</td></tr>'}
+  <td style="white-space:nowrap"><button class="sec" data-datos="${u.id}">Datos</button> <button class="sec" data-clave="${u.id}">Clave</button> ${u.id !== S.user.id ? `<button class="sec" data-activo="${u.id}" data-v="${!u.activo}">${u.activo ? 'Desactivar' : 'Activar'}</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="8" class="nota">Todavía no hay usuarios.</td></tr>'}
   </tbody></table></div>
   <h2>Nuevo usuario</h2><form class="caja" id="f"><div class="rejilla">
     <div><label>Nombre completo</label><input name="nombre" required></div>
@@ -821,6 +825,11 @@ async function verUsuarios() {
   app().querySelectorAll('[data-pnl]').forEach(c => c.onchange = async () => {
     const id = c.dataset.u, paneles = [...app().querySelectorAll(`[data-pnl][data-u="${id}"]:checked`)].map(x => x.dataset.pnl);
     try { await q(sb.from('perfiles').update({ paneles }).eq('id', id)); await bit('Cambió paneles', c.closest('tr').cells[1].textContent + ' → ' + (paneles.map(s => SECCIONES[s]).join(', ') || 'ninguno')); aviso('Paneles actualizados.'); }
+    catch (e) { aviso(falla(e), true); verUsuarios(); }
+  });
+  app().querySelectorAll('[data-apr]').forEach(c => c.onchange = async () => {
+    const id = c.dataset.u, aprueba = [...app().querySelectorAll(`[data-apr][data-u="${id}"]:checked`)].map(x => x.dataset.apr);
+    try { await q(sb.from('perfiles').update({ aprueba }).eq('id', id)); await bit('Cambió lo que aprueba', c.closest('tr').cells[1].textContent + ' → ' + (aprueba.map(s => TIPOS_REV[s]).join(', ') || 'nada')); aviso('Listo. ' + (aprueba.length ? 'Lo nuevo de esos tipos le llegará para aprobar.' : 'Ya no aprueba nada.')); }
     catch (e) { aviso(falla(e), true); verUsuarios(); }
   });
   app().querySelectorAll('[data-comite]').forEach(c => c.onchange = async () => {

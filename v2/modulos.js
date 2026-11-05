@@ -145,6 +145,10 @@ RUTAS[''] = async function portal() {
   // Pendientes: cada uno por su lado, para que lo que falle no tape lo demás
   const pend = [], rojo = [], ponerSec = (s, txt, clase) => { const el = $('#e' + s); if (el && txt) { el.textContent = txt; el.className = 'estadoSec ' + (clase || ''); } };
   const tareas = [];
+  if (Object.keys(TIPOS_REV).some(apruebo)) tareas.push(q(sb.rpc('por_revisar', { o: S.org.id })).then(l => {
+    const p = l.filter(x => x.revision === 'Pendiente' && apruebo(x.tabla)); if (!p.length) return;
+    pend.push({ n: 1, sec: 'Aprobación', t: `${p.length} registro${p.length > 1 ? 's' : ''} por aprobar`, d: [...new Set(p.map(x => TIPOS_REV[x.tabla]))].join(' · '), h: '#/aprobar', a: 'Revisar', c: 'p-ambar' });
+  }));
   if (adm && jefe) tareas.push(q(sb.from('solicitudes').select('id,creado,tipo').eq('org_id', S.org.id).eq('estado', 'Pendiente').order('creado').limit(200)).then(l => {
     if (!l.length) return; const dias = diasEntre(l[0].creado.slice(0, 10), hoy());
     pend.push({ n: 2, sec: 'Administración', t: `${l.length} solicitud${l.length > 1 ? 'es' : ''} por autorizar`, d: dias ? `La más vieja es de hace ${dias} día${dias > 1 ? 's' : ''}` : 'De hoy', h: '#/solicitudes', a: 'Autorizar', c: dias > 3 ? 'p-rojo' : 'p-ambar' });
@@ -798,7 +802,8 @@ RUTAS.cer = async function menuCert() {
     ${tarjeta('#/inspecciones', 'Inspecciones', 'Historial')}
     ${tarjeta('#/nc', 'No conformidades', 'Seguimiento y cierre', nc)}
     ${tarjeta('#/insumos', 'Insumos aplicados', 'Qué se aplicó en cada parcela, revisado contra la lista')}
-    ${tarjeta('#/reg/capacitaciones', 'Capacitaciones', 'Temas, asistencia y acuerdos')}
+    ${tarjeta('#/capacitaciones', 'Capacitaciones', 'Ayudas memoria, asistencia y acuerdos')}
+    ${tarjeta('#/guias', 'Guías y plan de capacitaciones', 'Lo que pide cada certificación y cuándo toca')}
     ${tarjeta('#/asistencia', 'Asistencia por productor', 'Quién llegó a cada capacitación')}
     ${tarjeta('#/quejas', 'Quejas y reclamos', 'Buzón, también anónimo', qj)}
   </div>
@@ -873,7 +878,7 @@ RUTAS.prod = async function verProductor(id) {
   ]);
   await certs();
   const haTot = parc.reduce((t, x) => t + num(x.area_ha), 0);
-  app().innerHTML = cabecera(p.nombre, '#/padron') + `<div class="caja"><dl class="detalle" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:0 14px">
+  app().innerHTML = cabecera(p.nombre, '#/padron') + revisionHTML('productores', p) + `<div class="caja"><dl class="detalle" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:0 14px">
     <div><dt>Código</dt><dd>${esc(p.codigo || '—')}</dd></div><div><dt>Identidad</dt><dd>${esc(p.identidad || '—')}</dd></div><div><dt>Teléfono</dt><dd>${esc(p.telefono || '—')}</dd></div>
     <div><dt>Ubicación</dt><dd>${esc([p.comunidad, p.municipio, p.departamento].filter(Boolean).join(', ') || '—')}</dd></div><div><dt>Ingreso</dt><dd>${esc(p.fecha_ingreso || '—')}</dd></div>
     <div><dt>Certificaciones</dt><dd>${p.certificaciones.map(nombreCert).map(esc).join(', ') || '—'}</dd></div><div><dt>Última inspección</dt><dd>${esc(p.estado_cert || 'Sin inspección')}</dd></div>
@@ -947,6 +952,7 @@ RUTAS.parcela = async function formParcela(id, prodId) {
     try { if (nuevo) await q(sb.from('parcelas').insert({ ...reg, org_id: S.org.id })); else await q(sb.from('parcelas').update(reg).eq('id', id)); aviso('Parcela guardada.'); location.hash = '#/prod/' + pr.id; }
     catch (e) { ocupado(f, false); aviso(falla(e), true); }
   };
+  conectarRevision('productores', id);
 };
 
 RUTAS.inspeccion = async function formInspeccion(prodId) {
@@ -1030,7 +1036,7 @@ RUTAS.insp = async function verInspeccion(id) {
   const RESP = { si: 'Sí', no: 'No', na: 'No aplica' };
   const chequeo = Object.entries(d).filter(([k, v]) => /^[a-e]\d+$/.test(k) && v !== '' && v != null).sort(([a], [b]) => a[0] === b[0] ? +a.slice(1) - +b.slice(1) : a < b ? -1 : 1);
   const malas = chequeo.filter(([, v]) => v === 'no');
-  app().innerHTML = cabecera('Inspección interna') + `<div class="caja"><p><b>${esc(i.productores?.codigo || '')} ${esc(i.productores?.nombre || '')}</b> · ${esc(i.productores?.comunidad || '')}</p>
+  app().innerHTML = cabecera('Inspección interna') + revisionHTML('inspecciones', i) + `<div class="caja"><p><b>${esc(i.productores?.codigo || '')} ${esc(i.productores?.nombre || '')}</b> · ${esc(i.productores?.comunidad || '')}</p>
     <p>${esc(i.fecha)} · Inspector: ${esc(i.inspector || '')} · Resultado: <b>${esc(i.resultado || '')}</b>${i.recomendacion ? ' (' + esc(i.recomendacion) + ')' : ''}</p>
     <p>Certificaciones: ${(i.certificaciones || []).map(nombreCert).map(esc).join(', ') || '—'}</p>${i.observaciones ? `<p>${esc(i.observaciones)}</p>` : ''}
     ${(d.alertas || []).length ? `<p class="nota" style="color:#92400e">${d.alertas.map(esc).join('<br>')}</p>` : ''}
@@ -1039,6 +1045,7 @@ RUTAS.insp = async function verInspeccion(id) {
   <h2>Insumos anotados (${ins.length})</h2>${ins.length ? `<div class="tabla"><table><thead><tr><th>Fecha</th><th>Parcela</th><th>Producto</th><th>Tipo</th><th class="n">Cantidad</th><th>Comprobante</th><th>Revisión</th></tr></thead><tbody>${ins.map(x => `<tr><td>${esc(x.fecha)}</td><td>${esc(x.parcela_nombre || 'Toda la finca')}</td><td>${esc(x.producto)}</td><td>${esc(x.tipo || '')}</td><td class="n">${x.cantidad ? num(x.cantidad).toLocaleString('es-HN') + ' ' + esc(x.unidad || '') : ''}</td><td>${esc(x.comprobante || '')}</td><td>${chipInsumo(x.estado)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="nota">No se anotaron insumos en esta inspección.</p>'}
   ${hist.length ? `<h2>Historial de parcelas corregido</h2><ul>${hist.map(h => `<li>${esc(h.parcela || h.hist_parcela || '')}: ${h.nunca || h.hist_cuando === 'nunca' ? 'nunca se aplicó un prohibido' : 'último prohibido ' + esc(h.ultima_prohibida || h.hist_fecha || '')}</li>`).join('')}</ul>` : ''}
   ${chequeo.length ? `<h2>Lista de chequeo (Kobo)</h2><p>${chequeo.length} preguntas contestadas · ${malas.length} con «No»${malas.length ? ': ' + malas.map(([k]) => k.toUpperCase()).join(', ') : ''}.</p>` : ''}`;
+  conectarRevision('inspecciones', id);
 };
 
 RUTAS.inspecciones = async function verInspecciones() {
@@ -1187,7 +1194,7 @@ RUTAS.recibo = async function verRecibo(id) {
     corteTxt ? `Prueba de corte: ${corteTxt}` : '', num(a.descuento_pct) ? `Descuento por calidad: ${a.descuento_pct} % · peso pagable ${num(a.peso_pagable_lb).toLocaleString('es-HN')} lb` : '', `Certificación: ${certTxt}`,
     a.total != null ? `Total: ${L(a.total)}` : '', num(a.retencion_credito) ? `Abono al crédito ${cr?.numero || ''}: ${L(a.retencion_credito)}` : '', a.neto_pagar != null ? `*Neto a pagar: ${L(a.neto_pagar)}*` : '', a.lote ? `Lote: ${a.lote}` : ''].filter(Boolean).join('\n');
   const tel = String(pr.telefono || '').replace(/\D/g, ''), wa = 'https://wa.me/' + (tel ? (tel.length === 8 ? '504' + tel : tel) : '') + '?text=' + encodeURIComponent(texto);
-  app().innerHTML = cabecera('Recibo de ' + deQue, '#/acopios') + `<div class="caja" id="recibo" style="max-width:560px">
+  app().innerHTML = cabecera('Recibo de ' + deQue, '#/acopios') + revisionHTML('acopio', a) + `<div class="caja" id="recibo" style="max-width:560px">
     <p style="text-align:center;margin:0"><b>${esc(S.org.nombre)}</b><br>Recibo de entrega de ${deQue}</p>
     <p style="text-align:center;font-size:1.2em;margin:6px 0"><b>${esc(a.numero)}</b></p>${a._local ? '<p class="nota" style="text-align:center">Registrado sin señal. Está en la bandeja del teléfono; el número oficial sale cuando se mande.</p>' : ''}
     <div class="tabla"><table><tbody>
@@ -1205,6 +1212,7 @@ RUTAS.recibo = async function verRecibo(id) {
   </div><div class="acciones"><button id="imp">Imprimir</button><a class="boton sec" target="_blank" rel="noopener" href="${esc(wa)}">Mandar por WhatsApp</a>${esJefe() && a.estado_pago !== 'Pagado' && !a._local ? '<button class="sec" id="pagar">Marcar como pagado</button>' : ''}<a class="boton sec" href="#/acopio">Registrar otra entrega</a></div>`;
   $('#imp').onclick = () => window.print();
   const pg = $('#pagar'); if (pg) pg.onclick = async () => { if (!confirm(`¿Se le pagó ${a.neto_pagar != null ? L(a.neto_pagar) : 'la entrega'} a ${pr.nombre}?`)) return; try { await q(sb.from('acopio').update({ estado_pago: 'Pagado', pagado_fecha: hoy() }).eq('id', id)); aviso('Pago registrado.'); RUTAS.recibo(id); } catch (e) { aviso(falla(e), true); } };
+  conectarRevision('acopio', id);
 };
 RUTAS.acopios = async function verAcopios(mes) {
   mes = mes || hoy().slice(0, 7); await certs();
@@ -1764,7 +1772,7 @@ async function datosPanelCer() {
     ${datoP('Prima disponible', usd(primaRec - primaUso), 'Generada ' + usd(primaRec) + ' · usada ' + usd(primaUso), '#/prima')}
     ${datoP('No conformidades abiertas', nc, '', '#/nc')}
     ${datoP('Quejas sin cerrar', qj, '', '#/quejas')}
-    ${datoP('Capacitaciones ' + anio, cap.length, (sumaP(cap, 'hombres') + sumaP(cap, 'mujeres')) + ' participantes (' + sumaP(cap, 'mujeres') + ' mujeres)', '#/reg/capacitaciones')}
+    ${datoP('Capacitaciones ' + anio, cap.length, (sumaP(cap, 'hombres') + sumaP(cap, 'mujeres')) + ' participantes (' + sumaP(cap, 'mujeres') + ' mujeres)', '#/capacitaciones')}
   </div>
   <h2>Balance por certificación (${anio})</h2><div class="tabla"><table><thead><tr><th>Certificación</th><th class="n">Comprado</th><th class="n">Vendido</th><th class="n">Disponible</th></tr></thead><tbody>${porCert.map(x => `<tr><td>${esc(x.c.nombre)}</td><td class="n">${qq(x.comprado)}</td><td class="n">${qq(x.vendido)}</td><td class="n ${x.comprado - x.vendido < 0 ? 'error' : ''}">${qq(x.comprado - x.vendido)}</td></tr>`).join('') || '<tr><td colspan="4" class="nota">Sin acopio ni ventas este año.</td></tr>'}</tbody></table></div>`;
 }
@@ -2035,3 +2043,203 @@ RUTAS.lote = async function verLote(codigo) {
   <h2>3. Despacho y venta</h2><div class="tabla"><table><thead><tr><th>Despacho</th><th>Fecha</th><th>Comprador</th><th>Contrato</th><th>Certificación</th><th>EUDR</th></tr></thead><tbody>
   ${des.map(x => `<tr><td>${esc(x.numero)}</td><td>${esc(x.fecha)}</td><td>${esc(x.comprador)}</td><td>${esc(x.contrato || '')}</td><td>${esc(nombreCert(x.certificacion))}</td><td><a href="#/eudr/${x.id}">${x.dds_numero ? 'Declarado: ' + esc(x.dds_numero) : 'Revisar'}</a></td></tr>`).join('') || '<tr><td colspan="6" class="nota">Este lote todavía no sale.</td></tr>'}</tbody></table></div>`;
 };
+
+// =====================================================================
+// APROBACIÓN DE REGISTROS (quién aprueba qué se marca en Usuarios › Aprueba)
+// =====================================================================
+const apruebo = t => S.maestro || (S.perfil?.aprueba || []).includes(t);
+const RUTA_REG = { productores: id => '#/prod/' + id, inspecciones: id => '#/insp/' + id, acopio: id => '#/recibo/' + id, capacitaciones: id => '#/cap/' + id, quejas: id => '#/queja/' + id };
+const rutaReg = (t, id) => (RUTA_REG[t] || (x => `#/rev/${t}/${x}`))(id);
+async function verPdfRegistro(t, id) {
+  const v = window.open('', '_blank');
+  try { const d = await fnArchivo({ accion: 'pdf_registro', tabla: t, id }); if (v) v.location = d.url; else location.href = d.url; }
+  catch (e) { if (v) v.close(); aviso(falla(e), true); }
+}
+// Recuadro con el estado de revisión de un registro y sus botones
+function revisionHTML(t, r) {
+  if (!r || !r.revision) return '';
+  const c = { Pendiente: 'p-ambar', Aprobado: 'p-verde', Devuelto: 'p-rojo' }[r.revision] || 'p-gris';
+  const txt = r.revision === 'Pendiente' ? 'Pendiente de revisión' : r.revision === 'Aprobado' ? `Aprobado por ${esc(r.revisado_por || '')} el ${fechaHora(r.revisado_fecha)}` : `Devuelto por ${esc(r.revisado_por || '')}: ${esc(r.revision_obs || '')}`;
+  const bot = [r.revision === 'Pendiente' && apruebo(t) ? `<button data-rv="Aprobado">Aprobar</button><button class="sec" data-rv="Devuelto">Devolver para corregir</button>` : '',
+    r.revision === 'Devuelto' ? `<button class="sec" data-rv="reenviar">Ya se corrigió: volver a enviar</button>` : '',
+    esJefe() || apruebo(t) ? `<button class="sec" data-rv="pdf">Ver PDF</button>` : ''].join('');
+  return `<div class="caja revision" id="revBox"><span class="punto ${c}"></span><b>${txt}</b>${bot ? `<div class="acciones" style="margin-top:8px">${bot}</div>` : ''}</div>`;
+}
+function conectarRevision(t, id, recargar) {
+  app().querySelectorAll('#revBox [data-rv]').forEach(b => b.onclick = async () => {
+    const d = b.dataset.rv;
+    if (d === 'pdf') return verPdfRegistro(t, id);
+    try {
+      if (d === 'reenviar') { await q(sb.rpc('reenviar_revision', { t, r: id })); aviso('Se mandó otra vez a revisión.'); }
+      else {
+        const obs = d === 'Devuelto' ? prompt('¿Qué hay que corregir? Lo va a ver quien lo registró.') : null;
+        if (d === 'Devuelto' && !obs) return;
+        if (d === 'Aprobado' && !confirm('¿Aprobar este registro? Se guarda el PDF final con tu nombre.')) return;
+        await q(sb.rpc('revisar', { t, r: id, decision: d, obs }));
+        aviso(d === 'Aprobado' ? 'Aprobado. El PDF final se está guardando en el Archivo.' : 'Devuelto con tus observaciones.'); archivarLuego(true);
+      }
+      recargar ? recargar() : ruta();
+    } catch (e) { aviso(falla(e), true); }
+  });
+}
+RUTAS.aprobar = async function porAprobar() {
+  const filas = await q(sb.rpc('por_revisar', { o: S.org.id }));
+  const pend = filas.filter(x => x.revision === 'Pendiente'), dev = filas.filter(x => x.revision === 'Devuelto');
+  const grupos = Object.keys(TIPOS_REV).filter(t => pend.some(x => x.tabla === t));
+  const fila = x => `<tr data-t="${x.tabla}" data-id="${x.registro_id}"><td>${fechaHora(x.creado)}</td><td><a href="${rutaReg(x.tabla, x.registro_id)}">${esc(x.resumen || 'Ver')}</a></td>
+    <td style="white-space:nowrap">${x.revision === 'Pendiente' ? `<button class="sec" data-a="pdf">PDF</button> <button data-a="Aprobado">Aprobar</button> <button class="sec" data-a="Devuelto">Devolver</button>` : `<button class="sec" data-a="reenviar">Volver a enviar</button>`}</td></tr>`;
+  app().innerHTML = cabecera('Por aprobar', '#/') + `<p class="nota">Lo que llegó de Kobo o se registró y te toca revisar. Abrí cada registro para verlo completo, o mirá su PDF. Al aprobarlo queda tu nombre y se guarda el PDF final en el Archivo. Si algo está mal, devolvelo con lo que hay que corregir.</p>
+  ${pend.length ? grupos.map(t => `<h2>${esc(TIPOS_REV[t])} <span class="nota">(${pend.filter(x => x.tabla === t).length})</span></h2><div class="tabla"><table><thead><tr><th>Llegó</th><th>Registro</th><th></th></tr></thead><tbody>${pend.filter(x => x.tabla === t).map(fila).join('')}</tbody></table></div>`).join('')
+    : `<div class="caja">${(S.perfil?.aprueba || []).length || S.maestro ? 'No hay nada pendiente de aprobar. Todo al día.' : 'No tenés tipos de registro para aprobar. El administrador los asigna en Usuarios › Aprueba.'}</div>`}
+  ${dev.length ? `<h2>Devueltos para corregir <span class="nota">(${dev.length})</span></h2><div class="tabla"><table><thead><tr><th>Llegó</th><th>Registro</th><th></th></tr></thead><tbody>${dev.map(x => fila({ ...x, resumen: `${TIPOS_REV[x.tabla]} · ${x.resumen}` })).join('')}</tbody></table></div>` : ''}`;
+  app().querySelectorAll('[data-a]').forEach(b => b.onclick = async () => {
+    const tr = b.closest('tr'), t = tr.dataset.t, id = tr.dataset.id, a = b.dataset.a;
+    if (a === 'pdf') return verPdfRegistro(t, id);
+    try {
+      if (a === 'reenviar') await q(sb.rpc('reenviar_revision', { t, r: id }));
+      else {
+        const obs = a === 'Devuelto' ? prompt('¿Qué hay que corregir?') : null;
+        if (a === 'Devuelto' && !obs) return;
+        await q(sb.rpc('revisar', { t, r: id, decision: a, obs }));
+      }
+      aviso(a === 'Aprobado' ? 'Aprobado.' : a === 'Devuelto' ? 'Devuelto.' : 'Enviado otra vez.'); archivarLuego(true); RUTAS.aprobar();
+    } catch (e) { aviso(falla(e), true); }
+  });
+};
+// Vista sencilla de cualquier registro que se revisa
+RUTAS.rev = async function verRegistro(t, id) {
+  if (!TIPOS_REV[t]) return RUTAS[''](); 
+  const r = await q(sb.from(t).select('*').eq('id', id).single());
+  const pr = r.productor_id ? (await prods()).find(p => p.id === r.productor_id) : null;
+  const omit = new Set(['id', 'org_id', 'productor_id', 'revision', 'revisado_por', 'revisado_fecha', 'revision_obs', 'revision_historial', 'kobo_uid', 'credito_id', 'inspeccion_id', 'parcela_id', 'bascula_id', 'acta_id']);
+  const val = v => v == null || v === '' ? '' : Array.isArray(v) ? (v.every(x => typeof x !== 'object') ? v.join(', ') : `${v.length} filas`) : typeof v === 'object' ? Object.entries(v).filter(([k, x]) => x != null && x !== '' && typeof x !== 'object').map(([k, x]) => `${k.replace(/_/g, ' ')}: ${x}`).join(' · ') : typeof v === 'boolean' ? (v ? 'Sí' : 'No') : String(v);
+  const pares = Object.entries(r).filter(([k, v]) => !omit.has(k) && val(v) !== '');
+  app().innerHTML = cabecera(TIPOS_REV[t], '#/aprobar') + revisionHTML(t, r) + `<div class="caja"><dl class="detalle">${pr ? `<dt>Productor</dt><dd><a href="#/prod/${pr.id}">${esc(pr.codigo || '')} ${esc(pr.nombre)}</a></dd>` : ''}${pares.map(([k, v]) => `<dt>${esc(k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, ' '))}</dt><dd>${esc(val(v))}</dd>`).join('')}</dl></div>
+  ${(r.revision_historial || []).length ? `<h2>Historial de revisión</h2><div class="tabla"><table><thead><tr><th>Fecha</th><th>Quién</th><th>Decisión</th><th>Observaciones</th></tr></thead><tbody>${r.revision_historial.map(h => `<tr><td>${fechaHora(h.fecha)}</td><td>${esc(h.por || '')}</td><td>${esc(h.decision || '')}</td><td>${esc(h.obs || '')}</td></tr>`).join('')}</tbody></table></div>` : ''}`;
+  conectarRevision(t, id, () => RUTAS.rev(t, id));
+};
+
+// =====================================================================
+// CAPACITACIONES: guías (catálogo), ayuda memoria y cumplimiento por certificación
+// =====================================================================
+const PUBLICO_CAP = { productores: 'Productores', empleados: 'Empleados', junta: 'Junta directiva' };
+const NORMA_CAP = { org_ue: 'Orgánico UE', usda: 'Orgánico USDA-NOP', bio_suisse: 'Bio Suisse', fairtrade: 'Comercio Justo (Fairtrade)', eudr: 'EUDR' };
+async function guiasCap(todas) {
+  if (!S._guias || S._guias.org !== S.org.id) S._guias = { org: S.org.id, lista: await q(sb.from('catalogo_capacitaciones').select('*').eq('org_id', S.org.id).order('orden')) };
+  return todas ? S._guias.lista : S._guias.lista.filter(g => g.activa);
+}
+const aniosFrecuencia = f => /tres/i.test(f || '') ? 3 : /dos/i.test(f || '') ? 2 : 1;
+function estadoGuia(g, caps) {
+  const dadas = caps.filter(c => c.codigo === g.codigo).sort((a, b) => a.fecha < b.fecha ? 1 : -1), ult = dadas[0]?.fecha;
+  if (!ult) return { ult: '', prox: '', txt: 'Nunca se ha dado', c: 'p-rojo', n: 0, dadas };
+  const d = new Date(ult + 'T12:00:00'); d.setFullYear(d.getFullYear() + aniosFrecuencia(g.frecuencia)); const prox = d.toISOString().slice(0, 10), dias = diasEntre(hoy(), prox);
+  return { ult, prox, txt: dias < 0 ? 'Vencida' : dias <= 60 ? 'Toca pronto' : 'Al día', c: dias < 0 ? 'p-rojo' : dias <= 60 ? 'p-ambar' : 'p-verde', n: dadas.length, dadas };
+}
+RUTAS.guias = async function verGuias(codigo) {
+  const vista = codigo === 'norma' ? 'norma' : 'publico'; if (codigo === 'norma') codigo = null;
+  const [gs, caps] = await Promise.all([guiasCap(true), q(sb.from('capacitaciones').select('id,codigo,fecha,lugar,sector,hombres,mujeres,jovenes,revision').eq('org_id', S.org.id).not('codigo', 'is', null).order('fecha', { ascending: false }).limit(5000))]);
+  if (codigo) {
+    const g = gs.find(x => x.codigo === codigo); if (!g) return RUTAS.guias();
+    const e = estadoGuia(g, caps), li = a => a?.length ? `<ol>${a.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : '<p class="nota">—</p>';
+    app().innerHTML = cabecera(`${g.codigo} · ${g.titulo}`, '#/guias') + `<div class="acciones"><a class="boton" href="#/capacitacion/${g.codigo}">Registrar ayuda memoria</a>${esAdmin() ? `<button class="sec" id="act">${g.activa ? 'Quitar de la lista' : 'Volver a usar'}</button>` : ''}</div>
+    <div class="caja"><dl class="detalle"><dt>Público</dt><dd>${esc(g.publico_txt || PUBLICO_CAP[g.publico])}</dd><dt>Normas que la exigen</dt><dd>${esc(g.normas_txt || '')}</dd><dt>Requisito de referencia</dt><dd>${esc(g.requisito || '')}</dd>
+    <dt>Frecuencia</dt><dd>${esc(g.frecuencia || '')}</dd><dt>Duración</dt><dd>${esc(g.duracion || '')}</dd><dt>Facilitador sugerido</dt><dd>${esc(g.facilitador || '')}</dd><dt>Metodología</dt><dd>${esc(g.metodologia || '')}</dd>
+    <dt>Estado</dt><dd><span class="punto ${e.c}"></span>${e.txt}${e.ult ? ` · última vez ${esc(e.ult)} · toca de nuevo ${esc(e.prox)}` : ''}</dd></dl></div>
+    <h2>Objetivo</h2><div class="caja">${esc(g.objetivo || '')}</div>
+    <h2>Contenidos que se deben desarrollar</h2><div class="caja">${li(g.contenidos)}</div>
+    <h2>Materiales</h2><div class="caja">${li(g.materiales)}</div>
+    <h2>Evaluación de lo aprendido</h2><div class="caja">${li(g.evaluacion)}</div>
+    <h2>Evidencias que se deben dejar</h2><div class="caja">${li(g.evidencias)}</div>
+    <h2>Veces que se ha dado <span class="nota">(${e.n})</span></h2><div class="tabla"><table><thead><tr><th>Fecha</th><th>Lugar</th><th class="n">Participantes</th><th>Revisión</th></tr></thead><tbody>${e.dadas.map(c => `<tr><td><a href="#/cap/${c.id}">${esc(c.fecha)}</a></td><td>${esc([c.sector, c.lugar].filter(Boolean).join(' · '))}</td><td class="n">${(c.hombres || 0) + (c.mujeres || 0)}</td><td>${esc(c.revision || '')}</td></tr>`).join('') || '<tr><td colspan="4" class="nota">Todavía no se ha dado.</td></tr>'}</tbody></table></div>`;
+    const b = $('#act'); if (b) b.onclick = async () => { try { await q(sb.from('catalogo_capacitaciones').update({ activa: !g.activa }).eq('id', g.id)); S._guias = null; aviso('Listo.'); RUTAS.guias(codigo); } catch (er) { aviso(falla(er), true); } };
+    return;
+  }
+  const act = gs.filter(g => g.activa), est = Object.fromEntries(act.map(g => [g.codigo, estadoGuia(g, caps)]));
+  const filaG = g => { const e = est[g.codigo]; return `<tr><td><a href="#/guias/${g.codigo}"><b>${esc(g.codigo)}</b> ${esc(g.titulo)}</a></td><td>${esc(g.frecuencia || '')}</td><td>${esc(e.ult)}</td><td><span class="punto ${e.c}"></span>${e.txt}${e.prox && e.txt !== 'Al día' ? ' · ' + esc(e.prox) : ''}</td></tr>`; };
+  const tabla = l => `<div class="tabla"><table><thead><tr><th>Guía</th><th>Frecuencia</th><th>Última vez</th><th>Estado</th></tr></thead><tbody>${l.map(filaG).join('') || '<tr><td colspan="4" class="nota">Ninguna.</td></tr>'}</tbody></table></div>`;
+  const normasUsadas = Object.keys(NORMA_CAP).filter(n => act.some(g => (g.normas || []).includes(n)));
+  const resumen = n => { const l = act.filter(g => (g.normas || []).includes(n)), ok = l.filter(g => est[g.codigo].txt === 'Al día').length; return `<div class="caja"><span class="nota">${esc(NORMA_CAP[n])}</span><b>${ok} de ${l.length}</b><span class="nota">guías al día</span></div>`; };
+  const v = vista;
+  app().innerHTML = cabecera('Guías y plan de capacitaciones') + `<p class="nota">Las capacitaciones que exige cada certificación, cuándo se dio cada una por última vez y cuándo toca otra vez según su frecuencia. Al registrar la ayuda memoria con el código de la guía, este cuadro se actualiza solo.</p>
+  <div class="numeros">${normasUsadas.map(resumen).join('')}</div>
+  <div class="filtros"><a class="boton ${v === 'publico' ? '' : 'sec'}" href="#/guias">Por público</a><a class="boton ${v === 'norma' ? '' : 'sec'}" href="#/guias/norma">Por certificación</a><a class="boton sec" href="#/capacitacion">+ Registrar ayuda memoria</a></div>
+  ${v === 'norma' ? normasUsadas.map(n => `<h2>${esc(NORMA_CAP[n])}</h2>${tabla(act.filter(g => (g.normas || []).includes(n)))}`).join('')
+    : Object.entries(PUBLICO_CAP).map(([k, t]) => `<h2>${t}</h2>${tabla(act.filter(g => g.publico === k))}`).join('')}
+  ${gs.some(g => !g.activa) ? `<p class="nota">Guías quitadas de la lista: ${gs.filter(g => !g.activa).map(g => `<a href="#/guias/${g.codigo}">${esc(g.codigo)}</a>`).join(', ')}</p>` : ''}`;
+};
+RUTAS.capacitaciones = async function verCapacitaciones() {
+  const caps = await q(sb.from('capacitaciones').select('id,fecha,codigo,tema,publico,lugar,sector,hombres,mujeres,jovenes,revision').eq('org_id', S.org.id).order('fecha', { ascending: false }).limit(500));
+  app().innerHTML = cabecera('Capacitaciones') + `<div class="filtros"><a class="boton" href="#/capacitacion">+ Registrar ayuda memoria</a><a class="boton sec" href="#/guias">Guías y plan</a><a class="boton sec" href="#/asistencia">Asistencia por productor</a></div>
+  <p class="nota">Lo normal es llenar la ayuda memoria en Kobo el mismo día, con las fotos y la lista firmada. Aquí también se puede registrar o completar.</p>
+  <div class="tabla"><table><thead><tr><th>Fecha</th><th>Capacitación</th><th>Público</th><th>Lugar</th><th class="n">H</th><th class="n">M</th><th class="n">Jóvenes</th><th>Revisión</th></tr></thead><tbody>
+  ${caps.map(c => `<tr><td>${esc(c.fecha)}</td><td><a href="#/cap/${c.id}">${c.codigo ? '<b>' + esc(c.codigo) + '</b> ' : ''}${esc(c.tema)}</a></td><td>${esc(PUBLICO_CAP[c.publico] || c.publico || '')}</td><td>${esc([c.sector, c.lugar].filter(Boolean).join(' · '))}</td><td class="n">${c.hombres || 0}</td><td class="n">${c.mujeres || 0}</td><td class="n">${c.jovenes || 0}</td><td>${c.revision ? `<span class="punto ${{ Pendiente: 'p-ambar', Aprobado: 'p-verde', Devuelto: 'p-rojo' }[c.revision]}"></span>${esc(c.revision)}` : ''}</td></tr>`).join('') || '<tr><td colspan="8" class="nota">Todavía no hay capacitaciones.</td></tr>'}
+  </tbody></table></div>`;
+};
+RUTAS.cap = async function verAyudaMemoria(id) {
+  const c = await q(sb.from('capacitaciones').select('*').eq('id', id).single());
+  const g = c.codigo ? (await guiasCap(true)).find(x => x.codigo === c.codigo) : null, asis = c.datos?.asistentes || [];
+  const li = a => a?.length ? `<ol>${a.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : '<p class="nota">—</p>';
+  app().innerHTML = cabecera('Ayuda memoria de capacitación', '#/capacitaciones') + revisionHTML('capacitaciones', c) + `
+  <div class="caja"><h2 style="margin-top:0">${c.codigo ? esc(c.codigo) + ' · ' : ''}${esc(c.tema)}</h2><p class="nota">${esc(g?.normas_txt || (c.certificaciones || []).map(x => NORMA_CAP[x] || x).join(' · '))}</p>
+  <dl class="detalle"><dt>Público</dt><dd>${esc(PUBLICO_CAP[c.publico] || c.publico || '')}</dd><dt>Fecha</dt><dd>${esc(c.fecha)}</dd><dt>Horario</dt><dd>${esc([c.hora_inicio, c.hora_fin].filter(Boolean).join(' a '))}</dd>
+  <dt>Modalidad</dt><dd>${esc(c.modalidad || '')}</dd><dt>Sector y lugar</dt><dd>${esc([c.sector, c.lugar].filter(Boolean).join(' · '))}</dd><dt>Facilitador/a</dt><dd>${esc(c.facilitador || '')}</dd>
+  <dt>Institución que apoyó</dt><dd>${esc(c.institucion || '')}</dd><dt>Requisito</dt><dd>${esc(c.requisito || g?.requisito || '')}</dd><dt>Solicitada por</dt><dd>${esc(c.solicitada_por || '')}</dd><dt>Elaborada por</dt><dd>${esc(c.elaborada_por || '')}</dd></dl></div>
+  <h2>Objetivo</h2><div class="caja">${esc(c.objetivo || g?.objetivo || '')}</div>
+  <h2>Contenidos desarrollados</h2><div class="caja">${li(c.contenidos?.length ? c.contenidos : [c.datos?.contenido].filter(Boolean))}${g && c.contenidos?.length < g.contenidos.length ? `<p class="nota">Faltaron ${g.contenidos.length - c.contenidos.length} de los ${g.contenidos.length} contenidos de la guía.</p>` : ''}</div>
+  <h2>Resumen de lo discutido</h2><div class="caja">${esc(c.resumen || '—')}</div>
+  ${c.materiales?.length ? `<h2>Materiales utilizados</h2><div class="caja">${li(c.materiales)}</div>` : ''}
+  <h2>Participantes</h2><div class="numeros"><div class="caja"><span class="nota">Hombres</span><b>${c.hombres || 0}</b></div><div class="caja"><span class="nota">Mujeres</span><b>${c.mujeres || 0}</b></div><div class="caja"><span class="nota">Jóvenes</span><b>${c.jovenes || 0}</b></div><div class="caja"><span class="nota">Total</span><b>${asis.length || (c.hombres || 0) + (c.mujeres || 0)}</b></div></div>
+  <p><a href="#/asistencia/${c.id}">Ver o completar la lista de asistencia</a></p>
+  <h2>Evaluación de lo aprendido</h2><div class="caja">${c.evaluacion_aplicada ? `${c.respondieron_bien ?? 0} de ${c.evaluados ?? 0} respondieron bien${c.evaluacion_obs ? '. ' + esc(c.evaluacion_obs) : ''}` : c.evaluacion_aplicada === false ? 'No se aplicó evaluación.' : '—'}</div>
+  <h2>Acuerdos y compromisos</h2><div class="caja">${esc(c.acuerdos || '—')}</div>
+  ${(c.datos?.adjuntos || []).length ? `<p class="nota">Tiene ${c.datos.adjuntos.length} foto(s) de Kobo; salen en el PDF.</p>` : ''}
+  <div class="acciones"><button class="sec" id="pdfCap">Ver PDF</button></div>`;
+  conectarRevision('capacitaciones', id, () => RUTAS.cap(id));
+  $('#pdfCap').onclick = () => verPdfRegistro('capacitaciones', id);
+};
+RUTAS.capacitacion = async function formAyudaMemoria(codigo) {
+  const gs = await guiasCap();
+  app().innerHTML = cabecera('Registrar ayuda memoria', '#/capacitaciones') + `<form class="caja" id="f"><div class="rejilla">
+    <div class="ancho"><label>Capacitación (guía)</label><select name="codigo" id="gsel" required><option value="">Escoger…</option>${Object.entries(PUBLICO_CAP).map(([k, t]) => `<optgroup label="${t}">${gs.filter(g => g.publico === k).map(g => `<option value="${g.codigo}" ${g.codigo === codigo ? 'selected' : ''}>${esc(g.codigo)} · ${esc(g.titulo)}</option>`).join('')}</optgroup>`).join('')}<option value="otra">Otra capacitación (no está en las guías)</option></select></div>
+    <div class="ancho" id="ginfo"></div>
+    <div class="ancho" id="otraBox" hidden><label>Tema</label><input name="tema_otro"><label>Público</label><select name="publico">${Object.entries(PUBLICO_CAP).map(([k, t]) => `<option value="${k}">${t}</option>`).join('')}</select><label>Objetivo</label><input name="objetivo_otro"></div>
+    <div><label>Fecha</label><input type="date" name="fecha" required value="${hoy()}"></div>
+    <div><label>Modalidad</label><select name="modalidad">${opciones(['Día de campo / ECA', 'Taller', 'Reunión', 'Virtual', 'Gira de intercambio'])}</select></div>
+    <div><label>Hora de inicio</label><input type="time" name="hora_inicio" required></div><div><label>Hora de finalización</label><input type="time" name="hora_fin" required></div>
+    <div><label>Sector</label><input name="sector"></div><div><label>ECA o lugar</label><input name="lugar" required></div>
+    <div><label>Facilitador o facilitadora</label><input name="facilitador" required></div><div><label>Institución que apoyó</label><input name="institucion"></div>
+    <div><label>Solicitada por</label><input name="solicitada_por"></div><div><label>Elaborada por</label><input name="elaborada_por" required value="${esc(S.perfil?.nombre || '')}"></div>
+    <div class="ancho" id="contBox"></div>
+    <div class="ancho"><label>Resumen de lo discutido y puntos clave</label><textarea name="resumen" rows="4" required></textarea></div>
+    <div class="ancho" id="matBox"></div><div class="ancho"><label>Otros materiales (separados con coma)</label><input name="materiales_otro"></div>
+    <div><label>Hombres</label><input name="hombres" inputmode="numeric" value="0"></div><div><label>Mujeres</label><input name="mujeres" inputmode="numeric" value="0"></div><div><label>Jóvenes (menores de 30)</label><input name="jovenes" inputmode="numeric" value="0"></div>
+    <div><label>¿Se aplicó la evaluación?</label><select name="eval_aplicada"><option value="si">Sí</option><option value="no">No</option></select></div>
+    <div><label>¿Cuántos respondieron?</label><input name="evaluados" inputmode="numeric"></div><div><label>¿Cuántos respondieron bien?</label><input name="bien" inputmode="numeric"></div>
+    <div class="ancho"><label>Acuerdos y compromisos</label><textarea name="acuerdos" rows="3" required></textarea></div>
+  </div><p class="nota">Después de guardar se abre la lista de asistencia para agregar a cada participante. Las fotos y la lista firmada se suben desde el formulario de Kobo.</p><div class="acciones"><button>Guardar ayuda memoria</button></div></form>`;
+  const f = $('#f');
+  const pintar = () => {
+    const g = gs.find(x => x.codigo === f.codigo.value); $('#otraBox').hidden = f.codigo.value !== 'otra';
+    $('#ginfo').innerHTML = g ? `<div class="caja nota" style="margin:0"><b>${esc(g.normas_txt || '')}</b><br>Requisito: ${esc(g.requisito || '')}<br>Objetivo: ${esc(g.objetivo || '')}<br>Duración sugerida: ${esc(g.duracion || '')} · ${esc(g.frecuencia || '')}</div>` : '';
+    $('#contBox').innerHTML = g ? `<label>Contenidos desarrollados (desmarcá los que no se vieron)</label>${g.contenidos.map((x, i) => `<label style="font-weight:400;display:flex;gap:6px;align-items:flex-start;margin:2px 0"><input type="checkbox" name="cont" value="${i}" checked style="width:auto;margin-top:3px">${esc(x)}</label>`).join('')}` : f.codigo.value === 'otra' ? '<label>Contenidos desarrollados (uno por renglón)</label><textarea name="cont_otro" rows="3"></textarea>' : '';
+    $('#matBox').innerHTML = g?.materiales?.length ? `<label>Materiales utilizados</label>${g.materiales.map((x, i) => `<label style="font-weight:400;display:flex;gap:6px;align-items:flex-start;margin:2px 0"><input type="checkbox" name="mat" value="${i}" style="width:auto;margin-top:3px">${esc(x)}</label>`).join('')}` : '';
+  };
+  f.codigo.onchange = pintar; pintar();
+  f.onsubmit = async ev => {
+    ev.preventDefault(); const d = datosForm(f), g = gs.find(x => x.codigo === d.codigo);
+    if (d.hora_fin && d.hora_inicio && d.hora_fin <= d.hora_inicio) return aviso('La hora de finalización tiene que ser después de la de inicio.', true);
+    const cont = g ? [...f.querySelectorAll('input[name=cont]:checked')].map(x => g.contenidos[+x.value]) : lista(String(d.cont_otro || '').replace(/\n/g, ' '));
+    const mats = [...(g ? [...f.querySelectorAll('input[name=mat]:checked')].map(x => g.materiales[+x.value]) : []), ...String(d.materiales_otro || '').split(/[,;]\s*/).filter(Boolean)];
+    const ev2 = d.eval_aplicada === 'si';
+    if (ev2 && num(d.bien) > num(d.evaluados)) return aviso('Los que respondieron bien no pueden ser más que los que respondieron.', true);
+    const reg = { id: nuevoId(), org_id: S.org.id, fecha: d.fecha, codigo: g?.codigo || null, tema: g?.titulo || d.tema_otro || 'Capacitación', publico: g?.publico || d.publico, certificaciones: g?.normas || [],
+      requisito: g?.requisito || null, objetivo: g?.objetivo || d.objetivo_otro || null, modalidad: d.modalidad, sector: d.sector || null, lugar: d.lugar, hora_inicio: d.hora_inicio, hora_fin: d.hora_fin,
+      facilitador: d.facilitador, institucion: d.institucion || null, solicitada_por: d.solicitada_por || null, elaborada_por: d.elaborada_por, contenidos: cont, resumen: d.resumen, materiales: mats,
+      hombres: num(d.hombres), mujeres: num(d.mujeres), jovenes: num(d.jovenes), evaluacion_aplicada: ev2, evaluados: ev2 ? num(d.evaluados) : null, respondieron_bien: ev2 ? num(d.bien) : null, acuerdos: d.acuerdos, datos: { asistentes: [] } };
+    if (!reg.tema) return aviso('Escogé la guía o escribí el tema.', true);
+    ocupado(f, true);
+    try { await q(sb.from('capacitaciones').insert(reg)); aviso('Ayuda memoria guardada. Ahora agregá la lista de asistencia.'); archivarLuego(true); location.hash = '#/asistencia/' + reg.id; }
+    catch (e) { ocupado(f, false); aviso(falla(e), true); }
+  };
+};
+['capacitacion', 'capacitaciones', 'cap', 'guias'].forEach(r => SECCION_DE[r] = 'cer');
