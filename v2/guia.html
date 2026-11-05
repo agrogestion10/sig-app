@@ -14,6 +14,8 @@
 <li><b>Certificaciones</b>: documentos del productor con vencimiento, actas de asamblea amarradas a la prima, asistencia por productor y paquete para la certificadora.</li>
 <li><b>Kobo por organización</b>: cada organización conecta su propia cuenta y los formularios se crean solos.</li>
 <li>Esta <b>guía de uso</b>, con ayuda en cada pantalla.</li>
+<li><b>Cacao</b>: acopio en baba y seco con su conversión, descuento por humedad, prueba de corte, fermentación y secado por lote, despacho y balance de masas separados del café.</li>
+<li><b>Aviso de privacidad y términos de uso</b>: el administrador de cada organización lo acepta una vez dentro del sistema.</li>
 </ul>
 </section>
 
@@ -147,6 +149,7 @@
 
 <section id="acopio" data-para="cer">
 <h2>Acopio</h2>
+<p>El sistema sirve para café, para cacao o para los dos. Lo que acopia la organización se escoge en Configuración › «Cultivo que acopia la organización». Si son los dos, cada productor tiene su cultivo y al escogerlo se pone solo el producto que le toca.</p>
 <h3>Registrar una entrega</h3>
 <ol>
 <li>En <b>Registrar acopio</b> elegí el productor, la bodega y la báscula, y escribí el peso, la humedad, las impurezas y los defectos.</li>
@@ -154,6 +157,14 @@
 <li>Si el productor debe cuotas, sugiere el <b>abono al crédito</b>; el neto a pagar ya viene con el descuento.</li>
 <li>Muestra lo entregado contra el estimado de su cosecha; si se pasa del estimado más la tolerancia, pide un motivo.</li>
 </ol>
+<h3>Cacao</h3>
+<ul>
+<li><b>Cacao en baba</b>: se pesa y el sistema lo convierte a cacao seco con el factor de Configuración (de fábrica, 0.35: 100 lb en baba son 35 lb secas). No lleva descuento por humedad.</li>
+<li><b>Cacao seco</b>: se descuenta la humedad arriba de la base (de fábrica, 7 %) y las impurezas. Aparece la <b>prueba de corte</b>: se cortan unos 100 granos y se anota el porcentaje bien fermentado, violeta, pizarroso, con moho y dañado. Si la fermentación queda abajo del mínimo o el moho arriba del máximo, sale el aviso y queda anotado en la entrega y en el recibo.</li>
+<li>Todo se lleva en <b>cacao seco</b>: el inventario, la trazabilidad y el balance de masas.</li>
+</ul>
+<h3>Fermentación y secado (cacao)</h3>
+<p>En Certificaciones › <b>Fermentación y secado</b> (se llama «Beneficiado y secado» si la organización acopia café y cacao) se registra cada lote: fermentador, días de fermentación, volteos, método y días de secado, peso en baba que entra y seco que sale, humedad final y la prueba de corte del lote. Si la organización acopia café y cacao, arriba se escoge cuál.</p>
 <p>El sistema también revisa las certificaciones: si el productor no la tiene, si no aprobó la inspección o si todas sus parcelas están en transición, la entrega queda como convencional y se anota el motivo.</p>
 <h3>Recibo y pago</h3>
 <p>Cada entrega tiene su <b>recibo</b> para imprimir o mandar por WhatsApp. Cuando se le paga al productor, tocá «Marcar como pagado».</p>
@@ -169,7 +180,8 @@
 <ul>
 <li><b>Despacho y venta</b>: contrato, comprador, lotes y certificación. Cada despacho tiene <b>«Revisar»</b> para la EUDR: revisa cada parcela de los productores de esos lotes, dice cuáles no cumplen o están por revisar, descarga el GeoJSON para TRACES y guarda el número de la declaración.</li>
 <li><b>Trazabilidad por lote</b>: de qué productores y fincas salió cada lote, su beneficiado y a quién se vendió. Se puede imprimir.</li>
-<li><b>Balance de masas</b>: comprado contra vendido por certificación. Al registrar un despacho se revisa contra lo disponible, para no vender más certificado del que se compró.</li>
+<li>Para el cacao, en «Qué se vende» se elige <b>Cacao seco</b>; la prima de Comercio Justo del cacao se calcula con su propio valor por libra (Configuración).</li>
+<li><b>Balance de masas</b>: comprado contra vendido por certificación, y por producto si la organización acopia café y cacao. Al registrar un despacho se revisa contra lo disponible, para no vender más certificado del que se compró.</li>
 </ul>
 </section>
 
@@ -214,11 +226,18 @@
 </ul>
 </section>
 
+<section id="privacidad" data-para="todos">
+<h2>Aviso de privacidad y términos de uso</h2>
+<p>El aviso explica de quién son los datos (de cada organización), qué se guarda, para qué se usa, quién lo ve, cómo se protege y qué le toca a la organización y a AgroGestión. Se puede leer siempre desde la pantalla de entrada o desde el enlace «Privacidad» al pie del inicio.</p>
+<p>La primera vez que el <b>administrador</b> entra, el inicio le pide revisarlo y aceptarlo en nombre de la organización. Queda guardado quién lo aceptó y cuándo, también en la bitácora. Si el aviso cambia, se pide aceptarlo otra vez.</p>
+<p>La organización se compromete a informar a sus productores qué datos suyos se registran y a contar con su autorización, por ejemplo en el compromiso firmado o la ficha de afiliación.</p>
+</section>
+
 <section id="config" data-para="admin">
 <h2>Configuración (administrador)</h2>
 <p>Está en el <b>engranaje</b> de arriba a la derecha.</p>
 <ul>
-<li><b>Configuración</b>: montos, listas (insumos permitidos y prohibidos, bodegas…), parámetros de acopio (humedad base, descuentos, sobreprecios, % de abono al crédito) y de crédito (mora, días de gracia, capacidad, precio de referencia, provisión), claves de los paneles, clave de Kobo, correo de avisos y copias de seguridad.</li>
+<li><b>Configuración</b>: el cultivo que acopia la organización (café, cacao o los dos) y sus factores, montos, listas (insumos permitidos y prohibidos, bodegas…), parámetros de acopio (humedad base, descuentos, sobreprecios, % de abono al crédito) y de crédito (mora, días de gracia, capacidad, precio de referencia, provisión), claves de los paneles, clave de Kobo, correo de avisos y copias de seguridad.</li>
 <li><b>Usuarios</b>: altas, rol, secciones, de qué panel ve cada quien y comité de crédito.</li>
 <li><b>Catálogo de certificaciones</b>: cuáles usa la organización.</li>
 <li><b>Bitácora</b>: quién hizo qué y cuándo.</li>

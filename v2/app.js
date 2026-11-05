@@ -259,6 +259,8 @@ const RUTAS = {
   'presupuesto': verPresupuesto, 'config': verConfig, 'usuarios': verUsuarios, 'bitacora': verBitacora, 'orgs': verOrgs, 'adm': inicio
 };
 // A qué sección vuelve el botón «Volver» de cada pantalla ('' = portal)
+// Claves de Configuración que se escogen de una lista
+const CFG_OPC = { CULTIVO_ACOPIO: ['Café', 'Cacao', 'Café y cacao'] };
 const SECCION_DE = { '': '', adm: 'adm', config: '', usuarios: '', bitacora: '', orgs: '', guia: '' };
 ['compra', 'fondo', 'liquidacion', 'vacacion', 'factura', 'facturas', 'solicitudes', 'solicitud', 'proveedores', 'proveedor', 'empleados', 'empleado', 'presupuesto', 'laboral'].forEach(r => SECCION_DE[r] = 'adm');
 async function ruta() {
@@ -288,7 +290,7 @@ function pantallaAcceso() {
       <label for="aClave">Contraseña</label><input id="aClave" name="clave" type="password" required autocomplete="current-password">
       <button>Entrar</button>
       <p class="nota error" id="aErr"></p>
-    </form></div>`;
+    </form><p class="nota" style="text-align:center"><a href="/privacidad.html" target="_blank" rel="noopener">Aviso de privacidad y términos de uso</a></p></div>`;
   $('#fAcceso').onsubmit = async ev => {
     ev.preventDefault(); const f = ev.target, d = datosForm(f); ocupado(f, true); $('#aErr').textContent = '';
     const correo = d.usuario.includes('@') ? d.usuario.toLowerCase() : `${norm(d.usuario)}.${norm(d.org)}@${DOMINIO}`;
@@ -707,7 +709,7 @@ async function verConfig() {
   const claves = [...new Set([...Object.keys(CFG_TEXTO), ...filas.map(x => x.clave)])].filter(k => !internas(k));
   const largo = k => /LINEAS|PROYECTOS|AREAS|DESTINOS|ENLACES|INSUMOS|BODEGAS|PROVISION/.test(k);
   app().innerHTML = cabecera('Configuración de ' + S.org.nombre) + `<form class="caja" id="f"><div class="rejilla">
-    ${claves.map(k => `<div class="${largo(k) ? 'ancho' : ''}"><label>${esc(CFG_TEXTO[k] || k)}</label>${largo(k) ? `<textarea name="${k}" rows="5">${esc(lista(val[k]).join('\n'))}</textarea>` : `<input name="${k}" value="${esc(val[k])}">`}</div>`).join('')}
+    ${claves.map(k => `<div class="${largo(k) ? 'ancho' : ''}"><label>${esc(CFG_TEXTO[k] || k)}</label>${largo(k) ? `<textarea name="${k}" rows="5">${esc(lista(val[k]).join('\n'))}</textarea>` : CFG_OPC[k] ? `<select name="${k}">${CFG_OPC[k].map(o => `<option ${o === val[k] ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>` : `<input name="${k}" value="${esc(val[k])}">`}</div>`).join('')}
   </div><div class="acciones"><button>Guardar cambios</button></div></form>
   ${esAdmin() ? `<h2>Clave de Kobo</h2><form class="caja" id="fk"><p class="nota" id="kEstado">Revisando…</p><div class="rejilla"><div class="ancho"><label>Clave API de KoboToolbox (en Kobo: Configuración de la cuenta › Seguridad › Clave API)</label><input name="clave" type="password" autocomplete="off" required></div></div><div class="acciones"><button>Guardar clave</button></div></form>` : ''}
   ${esAdmin() ? `<h2>Claves de los paneles de control</h2><form class="caja" id="fpn"><p class="nota" id="pnEstado">Revisando…</p><div class="rejilla">${Object.entries(SECCIONES).map(([k, v]) => `<div><label>Panel de ${v}</label><input name="${k}" type="password" autocomplete="new-password" placeholder="Dejar vacío para no cambiar"></div>`).join('')}</div><p class="nota">Mínimo 6 caracteres. Quién entra a cada panel se marca en <a href="#/usuarios">Usuarios</a>.</p><div class="acciones"><button>Guardar claves</button></div></form>

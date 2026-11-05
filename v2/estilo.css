@@ -144,3 +144,5 @@ section h2{margin:22px 0 10px}
 .guiaMarca{box-shadow:0 0 0 3px var(--verde,#2e7d32)}
 @media (max-width:760px){.guia{grid-template-columns:1fr}.guiaIndice{position:static}}
 @media print{#barra,.guiaIndice,.volver,.ayudaSec{display:none!important}.guia{display:block}.guiaTexto section{break-inside:avoid;box-shadow:none}}
+fieldset{border:1px solid var(--borde);border-radius:10px;padding:10px 14px;margin:0}
+legend{font-weight:600;padding:0 6px}
