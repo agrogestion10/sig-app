@@ -1501,9 +1501,61 @@ RUTAS.kobo = async function verKobo() {
   }
   app().innerHTML = cabecera('Formularios de KoboToolbox') + `<div class="caja nota" id="koboEstado" style="padding:10px 14px">Revisando Kobo…</div><div class="caja"><p class="nota">Se llenan desde el teléfono, sin cuenta y sin señal (Kobo los guarda y los envía al volver la conexión). Lo que se envía llega solo a esta aplicación.</p>
   ${enl.length ? `<div class="tarjetas">${enl.map(([n, u]) => `<a class="tarjeta" href="${esc(/^https:\/\//.test(u) ? u : '#/kobo')}" target="_blank" rel="noopener"><b>${esc(n)}</b><span>Abrir el formulario</span></a>`).join('')}</div>` : '<p>Todavía no hay formularios configurados para esta organización.</p>'}
-  ${esAdmin() ? '<p class="nota">Los enlaces, los códigos de los formularios y la clave de Kobo se cambian en <a href="#/config">Configuración</a>.</p>' : ''}</div>${tabla}`;
+  ${esAdmin() ? '<p class="nota">Los enlaces, los códigos de los formularios y la clave de Kobo se cambian en <a href="#/config">Configuración</a>.</p>' : ''}</div><div id="koboConexion"></div>${tabla}`;
   sincronizarKobo(false);
+  pintarConexionKobo(enl.length);
 };
+
+// Conectar Kobo (cada organización con su cuenta) y pasar los cambios del maestro a todas
+async function pintarConexionKobo(hayEnlaces) {
+  const el = $('#koboConexion'); if (!el || !esAdmin()) return;
+  if (S.org.es_maestra) {
+    if (!S.maestro) return;
+    el.innerHTML = `<div class="caja"><h2>Formularios de las demás organizaciones</h2><p class="nota">Los formularios de esta organización son el modelo. Cuando cambiés uno aquí, con este botón la versión nueva pasa a todas las organizaciones que ya conectaron Kobo. Sus datos y sus listas no se tocan.</p><button id="actTodas">Actualizar formularios en todas</button><div id="actRes" class="nota" style="margin-top:10px"></div></div>`;
+    $('#actTodas').onclick = actualizarFormsTodas; return;
+  }
+  const { data: tiene } = await sb.rpc('tiene_secreto', { o: S.org.id, k: 'KOBO_TOKEN' });
+  if (!tiene) {
+    el.innerHTML = `<div class="caja"><h2>Conectar Kobo</h2><p>Cada organización usa su propia cuenta de Kobo, gratis. Así los datos quedan a su nombre.</p><ol class="pasos"><li>Creá la cuenta en <a href="https://kf.kobotoolbox.org/accounts/signup/" target="_blank" rel="noopener">kf.kobotoolbox.org</a> con el correo de la organización.</li><li>Ya adentro, entrá a tu nombre (arriba a la derecha) › <b>Configuración de la cuenta</b> › <b>Seguridad</b> y copiá la <b>clave API</b>.</li><li>Pegala en <a href="#/config">Configuración</a>, en «Clave de Kobo», y guardá.</li><li>Volvé aquí y tocá «Crear los formularios».</li></ol></div>`;
+    return;
+  }
+  el.innerHTML = `<div class="caja"><h2>${hayEnlaces ? 'Revisar los formularios en Kobo' : 'Crear los formularios en Kobo'}</h2><p class="nota">${hayEnlaces ? 'Si falta algún formulario en la cuenta de Kobo de la organización, se crea; los que ya están no se tocan.' : 'Se crean en la cuenta de Kobo de la organización los mismos formularios del sistema, listos para usar, con sus listas de productores y parcelas.'}</p><button id="conectar">${hayEnlaces ? 'Revisar y crear los que falten' : 'Crear los formularios'}</button><div id="conRes" class="nota" style="margin-top:10px"></div></div>`;
+  $('#conectar').onclick = conectarKobo;
+}
+async function llamarKobo(cuerpo) {
+  const { data, error } = await sb.functions.invoke('kobo', { body: { org_id: S.org.id, ...cuerpo } });
+  if (error) { let m = error.message; try { m = (await error.context.json()).error || m; } catch (_) {} throw new Error(m); }
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+async function conectarKobo() {
+  const b = $('#conectar'), r = $('#conRes'); b.disabled = true; r.textContent = 'Creando los formularios en Kobo… tarda uno o dos minutos.';
+  try {
+    const d = await llamarKobo({ accion: 'conectar' });
+    r.innerHTML = (d.hechos.length ? `Listo: se crearon ${d.hechos.length} formularios (${esc(d.hechos.join(', '))}).` : 'Todos los formularios ya estaban en Kobo.') + (d.errores.length ? `<br><span class="error">No se pudieron crear: ${esc(d.errores.join(' · '))}. Tocá el botón otra vez para reintentar.</span>` : '') + '<br>Ahora se suben las listas de productores y parcelas…';
+    await cargarOrg();
+    await sincronizarKobo(true);
+    r.innerHTML += ' listo.';
+    if (d.hechos.length) setTimeout(() => RUTAS.kobo(), 1500);
+  } catch (e) { r.innerHTML = '<span class="error">' + esc(falla(e)) + '</span>'; }
+  finally { b.disabled = false; }
+}
+async function actualizarFormsTodas() {
+  const b = $('#actTodas'), r = $('#actRes'); b.disabled = true; r.textContent = 'Buscando las organizaciones con Kobo…';
+  try {
+    const { orgs } = await llamarKobo({ accion: 'actualizar_forms' });
+    if (!orgs.length) { r.textContent = 'Ninguna otra organización ha conectado Kobo todavía.'; return; }
+    if (!confirm(`Se va a pasar la versión actual de los formularios a ${orgs.length} organización${orgs.length > 1 ? 'es' : ''}. ¿Seguimos?`)) { r.textContent = ''; return; }
+    const lin = [];
+    for (const o of orgs) {
+      r.innerHTML = lin.join('<br>') + (lin.length ? '<br>' : '') + `Actualizando ${esc(o.nombre)}…`;
+      try { const d = await llamarKobo({ accion: 'actualizar_forms', destino: o.id }); lin.push(`${esc(o.nombre)}: ${d.hechos.length} formularios al día` + (d.errores.length ? ` <span class="error">(${esc(d.errores.join(' · '))})</span>` : '')); }
+      catch (e) { lin.push(`${esc(o.nombre)}: <span class="error">${esc(falla(e))}</span>`); }
+    }
+    r.innerHTML = lin.join('<br>');
+  } catch (e) { r.innerHTML = '<span class="error">' + esc(falla(e)) + '</span>'; }
+  finally { b.disabled = false; }
+}
 
 // =====================================================================
 // PANEL DE CONTROL DE CADA SECCIÓN (con clave) Y ARCHIVO DE RESPALDOS

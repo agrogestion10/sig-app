@@ -740,7 +740,7 @@ async function verConfig() {
       ev.preventDefault(); const v = fk.clave.value.trim();
       if (v.length < 20) return aviso('Esa clave parece incompleta (la de Kobo tiene 40 caracteres).', true);
       ocupado(fk, true);
-      try { await q(sb.from('configuracion').upsert({ org_id: S.org.id, clave: 'KOBO_TOKEN', valor: v, secreta: true }, { onConflict: 'org_id,clave' })); await q(sb.from('bitacora').insert({ org_id: S.org.id, usuario: nombreQuien(), accion: 'Guardó la clave de Kobo' })); aviso('Clave guardada. Abrí Certificaciones para traer los datos.'); verConfig(); }
+      try { await q(sb.from('configuracion').upsert({ org_id: S.org.id, clave: 'KOBO_TOKEN', valor: v, secreta: true }, { onConflict: 'org_id,clave' })); await q(sb.from('bitacora').insert({ org_id: S.org.id, usuario: nombreQuien(), accion: 'Guardó la clave de Kobo' })); aviso('Clave guardada.'); if (!S.org.es_maestra) { location.hash = '#/kobo'; return; } verConfig(); }
       catch (e) { ocupado(fk, false); aviso(falla(e), true); }
     };
   }
