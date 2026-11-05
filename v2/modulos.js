@@ -1197,7 +1197,7 @@ RUTAS.acopio = async function formAcopio(prodId) {
   f.bodega.onchange = () => { const b = bas.find(x => x.bodega && norm(x.bodega) === norm(f.bodega.value)); if (b) f.bascula_id.value = b.id; calcular(); };
   f.bodega.onchange();
   f.retencion_credito.oninput = () => { f.retencion_credito.dataset.tocado = '1'; };
-  f.productor_txt.oninput = () => { opc(); verEstim(); verCredito(); }; opc(); verEstim(); verCredito();
+  f.productor_txt.oninput = f.productor_txt.onchange = () => { opc(); verEstim(); verCredito(); calcular(); }; opc(); verEstim(); verCredito();
   f.estado_cafe.onchange = () => { verCorte(); calcular(); }; verCorte();
   f.unidad.onchange = () => { try { localStorage.setItem('sig_unidad_acopio', f.unidad.value); } catch (_) { } verUnidad(); calcular(); }; verUnidad();
   f.oninput = calcular;
