@@ -998,9 +998,11 @@ RUTAS.inspeccion = async function formInspeccion(prodId) {
     <div><label>Fecha</label><input type="date" name="fecha" required value="${hoy()}"></div>
     <div><label>Inspector interno</label><input name="inspector" required value="${esc(S.maestro ? '' : S.perfil.nombre)}"></div>
     <div><label>Resultado</label><select name="resultado">${opciones(['Aprobado', 'Condicionado', 'No aprobado'])}</select></div>
-    <div class="ancho"><label>Certificaciones inspeccionadas</label>${checksCert(cs, p0?.certificaciones || [])}</div>
+    <div class="ancho"><label>¿Para qué sellos se levanta esta ficha?</label><div id="sellos">${CHECKLIST.sellos.map(([k, n]) => `<label style="font-weight:400;color:var(--texto);display:inline-flex;gap:6px;align-items:center;margin:2px 14px 2px 0"><input type="checkbox" name="sello" value="${k}" style="width:auto">${esc(n)}</label>`).join('')}</div><p class="nota" id="sellosN">Salen marcados los sellos del productor. Las preguntas cambian según lo que marqués.</p></div>
     <div class="ancho"><label>Observaciones generales</label><textarea name="observaciones"></textarea></div>
   </div>
+  <h2>Lista de chequeo</h2><p class="nota">Respondé cada requisito con el productor. Cada «No cumple» tiene que quedar como no conformidad abajo.</p><div id="chk"><p class="nota">Elegí el productor y los sellos.</p></div>
+  <h2>Resultado por sello</h2><div id="resSello" class="rejilla"></div>
   <h2>Parcelas e historial orgánico</h2><p class="nota">Revisá con el productor la fecha del último producto prohibido (químico sintético) de cada parcela. Si cambia algo, corregilo aquí y queda guardado en la parcela.</p><div id="hist"><p class="nota">Elegí el productor.</p></div>
   <h2>Insumos aplicados en los últimos 12 meses</h2><p class="nota">Uno por uno. Se revisan contra las listas de Configuración; si alguno es prohibido, la parcela vuelve a empezar la transición y se abre la no conformidad sola.</p>
   <datalist id="dlIns">${sugeridos.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
@@ -1011,9 +1013,30 @@ RUTAS.inspeccion = async function formInspeccion(prodId) {
   let n = 0, ni = 0, parcs = [];
   const f = $('#f');
   const optParc = () => '<option value="">Toda la finca</option>' + parcs.map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join('');
+  // Lista de chequeo según los sellos marcados (la misma del formulario de Kobo)
+  const sellosSel = () => [...f.querySelectorAll('[name=sello]:checked')].map(x => x.value);
+  const OP = { sinona: [['si', 'Sí'], ['no', 'No'], ['na', 'No aplica']], sino: [['si', 'Sí'], ['no', 'No']] };
+  const pintarChk = () => {
+    const sel = sellosSel(), prev = Object.fromEntries([...f.querySelectorAll('[name^=chk_]')].map(x => [x.name, x.value]));
+    const aplica = q => q.sellos.some(x => sel.includes(x)) && (!q.cond || prev.chk_hay_trab === 'si');
+    $('#chk').innerHTML = !sel.length ? '<p class="nota">Marcá al menos un sello.</p>' : CHECKLIST.secciones.filter(sc => sc.sellos.some(x => sel.includes(x))).map(sc => `<fieldset style="margin:10px 0"><legend><b>${esc(sc.titulo)}</b></legend>${sc.preguntas.filter(aplica).map(q => `<div style="display:flex;gap:10px;align-items:flex-start;justify-content:space-between;border-bottom:1px solid var(--borde);padding:6px 0"><div style="flex:1">${esc(q.t)}<br><span class="nota">${esc(q.ref || '')}</span></div><div style="min-width:130px">${q.op === 'num' ? `<input name="chk_${q.k}" inputmode="decimal" value="${esc(prev['chk_' + q.k] || '')}" required>` : `<select name="chk_${q.k}" required><option value=""></option>${OP[q.op].map(([v, t]) => `<option value="${v}" ${prev['chk_' + q.k] === v ? 'selected' : ''}>${t}</option>`).join('')}</select>`}</div></div>`).join('')}</fieldset>`).join('');
+    $('#resSello').innerHTML = sel.map(x => `<div><label>${esc(CHECKLIST.sellos.find(y => y[0] === x)[1])}</label><select name="res_${x}">${opciones(['Aprobar', 'Aprobar con condiciones', 'Suspender hasta corregir', 'Excluir de la certificación'], f['res_' + x]?.value)}</select></div>`).join('');
+    const ht = f.chk_hay_trab; if (ht) ht.onchange = pintarChk;
+  };
+  const leerChk = () => {
+    const sel = sellosSel(), lista = [], resp = {};
+    for (const sc of CHECKLIST.secciones) for (const q of sc.preguntas) {
+      const el = f['chk_' + q.k]; if (!el || el.value === '') continue; resp[q.k] = el.value;
+      const malo = !q.info && (q.malo === 'si' ? el.value === 'si' : el.value === 'no') || (q.k === 'b13' && num(el.value) > 4);
+      lista.push({ seccion: sc.titulo, pregunta: q.t, respuesta: q.op === 'num' ? el.value : { si: 'Sí', no: 'No', na: 'No aplica' }[el.value], cumple: q.info && q.k !== 'b13' ? '' : malo ? 'No cumple' : el.value === 'na' ? 'No aplica' : 'Cumple' });
+    }
+    return { sel, lista, resp, malos: lista.filter(x => x.cumple === 'No cumple') };
+  };
+  f.querySelectorAll('[name=sello]').forEach(c => c.onchange = pintarChk);
+  let prodSel = null;
   const cargar = async () => {
     const p = leerProd(ps, f.productor_txt.value);
-    if (p) f.querySelectorAll('input[name=certs]').forEach(c => c.checked = p.certificaciones.includes(c.value));
+    if (p && p.id !== prodSel) { prodSel = p.id; f.querySelectorAll('[name=sello]').forEach(c => c.checked = c.value === 'eudr' || (p.certificaciones || []).includes(c.value)); pintarChk(); }
     parcs = p ? (await parcelasOrg().catch(() => [])).filter(x => x.productor_id === p.id) : [];
     $('#hist').innerHTML = !p ? '<p class="nota">Elegí el productor.</p>' : !parcs.length ? '<p class="nota">Este productor no tiene parcelas en el padrón.</p>' : `<div class="tabla"><table><thead><tr><th>Parcela</th><th class="n">Área (ha)</th><th>Estado orgánico</th><th>Último producto prohibido</th><th>Nunca se aplicó</th></tr></thead><tbody>
       ${parcs.map(x => `<tr><td>${esc(x.nombre)}</td><td class="n">${num(x.area_ha).toFixed(2)}</td><td>${chipOrg(estadoOrganico(x))}</td><td><input type="date" name="up_${x.id}" value="${esc(x.datos?.ultima_prohibida || '')}"></td><td><input type="checkbox" name="nu_${x.id}" style="width:auto" ${!x.datos?.ultima_prohibida && /^(nunca|no|ninguna)/.test(norm(x.datos?.ultima_quimica || '')) ? 'checked' : ''}></td></tr>`).join('')}</tbody></table></div>`;
@@ -1031,8 +1054,8 @@ RUTAS.inspeccion = async function formInspeccion(prodId) {
       <div><label>¿Tiene factura o comprobante?</label><select name="icomp${i}">${opciones(['', 'Sí', 'No'])}</select></div></div>`);
     f['iprod' + i].oninput = () => revIns(i);
   };
-  $('#masNc').onclick = () => { n++; $('#ncs').insertAdjacentHTML('beforeend', `<div class="cot rejilla"><div><label>Requisito o norma</label><select name="req${n}">${opciones(['A. Generales', 'B. Producción orgánica', 'C. Sociales', 'D. EUDR', 'E. Producción y balance'])}</select></div><div class="ancho"><label>Hallazgo</label><input name="desc${n}"></div><div><label>Gravedad</label><select name="grav${n}">${opciones(['Menor', 'Mayor', 'Crítica'])}</select></div><div><label>Acción correctiva</label><input name="acc${n}"></div><div><label>Plazo</label><input type="date" name="plazo${n}"></div></div>`); };
-  f.productor_txt.onchange = cargar; cargar();
+  $('#masNc').onclick = () => { n++; $('#ncs').insertAdjacentHTML('beforeend', `<div class="cot rejilla"><div><label>Requisito o norma</label><select name="req${n}">${opciones(CHECKLIST.secciones.map(x => x.titulo))}</select></div><div class="ancho"><label>Hallazgo</label><input name="desc${n}"></div><div><label>Gravedad</label><select name="grav${n}">${opciones(['Menor', 'Mayor', 'Crítica'])}</select></div><div><label>Acción correctiva</label><input name="acc${n}"></div><div><label>Plazo</label><input type="date" name="plazo${n}"></div></div>`); };
+  f.productor_txt.onchange = f.productor_txt.oninput = cargar; cargar();
   f.onsubmit = async ev => {
     ev.preventDefault(); const d = datosForm(f), p = leerProd(ps, d.productor_txt);
     if (!p) return aviso('Elegí un productor de la lista.', true);
@@ -1050,9 +1073,13 @@ RUTAS.inspeccion = async function formInspeccion(prodId) {
     const prohib = ins.filter(x => estadoInsumo(x.producto) === 'Prohibido').map(x => x.producto);
     if (prohib.length && !confirm(`${prohib.join(', ')} ${prohib.length > 1 ? 'están prohibidos' : 'está prohibido'} para orgánico. Al guardar se abre la no conformidad y la parcela vuelve a empezar la transición. ¿Guardar?`)) return;
     if (d.resultado !== 'Aprobado' && !ncs.length && !prohib.length && !d.observaciones) return aviso('Si no queda aprobado, anotá las no conformidades u observaciones.', true);
+    const ck = leerChk();
+    if (!ck.sel.length) return aviso('Marcá para qué sellos se levanta la ficha.', true);
+    if (ck.malos.length && !ncs.length && !confirm(`Hay ${ck.malos.length} requisito(s) que no cumplen y no anotaste no conformidades. ¿Guardar de todos modos?`)) return;
+    const NOMS = Object.fromEntries(CHECKLIST.sellos), resultados = Object.fromEntries(ck.sel.map(x => [NOMS[x], d['res_' + x]]));
     ocupado(f, true);
     try {
-      const i = await q(sb.from('inspecciones').insert({ id: nuevoId(), org_id: S.org.id, productor_id: p.id, fecha: d.fecha, inspector: d.inspector, resultado: d.resultado, certificaciones: leerChecks(f), observaciones: d.observaciones, datos: { origen: 'app', parcelas_revisadas: parcs.length, historial: cambios.map(c => ({ parcela: parcs.find(x => x.id === c.id)?.nombre, ultima_prohibida: c.datos.ultima_prohibida || null, nunca: c.datos.ultima_quimica === 'nunca' && !c.datos.ultima_prohibida })) } }).select('id').single());
+      const i = await q(sb.from('inspecciones').insert({ id: nuevoId(), org_id: S.org.id, productor_id: p.id, fecha: d.fecha, inspector: d.inspector, resultado: d.resultado, certificaciones: ck.sel, observaciones: d.observaciones, datos: { origen: 'app', sellos: ck.sel.map(x => NOMS[x]), resultados, lista: ck.lista, respuestas: ck.resp, incumplimientos: ck.malos.length, parcelas_revisadas: parcs.length, historial: cambios.map(c => ({ parcela: parcs.find(x => x.id === c.id)?.nombre, ultima_prohibida: c.datos.ultima_prohibida || null, nunca: c.datos.ultima_quimica === 'nunca' && !c.datos.ultima_prohibida })) } }).select('id').single());
       if (ncs.length) await q(sb.from('no_conformidades').insert(ncs.map(x => ({ ...x, id: nuevoId(), org_id: S.org.id, productor_id: p.id, inspeccion_id: i.id }))));
       for (const c of cambios) await q(sb.from('parcelas').update({ datos: c.datos }).eq('id', c.id));
       if (ins.length) await q(sb.from('insumos_aplicados').insert(ins.map(x => ({ ...x, id: nuevoId(), org_id: S.org.id, productor_id: p.id, inspeccion_id: i.id, origen: 'Inspección (app)', observaciones: 'Anotado en la inspección del ' + d.fecha + ' por ' + d.inspector }))));
@@ -1078,7 +1105,10 @@ RUTAS.insp = async function verInspeccion(id) {
   <h2>No conformidades (${ncs.length})</h2>${ncs.length ? `<div class="tabla"><table><thead><tr><th>Número</th><th>Requisito</th><th>Hallazgo</th><th>Gravedad</th><th>Acción</th><th>Plazo</th><th>Estado</th></tr></thead><tbody>${ncs.map(x => `<tr><td>${esc(x.numero || '')}</td><td>${esc(x.requisito || '')}</td><td>${esc(x.descripcion)}</td><td>${esc(x.gravedad || '')}</td><td>${esc(x.accion || '')}</td><td>${esc(x.plazo || '')}</td><td>${esc(x.estado || '')}</td></tr>`).join('')}</tbody></table></div>` : '<p class="nota">Sin no conformidades.</p>'}
   <h2>Insumos anotados (${ins.length})</h2>${ins.length ? `<div class="tabla"><table><thead><tr><th>Fecha</th><th>Parcela</th><th>Producto</th><th>Tipo</th><th class="n">Cantidad</th><th>Comprobante</th><th>Revisión</th></tr></thead><tbody>${ins.map(x => `<tr><td>${esc(x.fecha)}</td><td>${esc(x.parcela_nombre || 'Toda la finca')}</td><td>${esc(x.producto)}</td><td>${esc(x.tipo || '')}</td><td class="n">${x.cantidad ? num(x.cantidad).toLocaleString('es-HN') + ' ' + esc(x.unidad || '') : ''}</td><td>${esc(x.comprobante || '')}</td><td>${chipInsumo(x.estado)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="nota">No se anotaron insumos en esta inspección.</p>'}
   ${hist.length ? `<h2>Historial de parcelas corregido</h2><ul>${hist.map(h => `<li>${esc(h.parcela || h.hist_parcela || '')}: ${h.nunca || h.hist_cuando === 'nunca' ? 'nunca se aplicó un prohibido' : 'último prohibido ' + esc(h.ultima_prohibida || h.hist_fecha || '')}</li>`).join('')}</ul>` : ''}
-  ${chequeo.length ? `<h2>Lista de chequeo (Kobo)</h2><p>${chequeo.length} preguntas contestadas · ${malas.length} con «No»${malas.length ? ': ' + malas.map(([k]) => k.toUpperCase()).join(', ') : ''}.</p>` : ''}`;
+  ${Object.keys(d.resultados || {}).length ? `<h2>Resultado por sello</h2><div class="tabla"><table><tbody>${Object.entries(d.resultados).map(([a, b]) => `<tr><th style="text-align:left">${esc(a)}</th><td>${esc(b)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+  ${(d.lista || []).length ? `<h2>Lista de chequeo</h2><p>${d.lista.filter(x => x.cumple).length} requisitos revisados · <b class="${d.lista.some(x => x.cumple === 'No cumple') ? 'error' : ''}">${d.lista.filter(x => x.cumple === 'No cumple').length} no cumplen</b> · ${d.lista.filter(x => x.cumple === 'No aplica').length} no aplican${d.sellos?.length ? ' · sellos: ' + d.sellos.map(esc).join(', ') : ''}</p>
+    ${[...new Set(d.lista.map(x => x.seccion))].map(sc => `<h3>${esc(sc)}</h3><div class="tabla"><table><thead><tr><th>Requisito</th><th>Respuesta</th><th>Evaluación</th></tr></thead><tbody>${d.lista.filter(x => x.seccion === sc).map(x => `<tr${x.cumple === 'No cumple' ? ' style="background:#fef2f2"' : ''}><td>${esc(x.pregunta)}</td><td>${esc(x.respuesta)}</td><td>${x.cumple === 'No cumple' ? `<b class="error">No cumple</b>` : esc(x.cumple || '')}</td></tr>`).join('')}</tbody></table></div>`).join('')}`
+  : chequeo.length ? `<h2>Lista de chequeo (Kobo)</h2><p>${chequeo.length} preguntas contestadas · ${malas.length} con «No»${malas.length ? ': ' + malas.map(([k]) => k.toUpperCase()).join(', ') : ''}.</p>` : ''}`;
   conectarRevision('inspecciones', id);
 };
 
