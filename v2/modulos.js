@@ -102,7 +102,7 @@ RUTAS[''] = async function portal() {
 
   // Pie: señal, Kobo y versión
   const pie = () => { const el = $('#pieE'); if (!el) return; const n = OFF.cola().length, sin = !navigator.onLine || S.sinSenal, k = S.cfg.KOBO_ULTIMA_SINC ? Date.parse(S.cfg.KOBO_ULTIMA_SINC) : 0, m = k ? Math.round((Date.now() - k) / 60000) : null;
-    el.innerHTML = `<span><i class="punto ${sin ? 'p-ambar' : 'p-verde'}"></i>${sin ? 'Sin señal' : 'Con señal'}${n ? ` · <a href="#/bandeja">${n} por enviar</a>` : ' · nada por enviar'}</span>${cer && m !== null ? `<span>Kobo: actualizado ${m < 1 ? 'hace un momento' : m < 60 ? `hace ${m} min` : m < 1440 ? `hace ${Math.round(m / 60)} h` : 'el ' + fechaHora(k)}</span>` : ''}<span>Versión ${window.SIG_V || 2}</span>`; };
+    el.innerHTML = `<span><i class="punto ${sin ? 'p-ambar' : 'p-verde'}"></i>${sin ? 'Sin señal' : 'Con señal'}${n ? ` · <a href="#/bandeja">${n} por enviar</a>` : ' · nada por enviar'}</span>${cer && m !== null ? `<span>Kobo: actualizado ${m < 1 ? 'hace un momento' : m < 60 ? `hace ${m} min` : m < 1440 ? `hace ${Math.round(m / 60)} h` : 'el ' + fechaHora(k)}</span>` : ''}<span>Versión ${window.SIG_V || 2} · <a href="#/guia">Guía de uso</a></span>`; };
   pie();
 
   // Buscador: productores en memoria y números de documento
@@ -1504,6 +1504,34 @@ RUTAS.kobo = async function verKobo() {
   ${esAdmin() ? '<p class="nota">Los enlaces, los códigos de los formularios y la clave de Kobo se cambian en <a href="#/config">Configuración</a>.</p>' : ''}</div><div id="koboConexion"></div>${tabla}`;
   sincronizarKobo(false);
   pintarConexionKobo(enl.length);
+};
+
+// =====================================================================
+// GUÍA DE USO (v2/guia.html; se actualiza con cada cambio de la aplicación)
+// =====================================================================
+RUTAS.guia = async function verGuia(parte) {
+  app().innerHTML = cabecera('Guía de uso', '#/') + '<div class="caja nota">Abriendo la guía…</div>';
+  let html = RUTAS.guia.html;
+  if (!html) {
+    const base = '/' + ((window.SIG_RUTAS || {})[window.SIG_V] || 'v2/');
+    try { html = RUTAS.guia.html = await (await fetch(base + 'guia.html?v=' + (window.SIG_V || '') + '.' + ((window.SIG_CACHE || {})[window.SIG_V] || ''))).text(); }
+    catch (_) { app().innerHTML = cabecera('Guía de uso', '#/') + '<div class="caja">No se pudo abrir la guía sin señal. Abrila una vez con señal y después queda guardada.</div>'; return; }
+  }
+  const caja = document.createElement('div'); caja.innerHTML = html;
+  const ve = s => s === 'todos' || (s === 'jefe' ? esJefe() : s === 'admin' ? esAdmin() : puedeSec(s));
+  const secs = [...caja.querySelectorAll('section')].filter(s => ve(s.dataset.para));
+  const fecha = caja.querySelector('#guiaDatos')?.dataset.actualizada || '';
+  app().innerHTML = cabecera('Guía de uso', '#/') + `<p class="nota">Actualizada el ${esc(fecha.split('-').reverse().join('/'))} · se actualiza cada vez que cambia algo del sistema. Solo aparecen las partes que te tocan.</p>
+  <div class="guia"><nav class="guiaIndice caja" aria-label="Partes de la guía"><input type="search" id="gBus" placeholder="Buscar en la guía" autocomplete="off"><ol>${secs.map(s => `<li><a href="#/guia/${s.id}" data-g="${s.id}">${esc(s.querySelector('h2')?.textContent || s.id)}</a></li>`).join('')}</ol><button type="button" class="sec" onclick="window.print()">Imprimir</button></nav>
+  <div class="guiaTexto">${secs.map(s => `<section class="caja" id="g-${s.id}">${s.innerHTML}</section>`).join('')}<p class="nota" id="gNada" hidden>No se encontró nada con esa palabra.</p></div></div>`;
+  const ir = id => { const el = document.getElementById('g-' + id); if (el) { el.scrollIntoView({ block: 'start' }); el.classList.add('guiaMarca'); setTimeout(() => el.classList.remove('guiaMarca'), 1600); } };
+  app().querySelectorAll('[data-g]').forEach(a => a.onclick = e => { e.preventDefault(); history.replaceState(null, '', '#/guia/' + a.dataset.g); ir(a.dataset.g); });
+  $('#gBus').oninput = e => {
+    const v = norm(e.target.value.trim()); let hay = 0;
+    app().querySelectorAll('.guiaTexto section').forEach(s => { const si = !v || norm(s.textContent).includes(v); s.hidden = !si; hay += si; });
+    $('#gNada').hidden = !!hay;
+  };
+  if (parte) setTimeout(() => ir(parte), 50);
 };
 
 // Conectar Kobo (cada organización con su cuenta) y pasar los cambios del maestro a todas

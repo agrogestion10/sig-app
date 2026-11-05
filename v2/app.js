@@ -123,7 +123,17 @@ let pedirInstalar = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); pedirInstalar = e; });
 function datosForm(f) { const o = {}; new FormData(f).forEach((v, k) => o[k] = typeof v === 'string' ? v.trim() : v); return o; }
 function ocupado(f, si) { f.querySelectorAll('button').forEach(b => b.disabled = si); }
-function cabecera(titulo, volver = S.seccion ? '#/' + S.seccion : '#/') { return `<a class="volver" href="${volver}">← Volver</a><h1>${esc(titulo)}</h1>`; }
+// Qué parte de la guía de uso explica cada pantalla
+const GUIA_DE = { adm: 'adm', compra: 'adm', fondo: 'adm', liquidacion: 'adm', vacacion: 'adm', laboral: 'adm', factura: 'adm', facturas: 'adm', presupuesto: 'adm', empleados: 'adm', proveedores: 'adm', solicitudes: 'adm', solicitud: 'adm',
+  cre: 'cre', credito: 'cre', creditos: 'cre', cred: 'cre', cartera: 'cre', recordatorios: 'cre', reportescre: 'cre', fondos: 'cre', condiciones: 'cre', edocta: 'cre',
+  cer: 'padron', padron: 'padron', prod: 'padron', prodf: 'padron', parcela: 'padron', inspeccion: 'insp', inspecciones: 'insp', insp: 'insp', nc: 'insp', insumos: 'insp', reg: 'insp',
+  asistencia: 'capac', quejas: 'capac', queja: 'capac', acopio: 'acopio', acopios: 'acopio', recibo: 'acopio', inventario: 'acopio', basculas: 'acopio',
+  despacho: 'venta', eudr: 'venta', lotes: 'venta', lote: 'venta', balance: 'venta', prima: 'prima', actas: 'prima', paquete: 'auditoria', kobo: 'kobo', bandeja: 'campo',
+  panel: 'paneles', pnl: 'paneles', config: 'config', usuarios: 'config', catalogo: 'config', bitacora: 'config', orgs: 'config' };
+function cabecera(titulo, volver = S.seccion ? '#/' + S.seccion : '#/') {
+  const g = GUIA_DE[location.hash.replace(/^#\/?/, '').split('/')[0]];
+  return `<a class="volver" href="${volver}">← Volver</a><h1>${esc(titulo)}</h1>` + (g ? `<a class="ayudaSec" href="#/guia/${g}">¿Cómo se usa?</a>` : '');
+}
 
 // ---------- arranque ----------
 window.addEventListener('DOMContentLoaded', async () => {
@@ -212,7 +222,9 @@ function pintarEngrane() {
     eng = document.createElement('div'); eng.id = 'engrane'; eng.className = 'engrane';
     // «Salir» y el engrane van juntos en la esquina, aunque la barra se parta en dos renglones
     const par = document.createElement('div'); par.className = 'parBarra';
-    const salir = $('#salir'); salir.replaceWith(par); par.append(salir, eng);
+    const salir = $('#salir'); salir.replaceWith(par);
+    const guia = document.createElement('a'); guia.href = '#/guia'; guia.className = 'guiaBtn'; guia.title = 'Guía de uso'; guia.setAttribute('aria-label', 'Guía de uso'); guia.textContent = '?';
+    par.append(guia, salir, eng);
     document.addEventListener('click', ev => { if (!eng.contains(ev.target)) cerrarEngrane(); });
     document.addEventListener('keydown', ev => { if (ev.key === 'Escape') cerrarEngrane(); });
     window.addEventListener('hashchange', cerrarEngrane);
@@ -247,7 +259,7 @@ const RUTAS = {
   'presupuesto': verPresupuesto, 'config': verConfig, 'usuarios': verUsuarios, 'bitacora': verBitacora, 'orgs': verOrgs, 'adm': inicio
 };
 // A qué sección vuelve el botón «Volver» de cada pantalla ('' = portal)
-const SECCION_DE = { '': '', adm: 'adm', config: '', usuarios: '', bitacora: '', orgs: '' };
+const SECCION_DE = { '': '', adm: 'adm', config: '', usuarios: '', bitacora: '', orgs: '', guia: '' };
 ['compra', 'fondo', 'liquidacion', 'vacacion', 'factura', 'facturas', 'solicitudes', 'solicitud', 'proveedores', 'proveedor', 'empleados', 'empleado', 'presupuesto', 'laboral'].forEach(r => SECCION_DE[r] = 'adm');
 async function ruta() {
   if (!S.user) return pantallaAcceso();
