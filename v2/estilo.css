@@ -83,3 +83,49 @@ details.carpeta table{font-size:13px}
 .menuEng a b{display:block;font-size:14px}
 .menuEng a span{font-size:12px;color:var(--gris)}
 @media (min-width:720px){header .derecha{flex-wrap:nowrap}header #quien{white-space:nowrap}}
+/* ---------- pantalla de inicio ---------- */
+header .derecha{flex:1 1 auto;justify-content:flex-end}
+header select#cambioOrg{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.35);font-weight:600;min-height:40px;margin-right:auto}
+header select#cambioOrg option{color:#1f2a24}
+.oculto{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.saludo{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:18px}
+.saludo h1{font-size:26px;margin:0;letter-spacing:-.3px}
+.saludo p{margin:2px 0 0}
+.buscador{position:relative;flex:0 1 420px;min-width:240px}
+.buscador svg{position:absolute;left:13px;top:13px;color:var(--gris)}
+.buscador input{min-height:44px;padding-left:40px;border-radius:10px}
+.busRes{position:absolute;left:0;right:0;top:48px;background:#fff;border:1px solid var(--borde);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.08);z-index:8;max-height:320px;overflow:auto}
+.busRes a{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;text-decoration:none;color:var(--texto);border-top:1px solid #edf2ee}
+.busRes a:first-child{border-top:0}.busRes a:hover{background:var(--claro)}
+.filaT{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.filaT h2{margin:0}
+section h2{margin:22px 0 10px}
+.pendientes{padding:16px 20px}
+.pendientes ul{list-style:none;margin:6px 0 0;padding:0}
+.pendientes li{display:flex;align-items:center;gap:14px;padding:11px 0;border-top:1px solid #edf2ee}
+.pendientes li .txt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column}
+.pendientes li a{min-height:44px;display:flex;align-items:center;font-weight:600;text-decoration:none;white-space:nowrap}
+.punto{display:inline-block;width:10px;height:10px;border-radius:99px;flex:none;margin-right:6px;vertical-align:middle}
+.pendientes .punto{margin-right:0}
+.p-rojo{background:var(--rojo)}.p-ambar{background:var(--ambar)}.p-verde{background:var(--verde2)}.p-gris{background:var(--gris)}
+.rapidos{display:flex;flex-wrap:wrap;gap:10px}
+.rapidos .boton{display:inline-flex;align-items:center;gap:8px;min-height:44px;border-radius:10px}
+.secciones{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+.seccionT{display:flex;flex-direction:column;gap:8px;background:#fff;border:1px solid var(--borde);border-radius:14px;padding:18px;text-decoration:none;color:var(--texto);transition:border-color .12s,transform .12s}
+.seccionT:hover{border-color:var(--verde2);transform:translateY(-1px)}
+.seccionT b{font-size:18px}
+.seccionT .icono{width:44px;height:44px;border-radius:12px;background:var(--claro);color:var(--verde2);display:flex;align-items:center;justify-content:center}
+.estadoSec{font-size:13px;font-weight:700;color:var(--gris);min-height:18px}
+.estadoSec.rojo{color:var(--rojo)}.estadoSec.ambar{color:var(--ambar)}.estadoSec.verde{color:var(--verde2)}
+.numeros{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.numeros .caja{margin:0;display:flex;flex-direction:column;gap:2px}
+.numeros b{font-size:24px}
+.pieEstado{display:flex;flex-wrap:wrap;gap:6px 18px;color:var(--gris);font-size:13px;border-top:1px solid var(--borde);margin-top:26px;padding-top:12px}
+@media (max-width:640px){
+  .pendientes li .sec{display:none}
+  .pendientes li{flex-wrap:wrap}
+  .rapidos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .rapidos .boton{min-height:64px;flex-direction:column;align-items:flex-start;justify-content:center}
+  .seccionT .nota{display:none}
+  .saludo h1{font-size:22px}
+}

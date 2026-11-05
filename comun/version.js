@@ -23,7 +23,9 @@
       var quiere = ULT;
       if (!s.maestro) {
         var r = await sb.from('organizaciones').select('version').eq('id', s.org.id).single();
-        quiere = (r.data && r.data.version) || 1;
+        // Sin señal no se sabe qué versión le toca: se queda en la que está
+        if (r.error || !r.data) { pie('Versión ' + V); return; }
+        quiere = r.data.version || 1;
       }
       if (!RUTAS[quiere]) { var disp = Object.keys(RUTAS).map(Number).filter(function (n) { return n <= quiere; }); quiere = disp.length ? Math.max.apply(null, disp) : ULT; }
       localStorage.setItem('sig_version', String(quiere));

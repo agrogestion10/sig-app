@@ -1,0 +1,17 @@
+{
+  "name": "SIG · AgroGestión",
+  "short_name": "SIG",
+  "description": "Sistema de Gestión Integral: administración, crédito interno y certificaciones",
+  "lang": "es",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f4f7f4",
+  "theme_color": "#14532d",
+  "icons": [
+    { "src": "/iconos/sig-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/iconos/sig-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/iconos/sig-mascara-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -1,0 +1,36 @@
+// SIG · Service worker: guarda una copia de la aplicación para que abra sin señal.
+// Los datos no pasan por aquí: los maneja la aplicación (copia local y bandeja de salida).
+const CACHE = 'sig-app-1';
+const BASE = ['/', '/manifest.webmanifest', '/iconos/sig-192.png', '/iconos/sig-512.png'];
+
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(BASE)).catch(() => {}));
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith('sig-app-') && k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+});
+
+const propio = u => u.origin === self.location.origin || u.hostname === 'cdn.jsdelivr.net';
+
+self.addEventListener('fetch', e => {
+  const r = e.request;
+  if (r.method !== 'GET') return;
+  const u = new URL(r.url);
+  if (!propio(u)) return; // Supabase, Kobo y lo demás van directo a la red
+  const esPagina = r.mode === 'navigate';
+  // Primero la red (para tener siempre lo último); sin señal, la copia guardada
+  e.respondWith((async () => {
+    const c = await caches.open(CACHE);
+    try {
+      const resp = await fetch(r);
+      if (resp && resp.ok && (resp.type === 'basic' || resp.type === 'cors')) c.put(esPagina ? '/' : r, resp.clone());
+      return resp;
+    } catch (err) {
+      const guardada = await c.match(esPagina ? '/' : r) || await c.match(r, { ignoreSearch: true });
+      if (guardada) return guardada;
+      throw err;
+    }
+  })());
+});

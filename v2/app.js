@@ -39,7 +39,88 @@ function falla(e) {
   if (/Failed to fetch|NetworkError/i.test(m)) return 'No hay conexión. Revisá el internet e intentá de nuevo.';
   return m;
 }
-async function q(p) { const { data, error } = await p; if (error) throw error; return data; }
+// ---------- sin señal: copia local de lo consultado y bandeja de salida ----------
+// Toda consulta que pasa por q() guarda su resultado; sin señal se usa esa copia.
+// Lo que se registra sin señal (inspección, acopio, insumos) queda en la bandeja y se manda solo al volver la señal.
+const sinRed = e => !navigator.onLine || /Failed to fetch|NetworkError|Load failed|network|fetch failed|ERR_INTERNET|TypeError: Failed/i.test(e?.message || String(e || ''));
+const OFF = {
+  db: null,
+  abrir() { return this.db ||= new Promise((ok, mal) => { const r = indexedDB.open('sig', 1); r.onupgradeneeded = () => r.result.createObjectStore('cache'); r.onsuccess = () => ok(r.result); r.onerror = () => mal(r.error); }); },
+  async leer(k) { try { const db = await this.abrir(); return await new Promise(ok => { const r = db.transaction('cache').objectStore('cache').get(k); r.onsuccess = () => ok(r.result); r.onerror = () => ok(undefined); }); } catch (_) { return undefined; } },
+  async guardar(k, v) { try { const db = await this.abrir(); db.transaction('cache', 'readwrite').objectStore('cache').put(v, k); } catch (_) { } },
+  cola() { try { return JSON.parse(localStorage.getItem('sig_cola') || '[]'); } catch (_) { return []; } },
+  ponerCola(c) { localStorage.setItem('sig_cola', JSON.stringify(c)); pintarSenal(); },
+  TABLAS: ['acopio', 'inspecciones', 'no_conformidades', 'insumos_aplicados', 'parcelas', 'productores']
+};
+function infoConsulta(p) {
+  if (!p || !p.url || !p.method) return null;
+  const url = p.url.toString(), rpc = url.includes('/rest/v1/rpc/');
+  const lee = p.method === 'GET' || p.method === 'HEAD' || (rpc && /credito_exigible|comite_info/.test(url));
+  return { url, metodo: p.method, cuerpo: p.body, cabeceras: p.headers || {}, lee, clave: (S.user?.id || '') + ' ' + p.method + ' ' + url + (rpc ? ' ' + JSON.stringify(p.body || {}) : ''), tabla: (url.match(/\/rest\/v1\/([a-z_]+)/) || [])[1] };
+}
+async function q(p) {
+  const info = infoConsulta(p);
+  let res;
+  try { res = await p; } catch (e) { if (info && sinRed(e)) return sinSenal(info, e); throw e; }
+  const { data, error } = res;
+  if (error) { if (info && sinRed(error)) return sinSenal(info, error); throw error; }
+  if (info?.lee) OFF.guardar(info.clave, data);
+  if (S.sinSenal) { S.sinSenal = false; pintarSenal(); }
+  return data;
+}
+async function sinSenal(info, e) {
+  S.sinSenal = true; pintarSenal();
+  if (info.lee) {
+    const v = await OFF.leer(info.clave);
+    if (v !== undefined) return v;
+    throw new Error('Sin señal, y esto todavía no se ha abierto con señal en este teléfono. Abrilo una vez con internet (o usá «Preparar para el campo» en la bandeja).');
+  }
+  if (!OFF.TABLAS.includes(info.tabla) || !['POST', 'PATCH'].includes(info.metodo) || (info.metodo === 'POST' && ![].concat(info.cuerpo || []).every(x => x && x.id))) throw new Error('Sin señal: esto necesita internet. Sin señal se puede registrar inspección, acopio e insumos.');
+  const c = OFF.cola();
+  c.push({ n: Date.now() + '-' + Math.random().toString(36).slice(2, 6), cuando: new Date().toISOString(), metodo: info.metodo, url: info.url, cuerpo: info.cuerpo, tabla: info.tabla, org: S.org?.id, quien: S.user?.id });
+  OFF.ponerCola(c);
+  const marca = x => ({ ...x, numero: x.numero || 'Por enviar', _local: true });
+  if (Array.isArray(info.cuerpo)) return info.cuerpo.map(marca);
+  if (info.metodo === 'PATCH') return [];
+  return /vnd\.pgrst\.object/.test(info.cabeceras.Accept || '') ? marca(info.cuerpo) : [marca(info.cuerpo)];
+}
+let enviando = false;
+async function enviarCola(manual) {
+  if (enviando || !navigator.onLine) return;
+  let c = OFF.cola(); if (!c.length) return;
+  enviando = true; pintarSenal();
+  let mandados = 0;
+  try {
+    const { data } = await sb.auth.getSession(); const tk = data.session?.access_token;
+    if (!tk) { if (manual) aviso('Entrá con tu usuario para mandar la bandeja.', true); return; }
+    while (c.length) {
+      const x = c[0];
+      if (x.quien && x.quien !== S.user?.id) { x.error = 'Lo registró otro usuario en este teléfono: tiene que entrar esa persona para mandarlo.'; break; }
+      const url = x.url.replace(/([?&])(select|columns)=[^&]*/g, '$1').replace(/[?&]+$/, '');
+      let r;
+      try { r = await fetch(url, { method: x.metodo, headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + tk, 'Content-Type': 'application/json', Prefer: 'return=minimal' + (x.metodo === 'POST' ? ',resolution=ignore-duplicates' : '') }, body: JSON.stringify(x.cuerpo) }); }
+      catch (e) { break; }
+      const t2 = r.ok ? '' : await r.text().catch(() => '');
+      if (r.ok || (r.status === 409 && /23505/.test(t2))) { c.shift(); mandados++; OFF.ponerCola(c); continue; } x.error = (() => { try { const j = JSON.parse(t2); return falla(j); } catch (_) { return t2.slice(0, 200) || 'Error ' + r.status; } })();
+      OFF.ponerCola(c); break;
+    }
+  } finally { enviando = false; pintarSenal(); }
+  if (mandados) { aviso(`Se mandaron ${mandados} registro${mandados > 1 ? 's' : ''} que estaban en el teléfono.`); try { archivarLuego(true); } catch (_) { } }
+  else if (manual && OFF.cola()[0]?.error) aviso('Hay un registro con problema en la bandeja.', true);
+}
+function pintarSenal() {
+  let b = document.getElementById('senal');
+  if (!b) { b = document.createElement('a'); b.id = 'senal'; b.href = '#/bandeja'; b.style.cssText = 'position:fixed;left:10px;bottom:8px;z-index:6;font-size:13px;padding:6px 12px;border-radius:999px;text-decoration:none;box-shadow:0 1px 4px rgba(0,0,0,.15)'; document.body.appendChild(b); }
+  const n = OFF.cola().length, sin = !navigator.onLine || S.sinSenal;
+  b.hidden = !n && !sin;
+  b.style.background = OFF.cola()[0]?.error ? '#fee2e2' : sin ? '#fef3c7' : '#dcfce7'; b.style.color = '#1f2a24';
+  b.textContent = (sin ? 'Sin señal' : enviando ? 'Enviando…' : 'Con señal') + (n ? ` · ${n} por enviar` : '');
+}
+window.addEventListener('online', () => { S.sinSenal = false; pintarSenal(); enviarCola(); });
+window.addEventListener('offline', () => { S.sinSenal = true; pintarSenal(); });
+setInterval(() => { if (OFF.cola().length && navigator.onLine) enviarCola(); }, 60000);
+let pedirInstalar = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); pedirInstalar = e; });
 function datosForm(f) { const o = {}; new FormData(f).forEach((v, k) => o[k] = typeof v === 'string' ? v.trim() : v); return o; }
 function ocupado(f, si) { f.querySelectorAll('button').forEach(b => b.disabled = si); }
 function cabecera(titulo, volver = S.seccion ? '#/' + S.seccion : '#/') { return `<a class="volver" href="${volver}">← Volver</a><h1>${esc(titulo)}</h1>`; }
@@ -53,10 +134,12 @@ window.addEventListener('DOMContentLoaded', async () => {
   const { data } = await sb.auth.getSession();
   if (data.session) {
     // Se pregunta al servidor si la sesión sigue abierta (pudo cerrarse desde otro equipo)
-    const g = await sb.auth.getUser();
-    if (g.error || !g.data?.user) await sb.auth.signOut({ scope: 'local' });
-    else { try { await cargarUsuario(g.data.user); } catch (e) { await sb.auth.signOut({ scope: 'local' }); } }
+    const g = await sb.auth.getUser().catch(e => ({ error: e }));
+    if (g.error && sinRed(g.error)) restaurarSinSenal(data.session.user);
+    else if (g.error || !g.data?.user) await sb.auth.signOut({ scope: 'local' });
+    else { try { await cargarUsuario(g.data.user); } catch (e) { if (sinRed(e)) restaurarSinSenal(data.session.user); else await sb.auth.signOut({ scope: 'local' }); } }
   }
+  pintarSenal(); setTimeout(() => enviarCola(), 3000);
   ruta();
 });
 
@@ -66,6 +149,7 @@ async function cargarUsuario(user) {
     sb.from('maestros').select('user_id').eq('user_id', user.id).maybeSingle(),
     sb.from('perfiles').select('*, organizaciones(id,nombre,es_maestra,activa)').eq('id', user.id).maybeSingle()
   ]);
+  if ((m.error && sinRed(m.error)) || (p.error && sinRed(p.error))) throw m.error || p.error;
   S.maestro = !!m.data; S.perfil = p.data;
   if (!S.maestro && (!S.perfil || !S.perfil.activo)) throw new Error('Usuario sin acceso');
   S.rol = S.maestro ? 'maestro' : S.perfil.rol;
@@ -78,6 +162,17 @@ async function cargarUsuario(user) {
   }
   await cargarOrg();
   sb.rpc('registrar_entrada').then(() => {}, () => {});
+  guardarSesionLocal();
+}
+// Lo mínimo para abrir la aplicación sin señal en este teléfono
+function guardarSesionLocal() {
+  try { localStorage.setItem('sig_sesion', JSON.stringify({ user: { id: S.user.id, email: S.user.email }, perfil: S.perfil, maestro: S.maestro, rol: S.rol, orgs: S.orgs, org: S.org, cfg: S.cfg, leyes: S.leyes })); } catch (_) { }
+}
+function restaurarSinSenal(user) {
+  let g = null; try { g = JSON.parse(localStorage.getItem('sig_sesion') || 'null'); } catch (_) { }
+  if (!g || g.user?.id !== user?.id) return false;
+  Object.assign(S, { user: { ...user, ...g.user }, perfil: g.perfil, maestro: g.maestro, rol: g.rol, orgs: g.orgs || [], org: g.org, cfg: g.cfg || {}, leyes: g.leyes || {}, sinSenal: true });
+  pintarBarra(); return true;
 }
 
 async function cargarOrg() {
@@ -85,9 +180,10 @@ async function cargarOrg() {
     sb.from('configuracion').select('clave,valor').eq('org_id', S.org.id),
     sb.from('leyes').select('clave,valor')
   ]);
+  if (c.error && sinRed(c.error)) throw c.error;
   S.cfg = Object.fromEntries((c.data || []).map(x => [x.clave, x.valor]));
   S.leyes = Object.fromEntries((l.data || []).map(x => [x.clave, x.valor]));
-  pintarBarra();
+  pintarBarra(); if (S.user) guardarSesionLocal();
 }
 
 async function cambiarOrg(id) {
@@ -98,6 +194,8 @@ async function cambiarOrg(id) {
 function pintarBarra() {
   $('#barra').hidden = false;
   $('#nombreOrg').textContent = S.org?.nombre || '';
+  // Con selector de organización el nombre no se repite al lado del logo
+  $('#nombreOrg').hidden = !!S.maestro;
   // En Usuario maestro no se repite el nombre (ya está en el selector de organización)
   $('#quien').textContent = S.maestro ? '' : S.perfil.nombre + ' · ' + ROLES[S.rol];
   $('#quien').hidden = S.maestro;
@@ -595,7 +693,7 @@ async function verConfig() {
   const val = Object.fromEntries(filas.map(x => [x.clave, x.valor]));
   const internas = k => /^KOBO_(ULT_|MEDIA_|SINC_|ULTIMA_)/.test(k);
   const claves = [...new Set([...Object.keys(CFG_TEXTO), ...filas.map(x => x.clave)])].filter(k => !internas(k));
-  const largo = k => /LINEAS|PROYECTOS|AREAS|DESTINOS|ENLACES|INSUMOS/.test(k);
+  const largo = k => /LINEAS|PROYECTOS|AREAS|DESTINOS|ENLACES|INSUMOS|BODEGAS|PROVISION/.test(k);
   app().innerHTML = cabecera('Configuración de ' + S.org.nombre) + `<form class="caja" id="f"><div class="rejilla">
     ${claves.map(k => `<div class="${largo(k) ? 'ancho' : ''}"><label>${esc(CFG_TEXTO[k] || k)}</label>${largo(k) ? `<textarea name="${k}" rows="5">${esc(lista(val[k]).join('\n'))}</textarea>` : `<input name="${k}" value="${esc(val[k])}">`}</div>`).join('')}
   </div><div class="acciones"><button>Guardar cambios</button></div></form>
