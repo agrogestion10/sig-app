@@ -156,7 +156,7 @@ const TIPOS_CARGA = {
         const r = { d: {}, err: [], av: [], accion: 'Nuevo' }, v = f.v, b = buscar(v.productor);
         if (b.err) r.err.push(b.err); else r.d.productor_id = b.p.id;
         fechas(r, v, cols); listas(r, v, cols);
-        if (!r.d.fecha) r.err.push('Falta la fecha'); else if (r.d.fecha > hoy()) r.err.push('La fecha es futura');
+        if (!texto(v.fecha)) r.err.push('Falta la fecha'); else if (r.d.fecha > hoy()) r.err.push('La fecha es futura');
         if (!r.d.resultado) r.err.push('Falta el resultado');
         r.d.inspector = texto(v.inspector) || null; r.d.observaciones = texto(v.observaciones) || null;
         const c = leerCerts(v.certificaciones, cs); if (c.malas.length) r.err.push('Certificación no encontrada: ' + c.malas.join(', '));
@@ -197,7 +197,7 @@ const TIPOS_CARGA = {
         const r = { d: {}, err: [], av: [], accion: 'Nuevo' }, v = f.v, b = buscar(v.productor);
         if (b.err) r.err.push(b.err); else r.d.productor_id = b.p.id;
         fechas(r, v, cols); listas(r, v, cols); numeros(r, v, cols, ['cantidad']);
-        if (!r.d.fecha) r.err.push('Falta la fecha'); else if (r.d.fecha > hoy()) r.err.push('La fecha es futura');
+        if (!texto(v.fecha)) r.err.push('Falta la fecha'); else if (r.d.fecha > hoy()) r.err.push('La fecha es futura');
         r.d.producto = texto(v.producto); if (!r.d.producto) r.err.push('Falta el producto');
         r.d.observaciones = texto(v.observaciones) || null;
         const np = texto(v.parcela);
@@ -289,9 +289,9 @@ const TIPOS_CARGA = {
         const r = { d: {}, err: [], av: [], accion: 'Nuevo' }, v = f.v, b = buscar(v.productor);
         if (b.err) r.err.push(b.err); else r.d.productor_id = b.p.id;
         fechas(r, v, cols); listas(r, v, cols); numeros(r, v, cols, ['peso_lb', 'humedad', 'impurezas', 'precio_lb']);
-        if (!r.d.fecha) r.err.push('Falta la fecha'); else if (r.d.fecha > hoy()) r.err.push('La fecha es futura');
-        if (!r.d.estado_cafe) r.err.push('Falta el producto');
-        if (!(r.d.peso_lb > 0)) r.err.push('Falta el peso');
+        if (!texto(v.fecha)) r.err.push('Falta la fecha'); else if (r.d.fecha > hoy()) r.err.push('La fecha es futura');
+        if (!texto(v.estado_cafe)) r.err.push('Falta el producto');
+        if (!(r.d.peso_lb > 0) && leerNum(v.peso_lb) !== undefined) r.err.push('Falta el peso');
         if (r.d.humedad != null && (r.d.humedad < 0 || r.d.humedad > 80)) r.err.push('Humedad fuera de rango');
         if (b.p && r.d.estado_cafe && cultivoProd(b.p) !== (/cacao/i.test(r.d.estado_cafe) ? 'Cacao' : 'Café')) r.err.push(`El productor es de ${cultivoProd(b.p).toLowerCase()} y la entrega dice ${r.d.estado_cafe.toLowerCase()}`);
         const c = leerCerts(v.certificacion, cs); if (c.malas.length) r.err.push('Certificación no encontrada: ' + c.malas.join(', '));
@@ -341,7 +341,7 @@ const TIPOS_CARGA = {
         if (!(x.saldo > 0)) r.err.push('El saldo debe ser mayor que cero');
         if (x.tasa == null || x.tasa < 0 || x.tasa > 100) r.err.push('Falta la tasa o no es válida');
         if (!(x.meses >= 1)) r.err.push('Faltan los meses que quedan'); else x.meses = Math.round(x.meses);
-        if (!x.primera) r.err.push('Falta la fecha de la próxima cuota');
+        if (!texto(v.primera)) r.err.push('Falta la fecha de la próxima cuota');
         if (x.monto_original && x.saldo > x.monto_original) r.av.push('El saldo es mayor que el monto original');
         const corte = x.fecha_corte || hoy(); if (x.primera && x.primera < corte) r.av.push('La próxima cuota es anterior a la fecha del saldo: sale vencida');
         let fondo = null; if (texto(v.fondo)) { fondo = fondos.find(z => norm(z.nombre) === norm(texto(v.fondo))); if (!fondo) r.err.push(`No existe el fondo «${texto(v.fondo)}»`); }
