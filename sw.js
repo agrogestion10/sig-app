@@ -1,6 +1,6 @@
 // SIG · Service worker: guarda una copia de la aplicación para que abra sin señal.
 // Los datos no pasan por aquí: los maneja la aplicación (copia local y bandeja de salida).
-const CACHE = 'sig-app-1';
+const CACHE = 'sig-app-2';
 const BASE = ['/', '/manifest.webmanifest', '/iconos/sig-192.png', '/iconos/sig-512.png'];
 
 self.addEventListener('install', e => {
@@ -24,7 +24,8 @@ self.addEventListener('fetch', e => {
   e.respondWith((async () => {
     const c = await caches.open(CACHE);
     try {
-      const resp = await fetch(r);
+      // La página se pide sin la memoria del navegador, para que una versión nueva se vea apenas se publica
+      const resp = await fetch(esPagina ? new Request(r.url, { cache: 'no-cache', credentials: r.credentials }) : r);
       if (resp && resp.ok && (resp.type === 'basic' || resp.type === 'cors')) c.put(esPagina ? '/' : r, resp.clone());
       return resp;
     } catch (err) {
