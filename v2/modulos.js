@@ -2123,7 +2123,7 @@ RUTAS.rev = async function verRegistro(t, id) {
 // CAPACITACIONES: guías (catálogo), ayuda memoria y cumplimiento por certificación
 // =====================================================================
 const PUBLICO_CAP = { productores: 'Productores', empleados: 'Empleados', junta: 'Junta directiva' };
-const NORMA_CAP = { org_ue: 'Orgánico UE', usda: 'Orgánico USDA-NOP', bio_suisse: 'Bio Suisse', fairtrade: 'Comercio Justo (Fairtrade)', eudr: 'EUDR' };
+const NORMA_CAP = { org_ue: 'Orgánico UE', usda: 'Orgánico USDA-NOP', bio_suisse: 'Bio Suisse', fairtrade: 'Comercio Justo (Fairtrade)', eudr: 'EUDR', rainforest: 'Rainforest Alliance' };
 async function guiasCap(todas) {
   if (!S._guias || S._guias.org !== S.org.id) S._guias = { org: S.org.id, lista: await q(sb.from('catalogo_capacitaciones').select('*').eq('org_id', S.org.id).order('orden')) };
   return todas ? S._guias.lista : S._guias.lista.filter(g => g.activa);
