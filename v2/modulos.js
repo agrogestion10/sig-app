@@ -796,6 +796,7 @@ RUTAS.cer = async function menuCert() {
     ${tarjeta('#/padron', 'Padrón de productores', 'Socios, parcelas y certificaciones')}
     ${tarjeta('#/prodf', 'Registrar productor', 'Socio nuevo')}
     ${tarjeta('#/parcela', 'Registrar parcela', 'Punto GPS y polígono (obligatorio desde 4 ha)')}
+    ${tarjeta('#/carga', 'Carga masiva desde Excel', 'Productores, parcelas, inspecciones, insumos y documentos de varios a la vez')}
   </div>
   <h2>Control interno</h2><div class="tarjetas">
     ${tarjeta('#/inspeccion', 'Inspección interna', 'Resultado anual y no conformidades')}
@@ -828,7 +829,7 @@ RUTAS.padron = async function verPadron() {
   const [ps, parc, cs] = await Promise.all([prods(true), q(sb.from('parcelas').select('productor_id,area_ha,poligono').eq('org_id', S.org.id)), certs()]);
   const ha = {}, np = {}, sinPol = {};
   parc.forEach(p => { ha[p.productor_id] = (ha[p.productor_id] || 0) + num(p.area_ha); np[p.productor_id] = (np[p.productor_id] || 0) + 1; if (num(p.area_ha) >= 4 && !p.poligono) sinPol[p.productor_id] = 1; });
-  app().innerHTML = cabecera('Padrón de productores') + `<div class="filtros"><input id="bus" placeholder="Buscar por nombre, código o comunidad"><select id="fc"><option value="">Todas las certificaciones</option>${cs.map(c => `<option value="${c.codigo}">${esc(c.nombre)}</option>`).join('')}</select><a class="boton" href="#/prodf">+ Nuevo productor</a><button class="sec" id="csv">Descargar CSV</button></div>
+  app().innerHTML = cabecera('Padrón de productores') + `<div class="filtros"><input id="bus" placeholder="Buscar por nombre, código o comunidad"><select id="fc"><option value="">Todas las certificaciones</option>${cs.map(c => `<option value="${c.codigo}">${esc(c.nombre)}</option>`).join('')}</select><a class="boton" href="#/prodf">+ Nuevo productor</a><a class="boton sec" href="#/carga/productores">Subir varios desde Excel</a><a class="boton sec" href="#/carga/parcelas">Subir parcelas desde Excel</a><button class="sec" id="csv">Descargar CSV</button></div>
   <div class="tabla"><table><thead><tr><th>Código</th><th>Nombre</th><th>Comunidad</th><th class="n">Parcelas</th><th class="n">Hectáreas</th><th>Certificaciones</th><th>Inspección</th></tr></thead><tbody id="cuerpo"></tbody></table></div><p class="nota" id="tot"></p>`;
   const filtrar = () => { const t = norm($('#bus').value), c = $('#fc').value; return ps.filter(p => (!t || norm(p.nombre + p.codigo + p.comunidad).includes(t)) && (!c || p.certificaciones.includes(c))); };
   const pintar = () => {
@@ -1051,7 +1052,7 @@ RUTAS.insp = async function verInspeccion(id) {
 RUTAS.inspecciones = async function verInspecciones() {
   const filas = await q(sb.from('inspecciones').select('*, productores(nombre,codigo)').eq('org_id', S.org.id).order('fecha', { ascending: false }).limit(500)); await certs();
   const cuenta3 = k => filas.filter(x => x.resultado === k).length;
-  app().innerHTML = cabecera('Inspecciones internas') + `<div class="filtros"><a class="boton" href="#/inspeccion">+ Nueva inspección</a></div>
+  app().innerHTML = cabecera('Inspecciones internas') + `<div class="filtros"><a class="boton" href="#/inspeccion">+ Nueva inspección</a><a class="boton sec" href="#/carga/inspecciones">Subir historial desde Excel</a></div>
   <p>${filas.length} inspecciones · ${cuenta3('Aprobado')} aprobadas · ${cuenta3('Condicionado')} condicionadas · ${cuenta3('No aprobado')} no aprobadas</p>
   <div class="tabla"><table><thead><tr><th>Fecha</th><th>Productor</th><th>Inspector</th><th>Certificaciones</th><th>Resultado</th></tr></thead><tbody>
   ${filas.map(x => `<tr><td><a href="#/insp/${x.id}">${esc(x.fecha)}</a></td><td><a href="#/prod/${x.productor_id}">${esc(x.productores?.nombre)}</a></td><td>${esc(x.inspector)}</td><td>${x.certificaciones.map(nombreCert).map(esc).join(', ')}</td><td>${esc(x.resultado)}</td></tr>`).join('') || '<tr><td colspan="5" class="nota">Sin inspecciones.</td></tr>'}</tbody></table></div>`;
@@ -1409,6 +1410,7 @@ RUTAS.asistencia = async function verAsistencia(capId) {
   const [c, lista, ps] = await Promise.all([q(sb.from('capacitaciones').select('*').eq('id', capId).single()), q(sb.from('capacitacion_asistentes').select('*, productores(codigo,nombre,comunidad)').eq('capacitacion_id', capId).order('nombre')), prods()]);
   app().innerHTML = cabecera('Asistencia', '#/asistencia') + `<div class="caja"><b>${esc(c.tema)}</b> · ${esc(c.fecha)}${c.lugar ? ' · ' + esc(c.lugar) : ''}${c.facilitador ? ' · ' + esc(c.facilitador) : ''}</div>
   <div class="tabla"><table><thead><tr><th>Asistente</th><th>Código</th><th>Comunidad</th><th>Sexo</th></tr></thead><tbody>${lista.map(a => `<tr><td>${a.productor_id ? `<a href="#/prod/${a.productor_id}">${esc(a.productores?.nombre || a.nombre)}</a>` : esc(a.nombre || '')}</td><td>${esc(a.productores?.codigo || '')}</td><td>${esc(a.productores?.comunidad || '')}</td><td>${esc(a.sexo || '')}</td></tr>`).join('') || '<tr><td colspan="4" class="nota">Sin asistentes registrados.</td></tr>'}</tbody></table></div>
+  <div class="acciones" style="justify-content:flex-start"><a class="boton sec" href="#/carga/asistencia/${capId}">Subir la lista desde Excel</a></div>
   <form class="caja" id="f"><div class="rejilla"><div class="ancho"><label>Agregar productor del padrón</label>${campoProd(ps).replace(' required', '')}</div><div class="ancho"><label>O alguien que no está en el padrón (nombre)</label><input name="nombre"></div><div><label>Sexo</label><select name="sexo">${opciones(['', 'Mujer', 'Hombre'])}</select></div></div><div class="acciones"><button>Agregar a la lista</button></div></form>`;
   const f = $('#f'); f.onsubmit = async ev => {
     ev.preventDefault(); const d = datosForm(f), p = d.productor_txt ? leerProd(ps, d.productor_txt) : null;
@@ -1977,7 +1979,7 @@ RUTAS.insumos = async function verInsumos(prodId) {
     <div><label>Cantidad</label><input name="cantidad" inputmode="decimal"></div>
     <div><label>Unidad</label><select name="unidad">${opciones(['kg', 'lb', 'qq', 'sacos', 'litros', 'galones', 'ml'])}</select></div>
     <div class="ancho"><label>Observaciones</label><input name="observaciones"></div>
-  </div><p class="nota" id="revIns"></p><div class="acciones"><button>Registrar aplicación</button></div></form>
+  </div><p class="nota" id="revIns"></p><div class="acciones"><a class="boton sec" href="#/carga/insumos">Subir varios desde Excel</a><button>Registrar aplicación</button></div></form>
   <p class="nota">Las listas de insumos permitidos y prohibidos se ajustan en Configuración, según la certificadora. Si se aplica un producto prohibido, la parcela vuelve a empezar la transición y se abre una no conformidad sola.</p>
   <h2>Últimas aplicaciones</h2><div class="tabla"><table><thead><tr><th>Fecha</th><th>Productor</th><th>Parcela</th><th>Producto</th><th>Tipo</th><th class="n">Cantidad</th><th>Revisión</th><th>Origen</th></tr></thead><tbody>
   ${filas.map(x => `<tr><td>${esc(x.fecha)}</td><td><a href="#/prod/${x.productor_id}">${esc(x.productores?.codigo || '')} ${esc(x.productores?.nombre || '')}</a></td><td>${esc(x.parcela_nombre || 'Toda la finca')}</td><td>${esc(x.producto)}</td><td>${esc(x.tipo)}</td><td class="n">${x.cantidad ? num(x.cantidad).toLocaleString('es-HN') + ' ' + esc(x.unidad || '') : ''}</td><td>${chipInsumo(x.estado)}</td><td>${x.inspeccion_id ? `<a href="#/insp/${x.inspeccion_id}">${esc(x.origen || 'Inspección')}</a>` : esc(x.origen || 'Registro')}</td></tr>`).join('') || '<tr><td colspan="8" class="nota">Todavía no hay aplicaciones registradas.</td></tr>'}</tbody></table></div>`;

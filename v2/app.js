@@ -129,7 +129,7 @@ const GUIA_DE = { adm: 'adm', compra: 'adm', fondo: 'adm', liquidacion: 'adm', v
   cer: 'padron', padron: 'padron', prod: 'padron', prodf: 'padron', parcela: 'padron', inspeccion: 'insp', inspecciones: 'insp', insp: 'insp', nc: 'insp', insumos: 'insp', reg: 'insp',
   asistencia: 'capac', quejas: 'capac', queja: 'capac', acopio: 'acopio', acopios: 'acopio', recibo: 'acopio', inventario: 'acopio', basculas: 'acopio',
   despacho: 'venta', eudr: 'venta', lotes: 'venta', lote: 'venta', balance: 'venta', prima: 'prima', actas: 'prima', paquete: 'auditoria', kobo: 'kobo', bandeja: 'campo',
-  capacitacion: 'capac', capacitaciones: 'capac', cap: 'capac', guias: 'capac', aprobar: 'aprobacion', rev: 'aprobacion',
+  capacitacion: 'capac', capacitaciones: 'capac', cap: 'capac', guias: 'capac', aprobar: 'aprobacion', rev: 'aprobacion', carga: 'carga',
   panel: 'paneles', pnl: 'paneles', config: 'config', usuarios: 'config', catalogo: 'config', bitacora: 'config', orgs: 'config' };
 function cabecera(titulo, volver = S.seccion ? '#/' + S.seccion : '#/') {
   const g = GUIA_DE[location.hash.replace(/^#\/?/, '').split('/')[0]];
@@ -628,7 +628,7 @@ async function verSolicitud(id) {
 // ---------- proveedores ----------
 async function verProveedores() {
   const filas = await q(sb.from('proveedores').select('*').eq('org_id', S.org.id).order('nombre'));
-  app().innerHTML = cabecera('Proveedores') + `<div class="filtros"><input id="bus" placeholder="Buscar por nombre o RTN"><a class="boton" href="#/proveedor">+ Nuevo proveedor</a></div>
+  app().innerHTML = cabecera('Proveedores') + `<div class="filtros"><input id="bus" placeholder="Buscar por nombre o RTN"><a class="boton" href="#/proveedor">+ Nuevo proveedor</a><a class="boton sec" href="#/carga/proveedores">Subir varios desde Excel</a></div>
   <div class="tabla"><table><thead><tr><th>Nombre</th><th>RTN</th><th>Contacto</th><th>Teléfono</th><th>Qué vende</th><th></th></tr></thead><tbody id="cuerpo"></tbody></table></div>`;
   const pintar = t => { t = norm(t); $('#cuerpo').innerHTML = filas.filter(p => !t || norm(p.nombre + p.rtn).includes(t)).map(p => `<tr${p.activo ? '' : ' style="opacity:.5"'}><td>${esc(p.nombre)}</td><td>${esc(p.rtn)}</td><td>${esc(p.contacto)}</td><td>${esc(p.telefono)}</td><td>${esc(p.bienes)}</td><td>${esJefe() ? `<a href="#/proveedor/${p.id}">Editar</a>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="nota">Sin proveedores.</td></tr>'; };
   $('#bus').oninput = e => pintar(e.target.value); pintar('');
@@ -654,7 +654,7 @@ async function formProveedor(id) {
 // ---------- empleados ----------
 async function verEmpleados() {
   const filas = await q(sb.from('empleados').select('*').eq('org_id', S.org.id).order('nombre'));
-  app().innerHTML = cabecera('Empleados') + `<div class="filtros"><a class="boton" href="#/empleado">+ Nuevo empleado</a></div>
+  app().innerHTML = cabecera('Empleados') + `<div class="filtros"><a class="boton" href="#/empleado">+ Nuevo empleado</a>${esJefe() ? '<a class="boton sec" href="#/carga/empleados">Subir varios desde Excel</a>' : ''}</div>
   <div class="tabla"><table><thead><tr><th>Nombre</th><th>Cargo</th><th>Ingreso</th><th class="n">Salario</th><th class="n">Días de vacaciones</th><th></th></tr></thead><tbody>
   ${filas.map(e => `<tr${e.activo ? '' : ' style="opacity:.5"'}><td>${esc(e.nombre)}</td><td>${esc(e.cargo)}</td><td>${esc(e.fecha_ingreso)}</td><td class="n">${e.salario ? L(e.salario) : ''}</td><td class="n">${e.dias_vacaciones ?? ''}</td><td><a href="#/empleado/${e.id}">Editar</a></td></tr>`).join('') || '<tr><td colspan="6" class="nota">Sin empleados.</td></tr>'}
   </tbody></table></div>`;

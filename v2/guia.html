@@ -4,6 +4,12 @@
 
 <section id="novedades" data-para="todos">
 <h2>Novedades</h2>
+<h3>5 de noviembre de 2026 · Carga masiva desde Excel</h3>
+<ul>
+<li><b>Subir varios de un solo</b>: productores, parcelas, inspecciones ya hechas, insumos aplicados, documentos de productores, listas de asistencia, proveedores y empleados. Cada uno tiene su plantilla de Excel para descargar.</li>
+<li>Antes de guardar, el sistema revisa fila por fila y dice qué está mal. Las filas con error no se guardan; las demás sí.</li>
+<li>Si un productor (por código o identidad), una parcela, un proveedor (por RTN) o un empleado (por identidad) ya existe, se actualiza en vez de duplicarse.</li>
+</ul>
 <h3>5 de noviembre de 2026 · Rainforest Alliance</h3>
 <ul>
 <li><b>Rainforest Alliance</b> ya está en el plan de capacitaciones. Las 27 guías que ya cubrían sus requisitos ahora lo dicen (con la sección de la norma 2020, versión 1.4) y algunas tienen un contenido más, como las listas de plaguicidas prohibidos o el simulacro de emergencia.</li>
@@ -136,6 +142,26 @@
 <li><b>Documentos del productor</b> (en la ficha): compromiso firmado, contrato, documento de la tierra, identidad, análisis de suelo, plan de manejo. Con fecha de vencimiento, avisa antes de que se venzan.</li>
 <li>El padrón también puede llegar de Kobo; cada envío reemplaza las parcelas de ese productor pero conserva la fecha del último prohibido.</li>
 </ul>
+</section>
+
+<section id="carga" data-para="todos">
+<h2>Carga masiva desde Excel</h2>
+<p>Para no registrar uno por uno, varias listas se pueden subir de un solo desde un Excel: en Certificaciones › <b>Carga masiva desde Excel</b>, o con el botón «Subir varios desde Excel» que está en el padrón, las inspecciones, los insumos, la asistencia de cada capacitación, los proveedores y los empleados.</p>
+<ol>
+<li>Tocá <b>Descargar plantilla de Excel</b>. Trae la hoja «Datos» con los encabezados, la hoja «Instrucciones» con lo que va en cada columna y los valores permitidos y, cuando hace falta, la hoja «Productores» con los códigos de socio.</li>
+<li>Llená una fila por registro sin cambiar los encabezados. Las columnas con * son obligatorias. Las fechas van como día/mes/año y las certificaciones separadas por coma.</li>
+<li>Tocá <b>Subir archivo</b> (Excel o CSV). El sistema muestra cuántas filas son nuevas, cuántas se actualizan y cuáles tienen error, con el motivo.</li>
+<li>Tocá <b>Guardar</b>. Se guardan las filas buenas; las que tienen error se bajan en un archivo para corregirlas y volverlas a subir.</li>
+</ol>
+<ul>
+<li><b>Productores</b>: si el código de socio o la identidad ya existen, se actualizan sus datos con lo que venga lleno. Sin código, el sistema le pone el siguiente.</li>
+<li><b>Parcelas</b>: van con el código del productor. Si ya tiene una parcela con el mismo nombre, se actualiza. Las de 4 ha o más sin polígono se guardan, pero quedan marcadas para EUDR.</li>
+<li><b>Inspecciones</b>: sirve para pasar el historial. Si la carga la hace gerencia, el resultado más reciente queda como estado de inspección del productor.</li>
+<li><b>Insumos</b>: se revisan contra las listas de Configuración. Un producto prohibido abre la no conformidad igual que al registrarlo uno por uno.</li>
+<li><b>Asistencia</b>: se sube desde la capacitación (Asistencia por productor › la capacitación › «Subir la lista desde Excel»). Los que ya están se saltan.</li>
+<li><b>Proveedores</b> (se reconocen por RTN) y <b>empleados</b> (por identidad, solo gerencia).</li>
+</ul>
+<p>Lo que se sube pasa por la aprobación igual que lo demás, si alguien aprueba ese tipo de registro. Para subir se necesita señal.</p>
 </section>
 
 <section id="insp" data-para="cer">
