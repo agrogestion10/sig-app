@@ -866,23 +866,114 @@ RUTAS.cer = async function menuCert() {
 };
 
 RUTAS.padron = async function verPadron() {
-  const [ps, parc, cs] = await Promise.all([prods(true), q(sb.from('parcelas').select('productor_id,area_ha,poligono').eq('org_id', S.org.id)), certs()]);
-  const ha = {}, np = {}, sinPol = {};
-  parc.forEach(p => { ha[p.productor_id] = (ha[p.productor_id] || 0) + num(p.area_ha); np[p.productor_id] = (np[p.productor_id] || 0) + 1; if (num(p.area_ha) >= 4 && !p.poligono) sinPol[p.productor_id] = 1; });
-  app().innerHTML = cabecera('Padrón de productores') + `<div class="filtros"><input id="bus" placeholder="Buscar por nombre, código o comunidad"><select id="fc"><option value="">Todas las certificaciones</option>${cs.map(c => `<option value="${c.codigo}">${esc(c.nombre)}</option>`).join('')}</select><a class="boton" href="#/prodf">+ Nuevo productor</a><a class="boton sec" href="#/carga/productores">Subir varios desde Excel</a><a class="boton sec" href="#/carga/parcelas">Subir parcelas desde Excel</a><a class="boton sec" href="#/carga/poligonos">Subir polígonos (KML o GeoJSON)</a><button class="sec" id="csv">Descargar CSV</button></div>
-  <div class="tabla"><table><thead><tr><th>Código</th><th>Nombre</th><th>Comunidad</th><th class="n">Parcelas</th><th class="n">Hectáreas</th><th>Certificaciones</th><th>Inspección</th></tr></thead><tbody id="cuerpo"></tbody></table></div><p class="nota" id="tot"></p>`;
-  const filtrar = () => { const t = norm($('#bus').value), c = $('#fc').value; return ps.filter(p => (!t || norm(p.nombre + p.codigo + p.comunidad).includes(t)) && (!c || p.certificaciones.includes(c))); };
+  const [ps, parc, cs] = await Promise.all([q(sb.from('productores').select('*').eq('org_id', S.org.id).order('nombre')), q(sb.from('parcelas').select('productor_id,nombre,area_ha,lat,lon,poligono').eq('org_id', S.org.id)), certs()]);
+  const ha = {}, np = {}, sinPol = {}, parDe = {};
+  parc.forEach(p => { ha[p.productor_id] = (ha[p.productor_id] || 0) + num(p.area_ha); np[p.productor_id] = (np[p.productor_id] || 0) + 1; if (num(p.area_ha) >= 4 && !p.poligono) sinPol[p.productor_id] = 1; (parDe[p.productor_id] = parDe[p.productor_id] || []).push(p); });
+  const falta = Object.fromEntries(ps.map(p => [p.id, faltaPadron(p, parDe[p.id] || [])]));
+  app().innerHTML = cabecera('Padrón de productores') + `<div class="filtros"><input id="bus" placeholder="Buscar por nombre, código o comunidad"><select id="fc"><option value="">Todas las certificaciones</option>${cs.map(c => `<option value="${c.codigo}">${esc(c.nombre)}</option>`).join('')}</select>
+    <label style="display:flex;gap:6px;align-items:center;margin:0;font-weight:400"><input type="checkbox" id="soloInc" style="width:auto">Solo los incompletos</label>
+    <a class="boton" href="#/prodf">+ Nuevo productor</a><a class="boton sec" href="#/carga/productores">Subir varios desde Excel</a><a class="boton sec" href="#/carga/parcelas">Subir parcelas desde Excel</a><a class="boton sec" href="#/carga/poligonos">Subir polígonos (KML o GeoJSON)</a><button class="sec" id="csv">Descargar padrón</button></div>
+  <p class="nota" id="notaCsv">El padrón que se descarga trae las columnas que pide la certificación escogida arriba. Con «Todas», trae todas.</p>
+  <div class="tabla"><table><thead><tr><th>Código</th><th>Nombre</th><th>Comunidad</th><th class="n">Parcelas</th><th class="n">Hectáreas</th><th>Certificaciones</th><th>Padrón</th><th>Inspección</th></tr></thead><tbody id="cuerpo"></tbody></table></div><p class="nota" id="tot"></p>`;
+  const filtrar = () => { const t = norm($('#bus').value), c = $('#fc').value, inc = $('#soloInc').checked; return ps.filter(p => (!t || norm(p.nombre + p.codigo + p.comunidad).includes(t)) && (!c || p.certificaciones.includes(c)) && (!inc || falta[p.id].length)); };
   const pintar = () => {
-    const f = filtrar();
-    $('#cuerpo').innerHTML = f.map(p => `<tr${p.activo ? '' : ' style="opacity:.5"'}><td>${esc(p.codigo)}</td><td><a href="#/prod/${p.id}">${esc(p.nombre)}</a></td><td>${esc(p.comunidad)}</td><td class="n">${np[p.id] || 0}${sinPol[p.id] ? ' <span class="error" title="Parcela de 4 ha o más sin polígono">⚠</span>' : ''}</td><td class="n">${(ha[p.id] || 0).toFixed(2)}</td><td>${p.certificaciones.map(nombreCert).map(esc).join(', ')}</td><td>${p.estado_cert ? estadoChip(p.estado_cert, { Aprobado: 'Autorizada', Condicionado: 'Pendiente', 'No aprobado': 'Rechazada' }[p.estado_cert]) : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="nota">Sin productores.</td></tr>';
-    $('#tot').textContent = `${f.length} productores · ${f.reduce((t, p) => t + (ha[p.id] || 0), 0).toFixed(2)} ha`;
+    const f = filtrar(), inc = f.filter(p => falta[p.id].length).length;
+    $('#cuerpo').innerHTML = f.map(p => `<tr${p.activo ? '' : ' style="opacity:.5"'}><td>${esc(p.codigo)}</td><td><a href="#/prod/${p.id}">${esc(p.nombre)}</a></td><td>${esc(p.comunidad)}</td><td class="n">${np[p.id] || 0}${sinPol[p.id] ? ' <span class="error" title="Parcela de 4 ha o más sin polígono">⚠</span>' : ''}</td><td class="n">${(ha[p.id] || 0).toFixed(2)}</td><td>${p.certificaciones.map(nombreCert).map(esc).join(', ')}</td>
+      <td>${!p.certificaciones.length ? '' : falta[p.id].length ? `<span class="estado e-Pendiente" title="${esc(falta[p.id].join(' · '))}">Faltan ${falta[p.id].length}</span>` : '<span class="estado e-Autorizada">Completo</span>'}</td>
+      <td>${p.estado_cert ? estadoChip(p.estado_cert, { Aprobado: 'Autorizada', Condicionado: 'Pendiente', 'No aprobado': 'Rechazada' }[p.estado_cert]) : ''}</td></tr>`).join('') || '<tr><td colspan="8" class="nota">Sin productores.</td></tr>';
+    $('#tot').textContent = `${f.length} productores · ${f.reduce((t, p) => t + (ha[p.id] || 0), 0).toFixed(2)} ha · ${inc ? inc + ' con datos pendientes para sus certificaciones' : 'todos completos'}`;
   };
-  $('#bus').oninput = pintar; $('#fc').onchange = pintar; pintar();
-  $('#csv').onclick = () => descargarCSV('padron.csv', ['codigo', 'nombre', 'identidad', 'comunidad', 'parcelas', 'hectareas', 'certificaciones', 'inspeccion'], filtrar().map(p => [p.codigo, p.nombre, p.identidad, p.comunidad, np[p.id] || 0, (ha[p.id] || 0).toFixed(2), p.certificaciones.map(nombreCert).join('; '), p.estado_cert]));
+  $('#bus').oninput = pintar; $('#fc').onchange = pintar; $('#soloInc').onchange = pintar; pintar();
+  $('#csv').onclick = () => {
+    const c = $('#fc').value, lista = filtrar();
+    const req = (c ? reqDe([c]) : REQ_PADRON.filter((r, i, a) => a.findIndex(x => x[1] === r[1]) === i)).filter(r => r[3] !== 'col');
+    const base = ['codigo', 'nombre', 'identidad', 'sexo', 'fecha_nacimiento', 'telefono', 'comunidad', 'municipio', 'departamento', 'fecha_ingreso'];
+    const cols = [...base, 'certificaciones', ...req.map(r => r[1]), 'parcelas', 'hectareas_parcelas', 'puntos_gps', 'poligonos', 'ultima_inspeccion', 'datos_pendientes'];
+    descargarCSV('padron' + (c ? '_' + c : '') + '.csv', cols, lista.map(p => { const pd = p.datos?.padron || {}, pp = parDe[p.id] || [];
+      return [...base.map(k => p[k]), p.certificaciones.map(nombreCert).join('; '), ...req.map(r => pd[r[1]]), pp.length, (ha[p.id] || 0).toFixed(2), pp.filter(x => x.lat).map(x => `${num(x.lat).toFixed(6)} ${num(x.lon).toFixed(6)}`).join('; '), pp.filter(x => x.poligono).length, p.estado_cert, falta[p.id].join('; ')]; }));
+  };
 };
 function descargarCSV(nombre, cols, filas) {
   const csv = [cols.join(','), ...filas.map(r => r.map(v => '"' + String(v ?? '').replace(/"/g, '""') + '"').join(','))].join('\n');
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = nombre; a.click();
+}
+
+
+// ---------- Padrón: lo que pide cada certificación de cada productor ----------
+// Los datos propios de cada sello se guardan en productores.datos.padron. Las parcelas (área, punto GPS, polígono) se revisan aparte.
+const GRUPO_SELLO = { org_ue: 'org', usda: 'org', jas: 'org', cor: 'org', corea: 'org', naturland: 'org', demeter: 'org', bio_suisse: 'org', roc: 'org',
+  fairtrade: 'fair', spp: 'fair', ffl: 'fair', ftusa: 'fair', rainforest: 'sost', cafe_practices: 'sost', '4c': 'sost', aaa: 'sost', bird_friendly: 'sost', eudr: 'eudr' };
+const SINO = ['', 'No', 'Sí'];
+const REQ_PADRON = [
+  // grupo, clave, texto, tipo, opciones, ayuda — col: columna propia de la tabla productores
+  ['base', 'codigo', 'Código de socio', 'col'], ['base', 'identidad', 'Número de identidad', 'col'], ['base', 'sexo', 'Sexo', 'col'], ['base', 'fecha_nacimiento', 'Fecha de nacimiento', 'col'],
+  ['base', 'comunidad', 'Comunidad', 'col'], ['base', 'municipio', 'Municipio', 'col'], ['base', 'fecha_ingreso', 'Fecha de ingreso', 'col'],
+  ['base', 'fecha_compromiso', 'Fecha en que firmó el compromiso o reglamento interno', 'date', null, 'Lo piden todas las certificaciones de grupo.'],
+  ['base', 'area_finca_ha', 'Área total de la finca (ha)', 'num'], ['base', 'estimado_qq', 'Producción estimada del ciclo (qq)', 'num'],
+  ['base', 'tenencia', 'Tenencia de la tierra', 'sel', ['', 'Propia con escritura', 'Propia con dominio útil', 'Propia sin documento', 'Arrendada', 'Familiar', 'Otra']],
+  ['org', 'estado_organico', 'Estado orgánico', 'sel', ['', 'Orgánico', 'Transición año 1', 'Transición año 2', 'Transición año 3']],
+  ['org', 'fecha_conversion', 'Fecha de inicio de la conversión', 'date'],
+  ['org', 'ultimo_prohibido', 'Última aplicación de un producto no permitido', 'date', null, 'Dejalo vacío si nunca se aplicó. Se necesitan 36 meses sin aplicar para orgánico.'],
+  ['org', 'area_organica_ha', 'Área orgánica o en conversión (ha)', 'num'],
+  ['org', 'produccion_paralela', '¿Tiene el mismo cultivo convencional en otra parcela?', 'sel', SINO],
+  ['org', 'riesgo_colindantes', 'Riesgo de contaminación por vecinos', 'sel', ['', 'Ninguno', 'Bajo', 'Medio', 'Alto']],
+  ['bio_suisse', 'finca_completa', '¿Toda la finca está en manejo orgánico?', 'sel', SINO, 'Bio Suisse pide la finca completa, sin parcelas convencionales.'],
+  ['fair', 'trab_permanentes', 'Trabajadores permanentes contratados', 'num'], ['fair', 'trab_temporales', 'Trabajadores temporales en cosecha', 'num'],
+  ['fair', 'mano_obra_familiar', '¿El trabajo lo hace sobre todo la familia?', 'sel', SINO, 'Define si es pequeño productor.'],
+  ['sost', 'trab_permanentes', 'Trabajadores permanentes contratados', 'num'], ['sost', 'trab_temporales', 'Trabajadores temporales en cosecha', 'num'],
+  ['sost', 'menores_finca', '¿Viven o trabajan menores de 18 años en la finca?', 'sel', SINO, 'Sirve para la evaluación de riesgo de trabajo infantil.'],
+  ['sost', 'escolaridad', 'Escolaridad del productor', 'sel', ['', 'Ninguna', 'Primaria', 'Secundaria', 'Superior']],
+  ['sost', 'area_conservacion_ha', 'Área de bosque o conservación dentro de la finca (ha)', 'num', null, 'Puede ser cero.'],
+  ['fair', 'menores_trabajando', '¿Trabajan menores de 15 años en la finca?', 'sel', SINO],
+  ['eudr', 'documento_tenencia', 'Documento que prueba la tenencia', 'sel', ['', 'Escritura', 'Dominio útil', 'Constancia municipal', 'Contrato de arrendamiento', 'Ninguno']],
+  ['eudr', 'uso_suelo_2020', 'Uso de la tierra al 31 de diciembre de 2020', 'sel', ['', 'Ya era café o cacao', 'Bosque', 'Potrero', 'Granos básicos', 'Otro']],
+  ['eudr', 'libre_deforestacion', '¿Declara que no hubo deforestación después del 31/12/2020?', 'sel', SINO]
+];
+const NOMBRE_GRUPO = { base: 'Datos que piden todas', org: 'Orgánico', bio_suisse: 'Bio Suisse', fair: 'Comercio Justo', sost: 'Rainforest y sostenibilidad', eudr: 'EUDR' };
+function gruposDe(certsProd) {
+  const g = new Set();
+  (certsProd || []).forEach(c => { if (GRUPO_SELLO[c]) { g.add('base'); g.add(GRUPO_SELLO[c]); } if (c === 'bio_suisse') g.add('bio_suisse'); });
+  return [...g];
+}
+// campos que le tocan a un productor según sus sellos (sin repetir la clave)
+function reqDe(certsProd) {
+  const g = gruposDe(certsProd), vistos = new Set();
+  return REQ_PADRON.filter(r => g.includes(r[0]) && !vistos.has(r[1]) && vistos.add(r[1]));
+}
+// qué le falta: datos del productor y de sus parcelas
+function faltaPadron(p, parcelas = []) {
+  const pd = p.datos?.padron || {}, falta = [], cs = p.certificaciones || [];
+  reqDe(cs).forEach(([g, k, t, tipo]) => {
+    const v = tipo === 'col' ? p[k] : pd[k];
+    if (k === 'ultimo_prohibido' || k === 'area_conservacion_ha') return; // pueden ir vacíos
+    if (v === undefined || v === null || v === '') falta.push(t);
+  });
+  if (cs.includes('bio_suisse') && pd.finca_completa === 'No') falta.push('Bio Suisse: la finca no está completa en orgánico');
+  if (cs.includes('eudr') && pd.libre_deforestacion === 'No') falta.push('EUDR: no declara libre de deforestación');
+  const g = gruposDe(cs);
+  if (g.length && parcelas) {
+    if (!parcelas.length) falta.push('Al menos una parcela');
+    parcelas.forEach(x => {
+      const n = x.nombre || 'parcela';
+      if (!num(x.area_ha)) falta.push(`Área de ${n}`);
+      if ((g.includes('eudr') || g.includes('sost')) && !x.lat && !x.poligono) falta.push(`Punto GPS de ${n}`);
+      if ((g.includes('eudr') || g.includes('sost')) && num(x.area_ha) >= 4 && !x.poligono) falta.push(`Polígono de ${n} (tiene 4 ha o más)`);
+    });
+  }
+  return falta;
+}
+function camposPadron(certsProd, pd = {}, p = {}) {
+  const req = reqDe(certsProd).filter(r => r[3] !== 'col');
+  if (!req.length) return '<p class="nota">Marcá las certificaciones y aquí salen los datos que pide cada una.</p>';
+  const g = gruposDe(certsProd);
+  return g.map(gr => {
+    const rs = req.filter(r => r[0] === gr); if (!rs.length) return '';
+    return `<fieldset style="margin:10px 0"><legend><b>${NOMBRE_GRUPO[gr]}</b></legend><div class="rejilla">${rs.map(([, k, t, tipo, ops, ayuda]) => {
+      const v = pd[k] ?? '', nm = 'pd_' + k;
+      const inp = tipo === 'sel' ? `<select name="${nm}">${opciones(ops, v)}</select>` : tipo === 'date' ? `<input type="date" name="${nm}" value="${esc(v)}" max="${hoy()}">` : `<input name="${nm}" inputmode="decimal" value="${esc(v)}">`;
+      return `<div><label>${esc(t)}</label>${inp}${ayuda ? `<p class="nota">${esc(ayuda)}</p>` : ''}</div>`;
+    }).join('')}</div></fieldset>`;
+  }).join('');
 }
 
 RUTAS.prodf = async function formProductor(id) {
@@ -895,10 +986,22 @@ RUTAS.prodf = async function formProductor(id) {
     <div><label>Cultivo</label>${cultivos().length > 1 ? `<select name="cultivo">${opciones(['Café', 'Cacao'], cultivoProd(p))}</select>` : `<input name="cultivo" value="${esc(p.cultivo || cultivos()[0])}" readonly>`}</div>
     ${id ? `<div><label>Estado</label><select name="activo"><option value="true">Activo</option><option value="false" ${p.activo ? '' : 'selected'}>Retirado</option></select></div>` : ''}
     <div class="ancho"><label>Certificaciones en las que participa</label>${checksCert(cs, p.certificaciones)}</div>
-  </div><p class="nota">Un solo cultivo por productor (café).</p><div class="acciones"><button>Guardar</button></div></form>`;
+  </div>
+  <h2>Lo que pide cada certificación</h2><div id="reqPad"></div>
+  <p class="nota">Un solo cultivo por productor (café).</p><div class="acciones"><button>Guardar</button></div></form>`;
+  const pd0 = { ...(p.datos?.padron || {}) };
+  const leerPd = () => { const o = { ...pd0 }; $('#f').querySelectorAll('[name^=pd_]').forEach(x => o[x.name.slice(3)] = x.value.trim()); return o; };
+  const pintarReq = () => { const o = leerPd(); $('#reqPad').innerHTML = camposPadron(leerChecks($('#f')), o, p); };
+  $('#f').addEventListener('change', e => { if (e.target.name === 'certs') pintarReq(); });
+  pintarReq();
   $('#f').onsubmit = async ev => {
     ev.preventDefault(); const f = ev.target, d = datosForm(f); delete d.certs;
+    const padron = leerPd(); Object.keys(d).filter(k => k.startsWith('pd_')).forEach(k => delete d[k]);
+    d.datos = { ...(p.datos || {}), padron };
     d.certificaciones = leerChecks(f); ['fecha_nacimiento', 'fecha_ingreso'].forEach(k => d[k] = d[k] || null);
+    const parc = id ? await q(sb.from('parcelas').select('nombre,area_ha,lat,poligono').eq('productor_id', id)) : null;
+    const falta = faltaPadron({ ...p, ...d }, parc);
+    if (falta.length && !confirm(`Para sus certificaciones todavía falta:\n• ${falta.slice(0, 12).join('\n• ')}${falta.length > 12 ? '\n• …y ' + (falta.length - 12) + ' más' : ''}\n\n¿Guardar así y completarlo después?`)) return;
     if (id) d.activo = d.activo === 'true'; d.actualizado = new Date().toISOString();
     if (d.identidad && !/^\d{4}-?\d{4}-?\d{5}$/.test(d.identidad)) return aviso('El número de identidad debe tener 13 dígitos (0000-0000-00000).', true);
     ocupado(f, true);
@@ -930,6 +1033,10 @@ RUTAS.prod = async function verProductor(id) {
   ${parc.map(x => `<tr><td>${esc(x.nombre)}</td><td class="n">${num(x.area_ha).toFixed(2)}</td><td>${esc(x.variedad)}</td><td class="n">${x.altitud ?? ''}</td><td>${x.lat ? `${num(x.lat).toFixed(5)}, ${num(x.lon).toFixed(5)}` : '<span class="error">Sin punto</span>'}</td><td>${x.poligono ? 'Sí' : num(x.area_ha) >= 4 ? '<span class="error">Falta (4 ha o más)</span>' : 'No requerido'}</td><td class="n">${estimadoParcela(x) ? estimadoParcela(x).toLocaleString('es-HN') : ''}</td><td>${chipOrg(estadoOrganico(x))}</td><td><a href="#/parcela/${x.id}">Editar</a></td></tr>`).join('') || '<tr><td colspan="9" class="nota">Sin parcelas.</td></tr>'}
   </tbody></table></div>
   <p class="nota" id="estProd"></p>
+  ${p.certificaciones.length ? (() => { const fl = faltaPadron(p, parc), pd = p.datos?.padron || {}, rq = reqDe(p.certificaciones).filter(r => r[3] !== 'col' && pd[r[1]]);
+    return `<h2>Padrón según sus certificaciones</h2><div class="caja">${fl.length ? `<p><span class="estado e-Pendiente">Faltan ${fl.length}</span> ${fl.map(esc).join(' · ')}</p>` : '<p><span class="estado e-Autorizada">Completo</span> Tiene todo lo que piden sus certificaciones.</p>'}
+      ${rq.length ? `<dl class="detalle" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0 14px">${rq.map(r => `<div><dt>${esc(r[2])}</dt><dd>${esc(pd[r[1]])}</dd></div>`).join('')}</dl>` : ''}
+      <div class="acciones"><a class="boton sec" href="#/prodf/${p.id}">Completar datos</a></div></div>`; })() : ''}
   <div id="insProd"></div><div id="docsProd"></div>
   <h2>Inspecciones</h2><div class="tabla"><table><thead><tr><th>Fecha</th><th>Inspector</th><th>Certificaciones</th><th>Resultado</th><th>Observaciones</th></tr></thead><tbody>
   ${insp.map(x => `<tr><td><a href="#/insp/${x.id}">${esc(x.fecha)}</a></td><td>${esc(x.inspector)}</td><td>${x.certificaciones.map(nombreCert).map(esc).join(', ')}</td><td>${esc(x.resultado)}</td><td>${esc(x.observaciones)}</td></tr>`).join('') || '<tr><td colspan="5" class="nota">Sin inspecciones.</td></tr>'}</tbody></table></div>
