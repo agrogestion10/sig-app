@@ -4,6 +4,13 @@
 
 <section id="novedades" data-para="todos">
 <h2>Novedades</h2>
+<h3>6 de noviembre de 2026 · Una sola forma de meter facturas</h3>
+<ul>
+<li>Se quitó «Registrar factura» del menú. Ahora las facturas se meten igual que en la liquidación (número, proveedor, descripción y total, Enter para la siguiente):</li>
+<li>en la <b>compra</b>: al marcarla como atendida, administración mete las facturas de la compra y entran al libro amarradas a la solicitud;</li>
+<li>en el <b>libro de compras</b>: «+ Agregar facturas» para servicios, alquiler, facturas a crédito y pagos directos.</li>
+<li>En el libro quedan anotadas las que no tienen RTN del proveedor ni CAI e ISV, para que contabilidad las complete.</li>
+</ul>
 <h3>6 de noviembre de 2026 · Liquidación: proveedor, SAR y libro de compras</h3>
 <ul>
 <li>Cada factura de la liquidación lleva <b>número, proveedor, descripción y total</b>. El proveedor se escoge de la lista o se escribe.</li>
@@ -173,8 +180,11 @@
 </ul>
 <h3>Facturas y presupuesto</h3>
 <ul>
-<li><b>Registrar factura</b>: revisa el CAI, el rango y la fecha límite, y calcula las retenciones. Si tiene observaciones del SAR, avisa antes de guardarla.</li>
-<li><b>Facturas</b>: libro de compras del mes.</li>
+<li><b>Facturas</b>: libro de compras del mes. Las facturas entran por tres lados, todas con número, proveedor, descripción y total:
+<ul><li>las de un <b>fondo</b>, en su liquidación (entran al autorizarse);</li>
+<li>las de una <b>compra</b>, cuando administración la marca como atendida;</li>
+<li>las que no vienen de ninguna solicitud (servicios, alquiler, facturas a crédito), con <b>+ Agregar facturas</b> en el libro.</li></ul>
+Si hay dudas con una factura, «Validar en el SAR ↗» abre el validador del SAR.</li>
 <li><b>Presupuesto</b>: aprobado contra ejecutado por línea.</li>
 <li><b>Empleados</b> y <b>Proveedores</b>: directorios.</li>
 </ul>

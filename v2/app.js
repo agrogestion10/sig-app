@@ -133,7 +133,7 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); pedirI
 function datosForm(f) { const o = {}; new FormData(f).forEach((v, k) => o[k] = typeof v === 'string' ? v.trim() : v); return o; }
 function ocupado(f, si) { f.querySelectorAll('button').forEach(b => b.disabled = si); }
 // Qué parte de la guía de uso explica cada pantalla
-const GUIA_DE = { adm: 'adm', compra: 'adm', fondo: 'adm', liquidacion: 'adm', vacacion: 'adm', laboral: 'adm', factura: 'adm', facturas: 'adm', fac: 'adm', presupuesto: 'adm', empleados: 'adm', proveedores: 'adm', solicitudes: 'adm', solicitud: 'adm',
+const GUIA_DE = { adm: 'adm', compra: 'adm', fondo: 'adm', liquidacion: 'adm', vacacion: 'adm', laboral: 'adm', factura: 'adm', facturas: 'adm', fac: 'adm', agregarfac: 'adm', presupuesto: 'adm', empleados: 'adm', proveedores: 'adm', solicitudes: 'adm', solicitud: 'adm',
   cre: 'cre', credito: 'cre', creditos: 'cre', cred: 'cre', cartera: 'cre', recordatorios: 'cre', reportescre: 'cre', pago: 'cre', fondos: 'cre', condiciones: 'cre', edocta: 'cre',
   cer: 'padron', padron: 'padron', prod: 'padron', prodf: 'padron', parcela: 'padron', inspeccion: 'insp', inspecciones: 'insp', insp: 'insp', nc: 'insp', insumos: 'insp', reg: 'insp',
   asistencia: 'capac', quejas: 'capac', queja: 'capac', acopio: 'acopio', acopios: 'acopio', recibo: 'acopio', inventario: 'acopio', basculas: 'acopio',
@@ -267,7 +267,7 @@ function cerrarEngrane() { const m = $('#menuEng'); if (m && !m.hidden) { m.hidd
 // ---------- rutas ----------
 const RUTAS = {
   '': inicio, 'compra': formCompra, 'fondo': formFondo, 'liquidacion': formLiquidacion, 'vacacion': formVacacion,
-  'factura': formFactura, 'facturas': verFacturas, 'fac': verFactura, 'solicitudes': verSolicitudes, 'solicitud': verSolicitud,
+  'factura': formFactura, 'facturas': verFacturas, 'fac': verFactura, 'agregarfac': agregarFacturas, 'solicitudes': verSolicitudes, 'solicitud': verSolicitud,
   'proveedores': verProveedores, 'proveedor': formProveedor, 'empleados': verEmpleados, 'empleado': formEmpleado,
   'presupuesto': verPresupuesto, 'config': verConfig, 'usuarios': verUsuarios, 'bitacora': verBitacora, 'orgs': verOrgs, 'adm': inicio
 };
@@ -275,7 +275,7 @@ const RUTAS = {
 // Claves de Configuración que se escogen de una lista
 const CFG_OPC = { CULTIVO_ACOPIO: ['Café', 'Cacao', 'Café y cacao'], ACOPIO_UNIDAD: ['lb', 'qq', 'kg'], COTIZACION_ARCHIVO: ['Sí', 'No'] };
 const SECCION_DE = { '': '', adm: 'adm', config: '', usuarios: '', bitacora: '', orgs: '', guia: '', aprobar: '', rev: '' };
-['compra', 'fondo', 'liquidacion', 'vacacion', 'factura', 'facturas', 'fac', 'solicitudes', 'solicitud', 'proveedores', 'proveedor', 'empleados', 'empleado', 'presupuesto', 'laboral'].forEach(r => SECCION_DE[r] = 'adm');
+['compra', 'fondo', 'liquidacion', 'vacacion', 'factura', 'facturas', 'fac', 'agregarfac', 'solicitudes', 'solicitud', 'proveedores', 'proveedor', 'empleados', 'empleado', 'presupuesto', 'laboral'].forEach(r => SECCION_DE[r] = 'adm');
 async function ruta() {
   if (!S.user) return pantallaAcceso();
   archivarLuego();
@@ -324,7 +324,6 @@ async function inicio() {
     ${t('#/compra', 'Solicitud de compra', 'Con cotizaciones y proveedor')}
     ${t('#/fondo', 'Solicitud de fondos', 'Anticipos para actividades')}
     ${t('#/liquidacion', 'Liquidar fondos', 'Rendir cuentas de un anticipo')}
-    ${t('#/factura', 'Registrar factura', 'Revisión del CAI y retenciones')}
     ${t('#/vacacion', 'Vacaciones', 'Solicitar días')}
     ${esJefe() ? t('#/laboral', 'Liquidación laboral', 'Prestaciones al terminar la relación') : ''}
     ${t('#/solicitudes', esJefe() ? 'Autorizaciones' : 'Mis solicitudes', esJefe() ? 'Revisar y resolver' : 'Ver en qué van', pend)}
@@ -530,87 +529,62 @@ async function formFondo() {
 // ---------- liquidación ----------
 const SAR_VALIDADOR = 'https://oficinavirtual.sar.gob.hn/fac/validador-doc-fiscales/';
 const abrirValidadorSar = () => window.open(SAR_VALIDADOR, '_blank', 'noopener');
-async function formLiquidacion(refId) {
-  let qy = sb.from('solicitudes').select('id,numero,monto,descripcion,solicitante,proyecto,linea,creado_por').eq('org_id', S.org.id).eq('tipo', 'fondo').in('estado', ['Autorizada', 'Atendida']).order('creado', { ascending: false });
-  if (!esJefe()) qy = qy.eq('creado_por', S.user.id);
-  const [fondos, liq, provs] = await Promise.all([q(qy),
-    q(sb.from('solicitudes').select('referencia,numero,datos').eq('org_id', S.org.id).eq('tipo', 'liquidacion').in('estado', ['Pendiente', 'Autorizada', 'Atendida'])),
-    q(sb.from('proveedores').select('id,nombre,rtn').eq('org_id', S.org.id).eq('activo', true).order('nombre')).catch(() => [])]);
-  const hechas = new Set(liq.map(x => x.referencia));
-  const libres = fondos.filter(x => !hechas.has(x.id));
-  if (!libres.length) { app().innerHTML = cabecera('Liquidar fondos') + '<div class="caja">No hay fondos autorizados pendientes de liquidar.</div>'; return; }
-  // facturas ya usadas en otras liquidaciones (las que esta persona puede ver): mismo proveedor y número
-  const clave = x => norm(x.proveedor) + '|' + normFac(x.numero);
-  const usadas = new Map(); liq.forEach(l => (l.datos?.facturas || []).forEach(x => usadas.set(clave(x), l.numero)));
-  // el RTN no se pide: si el proveedor está en el directorio, se guarda solo para el libro de compras
-  const provDe = new Map(provs.map(p => [norm(p.nombre), p]));
-  const MAX = 30;
-  app().innerHTML = cabecera('Liquidar fondos') + `
-  <form class="caja" id="f"><div class="rejilla">
-    <div class="ancho"><label>Fondo que se liquida</label><select name="ref" id="ref">${libres.map(x => `<option value="${x.id}" ${x.id === refId ? 'selected' : ''}>${esc(x.numero)} · ${esc(x.solicitante)} · ${L(x.monto)} · ${esc((x.descripcion || '').slice(0, 60))}</option>`).join('')}</select></div>
-  </div>
-  <datalist id="dlProv">${[...new Set([...provs.map(p => p.nombre), ...liq.flatMap(l => (l.datos?.facturas || []).map(x => x.proveedor)).filter(Boolean)])].map(n => `<option value="${esc(n)}">`).join('')}</datalist>
-  <h2>Facturas</h2>
+
+// ---------- tabla rápida de facturas: número, proveedor, descripción y total (liquidaciones, compras atendidas, libro de compras) ----------
+// raiz: elemento donde se pinta. op: { max, usadas: Map(clave → dónde se usó), provs: [{id,nombre,rtn}], cambio: fn }
+const claveFac = x => norm(x.proveedor) + '|' + normFac(x.numero);
+function tablaFacturas(raiz, op = {}) {
+  const MAX = op.max || 30, usadas = op.usadas || new Map(), provs = op.provs || [], provDe = new Map(provs.map(p => [norm(p.nombre), p]));
+  const id = 'tf' + Math.random().toString(36).slice(2, 7);
+  raiz.innerHTML = `<datalist id="${id}dl">${[...new Set([...provs.map(p => p.nombre), ...(op.nombres || [])])].map(n => `<option value="${esc(n)}">`).join('')}</datalist>
   <p class="nota">Número, proveedor, descripción y total de cada factura. Enter pasa al siguiente dato; en el total abre la siguiente factura (hasta ${MAX}). Si tenés dudas de una factura, validala en el SAR con 🔍.</p>
-  <div class="tabla"><table id="tfac"><thead><tr><th style="width:30px">#</th><th>Número de factura</th><th>Proveedor</th><th>Descripción</th><th class="n" style="width:130px">Total (L)</th><th style="width:76px"></th></tr></thead><tbody></tbody></table></div>
-  <div class="acciones" style="justify-content:flex-start"><button type="button" class="sec" id="masFac">+ Otra factura</button><button type="button" id="valFac">Validar facturas</button><button type="button" class="sec" id="sarFac">Validar en el SAR ↗</button></div>
-  <ul class="lista-errores" id="errFac"></ul><p class="ok" id="okFac"></p>
-  <div class="rejilla" style="margin-top:10px">
-    <div><label>Total gastado con facturas (L)</label><input name="total_gastos" id="tg" readonly></div>
-    <div><label>Facturas que respaldan</label><input name="num_facturas" id="nf" readonly></div>
-    <div class="ancho"><div id="resumen" class="caja" style="background:var(--fondo2,#f3f4f1)"></div></div>
-    <div class="ancho"><label>Comentarios</label><textarea name="descripcion"></textarea></div>
-    ${campoRespaldos('Fotos o PDF de las facturas y recibos')}
-  </div>
-  <p class="nota">Al autorizarse la liquidación, estas facturas entran solas al libro de compras, amarradas a la liquidación.</p>
-  <div class="acciones"><button>Enviar liquidación</button></div></form>`;
-  const f = $('#f'), tb = $('#tfac tbody');
+  <div class="tabla"><table><thead><tr><th style="width:30px">#</th><th>Número de factura</th><th>Proveedor</th><th>Descripción</th><th class="n" style="width:130px">Total (L)</th><th style="width:76px"></th></tr></thead><tbody></tbody></table></div>
+  <div class="acciones" style="justify-content:flex-start"><button type="button" class="sec" data-mas>+ Otra factura</button><button type="button" data-val>Validar facturas</button><button type="button" class="sec" data-sarg>Validar en el SAR ↗</button></div>
+  <ul class="lista-errores" data-err></ul><p class="ok" data-ok></p>`;
+  const tb = raiz.querySelector('tbody'), mas = raiz.querySelector('[data-mas]');
   const filas = () => [...tb.querySelectorAll('tr')];
   const ORDEN = ['numero', 'proveedor', 'descripcion', 'total'];
   const leer = () => filas().map((tr, i) => { const v = c => tr.querySelector(`[data-c=${c}]`).value.trim(); return { n: i + 1, numero: v('numero'), proveedor: v('proveedor'), descripcion: v('descripcion'), total: num(v('total')) }; });
   const tieneAlgo = x => x.numero || x.proveedor || x.descripcion || x.total;
-  const conDatos = () => leer().filter(tieneAlgo);
+  const conDatos = () => leer().filter(tieneAlgo).map((x, i) => { const p = provDe.get(norm(x.proveedor)); return { ...x, n: i + 1, proveedor_id: p?.id || null, rtn: p?.rtn || '' }; });
+  const total = () => Math.round(conDatos().reduce((a, x) => a + x.total, 0) * 100) / 100;
+  const cambio = () => op.cambio && op.cambio();
   const renumerar = () => filas().forEach((tr, i) => tr.firstElementChild.textContent = i + 1);
   const agregar = (foco = true) => {
-    if (filas().length >= MAX) return aviso(`Llegaste al máximo de ${MAX} facturas en una liquidación.`, true);
+    if (filas().length >= MAX) return aviso(`Llegaste al máximo de ${MAX} facturas.`, true);
     tb.insertAdjacentHTML('beforeend', `<tr><td class="nota"></td>
       <td><input data-c="numero" placeholder="000-001-01-00000001" autocomplete="off" style="min-width:185px"></td>
-      <td><input data-c="proveedor" list="dlProv" placeholder="Nombre del proveedor" autocomplete="off" style="min-width:150px"></td>
+      <td><input data-c="proveedor" list="${id}dl" placeholder="Nombre del proveedor" autocomplete="off" style="min-width:150px"></td>
       <td><input data-c="descripcion" placeholder="Qué se compró" autocomplete="off" style="min-width:150px"></td>
       <td><input data-c="total" inputmode="decimal" style="text-align:right" autocomplete="off"></td>
       <td style="white-space:nowrap"><button type="button" class="sec" data-sar title="Validar esta factura en el SAR">🔍</button> <button type="button" class="sec" data-quitar title="Quitar esta factura">✕</button></td></tr>`);
-    renumerar(); $('#masFac').disabled = filas().length >= MAX;
+    renumerar(); mas.disabled = filas().length >= MAX;
     if (foco) tb.lastElementChild.querySelector('[data-c=numero]').focus();
   };
-  const resumir = () => {
-    const fo = libres.find(x => x.id === $('#ref').value), l = conDatos(), g = Math.round(l.reduce((a, x) => a + x.total, 0) * 100) / 100, dif = Math.round((num(fo.monto) - g) * 100) / 100;
-    $('#tg').value = g ? g.toFixed(2) : ''; $('#nf').value = l.length || '';
-    $('#resumen').innerHTML = `<b>Resumen</b><dl class="detalle" style="margin-top:6px"><dt>Fondo entregado</dt><dd>${L(fo.monto)}</dd><dt>Facturas</dt><dd>${l.length}</dd><dt>Total gastado</dt><dd><b>${L(g)}</b></dd>
-      <dt>Resultado</dt><dd>${!g ? '—' : dif > 0 ? `Devuelve <b>${L(dif)}</b>` : dif < 0 ? `La organización le reintegra <b>${L(-dif)}</b>` : 'Cuadra exacto'}</dd></dl>`;
-  };
   const faltas = x => [!x.numero && 'el número', !x.proveedor && 'el proveedor', !x.descripcion && 'la descripción', !(x.total > 0) && 'el total'].filter(Boolean);
-  const validar = () => {
-    const l = conDatos(), errs = [], avs = [], vistos = new Map();
-    if (!l.length) errs.push('Agregá al menos una factura.');
+  const validar = (vacioOk = false) => {
+    const l = leer().filter(tieneAlgo), errs = [], avs = [], vistos = new Map();
+    if (!l.length && !vacioOk) errs.push('Agregá al menos una factura.');
     l.forEach(x => {
       const fl = faltas(x); if (fl.length) errs.push(`Factura ${x.n}: falta ${fl.join(', ')}.`);
       if (x.numero && x.proveedor) {
-        const k = clave(x);
+        const k = claveFac(x);
         if (vistos.has(k)) errs.push(`Factura ${x.n}: está repetida (es la misma que la ${vistos.get(k)}).`); else vistos.set(k, x.n);
-        if (usadas.has(k)) errs.push(`Factura ${x.n}: ya se usó en la liquidación ${usadas.get(k)}.`);
+        if (usadas.has(k)) errs.push(`Factura ${x.n}: ya está registrada (${usadas.get(k)}).`);
       }
       if (x.numero && !RE_NUM.test(x.numero)) avs.push(`Factura ${x.n}: «${x.numero}» no tiene el formato del SAR (000-001-01-00000001). Si es un recibo, está bien.`);
     });
     filas().forEach((tr, i) => { const x = leer()[i]; tr.style.background = tieneAlgo(x) && faltas(x).length ? '#fee2e2' : ''; });
-    $('#errFac').innerHTML = errs.map(e => `<li>${esc(e)}</li>`).join('');
-    $('#okFac').innerHTML = errs.length ? '' : `Las ${l.length} factura${l.length > 1 ? 's están completas' : ' está completa'}: suman ${L($('#tg').value)}.` + (avs.length ? `<br><span class="nota">${avs.map(esc).join('<br>')}</span>` : '');
+    raiz.querySelector('[data-err]').innerHTML = errs.map(e => `<li>${esc(e)}</li>`).join('');
+    raiz.querySelector('[data-ok]').innerHTML = errs.length || !l.length ? '' : `Las ${l.length} factura${l.length > 1 ? 's están completas' : ' está completa'}: suman ${L(total())}.` + (avs.length ? `<br><span class="nota">${avs.map(esc).join('<br>')}</span>` : '');
     return !errs.length;
   };
   tb.addEventListener('change', e => {
     if (e.target.dataset.c === 'numero') { const d = e.target.value.replace(/\D/g, ''); if (d.length === 16 && !/-/.test(e.target.value)) e.target.value = `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6, 8)}-${d.slice(8)}`; }
     if (e.target.dataset.c === 'total' && e.target.value) e.target.value = num(e.target.value).toFixed(2);
-    resumir();
+    cambio();
   });
+  tb.addEventListener('input', cambio);
   tb.addEventListener('keydown', e => {
     if (e.key !== 'Enter' || !e.target.dataset.c) return; e.preventDefault();
     const tr = e.target.closest('tr'), c = e.target.dataset.c;
@@ -623,23 +597,101 @@ async function formLiquidacion(refId) {
   tb.addEventListener('click', e => {
     if (e.target.closest('[data-sar]')) return abrirValidadorSar();
     if (!e.target.closest('[data-quitar]')) return;
-    e.target.closest('tr').remove(); if (!filas().length) agregar(); renumerar(); $('#masFac').disabled = false; resumir();
+    e.target.closest('tr').remove(); if (!filas().length) agregar(false); renumerar(); mas.disabled = false; cambio();
   });
-  $('#masFac').onclick = () => agregar();
-  $('#valFac').onclick = () => { resumir(); validar(); };
-  $('#sarFac').onclick = abrirValidadorSar;
-  f.oninput = resumir; $('#ref').onchange = resumir;
-  agregar(false); resumir();
+  mas.onclick = () => agregar();
+  raiz.querySelector('[data-val]').onclick = () => { cambio(); validar(); };
+  raiz.querySelector('[data-sarg]').onclick = abrirValidadorSar;
+  agregar(false);
+  return { conDatos, total, validar, agregar };
+}
+// facturas que ya están en el libro de compras o en liquidaciones (las que esta persona puede ver)
+async function facturasUsadas() {
+  const [fac, liq] = await Promise.all([
+    q(sb.from('facturas').select('numero,emisor,mes_fiscal').eq('org_id', S.org.id).not('numero', 'is', null).limit(5000)).catch(() => []),
+    q(sb.from('solicitudes').select('numero,datos').eq('org_id', S.org.id).eq('tipo', 'liquidacion').in('estado', ['Pendiente', 'Autorizada', 'Atendida'])).catch(() => [])]);
+  const m = new Map();
+  fac.forEach(x => m.set(claveFac({ proveedor: x.emisor, numero: x.numero }), 'libro de compras' + (x.mes_fiscal ? ' ' + x.mes_fiscal : '')));
+  liq.forEach(l => (l.datos?.facturas || []).forEach(x => m.set(claveFac(x), 'liquidación ' + l.numero)));
+  return { usadas: m, nombres: [...new Set([...fac.map(x => x.emisor), ...liq.flatMap(l => (l.datos?.facturas || []).map(x => x.proveedor))].filter(Boolean))] };
+}
+const provsActivos = () => q(sb.from('proveedores').select('id,nombre,rtn').eq('org_id', S.org.id).eq('activo', true).order('nombre')).catch(() => []);
+// pasa facturas de la tabla rápida al libro de compras
+async function facturasAlLibro(lista, { solicitud_id = null, fecha = hoy(), origen = '' } = {}) {
+  const filas = lista.map(x => ({ org_id: S.org.id, solicitud_id, registro: S.maestro ? 'Usuario maestro' : S.perfil.nombre, tipo_documento: RE_NUM.test(x.numero) ? 'Factura' : 'Recibo',
+    numero: x.numero, fecha_emision: fecha, rtn_emisor: x.rtn || null, emisor: x.proveedor, concepto: x.descripcion, tipo_gasto: origen || null,
+    exento: x.total, gravado: 0, isv: 0, total: x.total, valida_sar: false, mes_fiscal: fecha.slice(0, 7),
+    observaciones: [origen, !x.rtn && 'falta el RTN del proveedor', 'falta completar CAI e ISV'].filter(Boolean).join(' · ') }));
+  if (filas.length) await q(sb.from('facturas').insert(filas));
+}
+
+async function formLiquidacion(refId) {
+  let qy = sb.from('solicitudes').select('id,numero,monto,descripcion,solicitante,proyecto,linea,creado_por').eq('org_id', S.org.id).eq('tipo', 'fondo').in('estado', ['Autorizada', 'Atendida']).order('creado', { ascending: false });
+  if (!esJefe()) qy = qy.eq('creado_por', S.user.id);
+  const [fondos, liq, provs, us] = await Promise.all([q(qy),
+    q(sb.from('solicitudes').select('referencia').eq('org_id', S.org.id).eq('tipo', 'liquidacion').in('estado', ['Pendiente', 'Autorizada', 'Atendida'])), provsActivos(), facturasUsadas()]);
+  const hechas = new Set(liq.map(x => x.referencia));
+  const libres = fondos.filter(x => !hechas.has(x.id));
+  if (!libres.length) { app().innerHTML = cabecera('Liquidar fondos') + '<div class="caja">No hay fondos autorizados pendientes de liquidar.</div>'; return; }
+  app().innerHTML = cabecera('Liquidar fondos') + `
+  <form class="caja" id="f"><div class="rejilla">
+    <div class="ancho"><label>Fondo que se liquida</label><select name="ref" id="ref">${libres.map(x => `<option value="${x.id}" ${x.id === refId ? 'selected' : ''}>${esc(x.numero)} · ${esc(x.solicitante)} · ${L(x.monto)} · ${esc((x.descripcion || '').slice(0, 60))}</option>`).join('')}</select></div>
+  </div>
+  <h2>Facturas</h2><div id="facs"></div>
+  <div class="rejilla" style="margin-top:10px">
+    <div><label>Total gastado con facturas (L)</label><input name="total_gastos" id="tg" readonly></div>
+    <div><label>Facturas que respaldan</label><input name="num_facturas" id="nf" readonly></div>
+    <div class="ancho"><div id="resumen" class="caja" style="background:var(--fondo2,#f3f4f1)"></div></div>
+    <div class="ancho"><label>Comentarios</label><textarea name="descripcion"></textarea></div>
+    ${campoRespaldos('Fotos o PDF de las facturas y recibos')}
+  </div>
+  <p class="nota">Al autorizarse la liquidación, estas facturas entran solas al libro de compras, amarradas a la liquidación.</p>
+  <div class="acciones"><button>Enviar liquidación</button></div></form>`;
+  const f = $('#f');
+  const resumir = () => {
+    const fo = libres.find(x => x.id === $('#ref').value), l = tf.conDatos(), g = tf.total(), dif = Math.round((num(fo.monto) - g) * 100) / 100;
+    $('#tg').value = g ? g.toFixed(2) : ''; $('#nf').value = l.length || '';
+    $('#resumen').innerHTML = `<b>Resumen</b><dl class="detalle" style="margin-top:6px"><dt>Fondo entregado</dt><dd>${L(fo.monto)}</dd><dt>Facturas</dt><dd>${l.length}</dd><dt>Total gastado</dt><dd><b>${L(g)}</b></dd>
+      <dt>Resultado</dt><dd>${!g ? '—' : dif > 0 ? `Devuelve <b>${L(dif)}</b>` : dif < 0 ? `La organización le reintegra <b>${L(-dif)}</b>` : 'Cuadra exacto'}</dd></dl>`;
+  };
+  const tf = tablaFacturas($('#facs'), { usadas: us.usadas, provs, nombres: us.nombres, cambio: () => resumir() });
+  $('#ref').onchange = resumir; resumir();
   f.onsubmit = async ev => {
     ev.preventDefault(); resumir();
-    if (!validar()) return aviso('Revisá las facturas marcadas antes de enviar.', true);
-    const d = datosForm(f), fo = libres.find(x => x.id === d.ref), g = num($('#tg').value);
-    const facturas = conDatos().map((x, i) => { const p = provDe.get(norm(x.proveedor)); return { ...x, n: i + 1, proveedor_id: p?.id || null, rtn: p?.rtn || '' }; });
+    if (!tf.validar()) return aviso('Revisá las facturas marcadas antes de enviar.', true);
+    const d = datosForm(f), fo = libres.find(x => x.id === d.ref), g = tf.total(), facturas = tf.conDatos();
     const adjuntos = leerRespaldos('Factura'), mal = revisarArchivos(adjuntos); if (mal.length) return aviso(mal.join(' '), true);
     ocupado(f, true);
     try { await guardarSolicitud({ tipo: 'liquidacion', referencia: fo.id, solicitante: fo.solicitante, correo: S.user.email, monto: g, proyecto: fo.proyecto, linea: fo.linea, descripcion: d.descripcion || ('Liquidación de ' + fo.numero),
       datos: { fondo: fo.numero, monto_fondo: num(fo.monto), total_gastos: g, diferencia: Math.round((num(fo.monto) - g) * 100) / 100, num_facturas: facturas.length, facturas } }, adjuntos); }
     catch (e) { ocupado(f, false); aviso(falla(e), true); }
+  };
+}
+
+// libro de compras: agregar facturas que no vienen de una solicitud (servicios, facturas a crédito, pagos directos)
+async function agregarFacturas() {
+  const [provs, us] = await Promise.all([provsActivos(), facturasUsadas()]);
+  app().innerHTML = cabecera('Agregar facturas al libro de compras', '#/facturas') + `<form class="caja" id="f">
+    <p class="nota">Para facturas que no vienen de una compra ni de una liquidación: servicios (luz, agua, internet, alquiler), facturas a crédito o pagos directos. Las de una compra se meten al marcarla como atendida, y las de un fondo, en su liquidación.</p>
+    <div class="rejilla"><div><label>Fecha de las facturas</label><input type="date" name="fecha" value="${hoy()}" max="${hoy()}" required></div>
+      <div><label>Tipo de gasto</label><input name="tipo_gasto" list="dlGasto" placeholder="Ej.: Servicios públicos"><datalist id="dlGasto">${opciones(['Servicios públicos', 'Alquiler', 'Honorarios', 'Compra a crédito', 'Combustible', 'Mantenimiento', 'Otro'])}</datalist></div></div>
+    <h2>Facturas</h2><div id="facs"></div>
+    <div class="rejilla">${campoRespaldos('Fotos o PDF de las facturas')}</div>
+    <div class="acciones"><button>Guardar en el libro de compras</button></div></form>`;
+  const tf = tablaFacturas($('#facs'), { usadas: us.usadas, provs, nombres: us.nombres });
+  $('#f').onsubmit = async ev => {
+    ev.preventDefault(); const f = ev.target, d = datosForm(f);
+    if (!tf.validar()) return aviso('Revisá las facturas marcadas.', true);
+    const lista = tf.conDatos(), adj = leerRespaldos('Factura escaneada'), mal = revisarArchivos(adj); if (mal.length) return aviso(mal.join(' '), true);
+    ocupado(f, true);
+    try {
+      const filas = lista.map(x => ({ org_id: S.org.id, registro: S.maestro ? 'Usuario maestro' : S.perfil.nombre, tipo_documento: RE_NUM.test(x.numero) ? 'Factura' : 'Recibo', numero: x.numero, fecha_emision: d.fecha,
+        rtn_emisor: x.rtn || null, emisor: x.proveedor, concepto: x.descripcion, tipo_gasto: d.tipo_gasto || null, exento: x.total, gravado: 0, isv: 0, total: x.total, valida_sar: false, mes_fiscal: d.fecha.slice(0, 7),
+        observaciones: [!x.rtn && 'falta el RTN del proveedor', 'falta completar CAI e ISV'].filter(Boolean).join(' · ') }));
+      const hechas = await q(sb.from('facturas').insert(filas).select('id'));
+      if (adj.length && hechas[0]) await subirAdjReg('facturas', hechas[0].id, adj);
+      aviso(`Listo: ${hechas.length} factura${hechas.length > 1 ? 's' : ''} en el libro de compras.`); location.hash = '#/facturas/' + d.fecha.slice(0, 7);
+    } catch (e) { ocupado(f, false); aviso(falla(e), true); }
   };
 }
 const normFac = v => String(v || '').replace(/\D/g, '') || String(v || '').trim().toLowerCase();
@@ -764,7 +816,7 @@ async function verFacturas(mes) {
   const fac = await q(sb.from('facturas').select('*').eq('org_id', S.org.id).eq('mes_fiscal', mes).order('fecha_emision'));
   const s = k => fac.reduce((a, x) => a + num(x[k]), 0);
   app().innerHTML = cabecera('Facturas') + `
-  <div class="filtros"><input type="month" id="mes" value="${mes}"><a class="boton" href="#/factura">+ Registrar factura</a><button class="sec" id="csv">Descargar CSV</button></div>
+  <div class="filtros"><input type="month" id="mes" value="${mes}"><a class="boton" href="#/agregarfac">+ Agregar facturas</a><button class="sec" id="csv">Descargar CSV</button></div>
   <div class="tabla"><table><thead><tr><th>Fecha</th><th>Número</th><th>Emisor</th><th>RTN</th><th class="n">Gravado</th><th class="n">ISV</th><th class="n">Total</th><th class="n">Retención</th><th>SAR</th></tr></thead><tbody>
   ${fac.map(x => `<tr><td>${esc(x.fecha_emision)}</td><td><a href="#/fac/${x.id}">${esc(x.numero || x.tipo_documento)}</a></td><td>${esc(x.emisor)}</td><td>${esc(x.rtn_emisor)}</td><td class="n">${L(x.gravado)}</td><td class="n">${L(x.isv)}</td><td class="n">${L(x.total)}</td><td class="n">${x.retencion ? L(x.retencion) : ''}</td><td>${x.valida_sar ? '<span class="estado e-Autorizada">Válida</span>' : `<span class="estado e-Rechazada" title="${esc(x.observaciones)}">Revisar</span>`}</td></tr>`).join('') || '<tr><td colspan="9" class="nota">No hay facturas en este mes.</td></tr>'}
   </tbody>${fac.length ? `<tfoot><tr><th colspan="4">Totales del mes (${fac.length})</th><th class="n">${L(s('gravado'))}</th><th class="n">${L(s('isv'))}</th><th class="n">${L(s('total'))}</th><th class="n">${L(s('retencion'))}</th><th></th></tr></tfoot>` : ''}</table></div>
@@ -824,7 +876,7 @@ async function verSolicitud(id) {
   <h2>Respaldos</h2><div id="adjs"><p class="nota">Cargando…</p></div>
   ${puedeAut && s.estado === 'Pendiente' ? `<label style="margin-top:14px">Comentario (opcional)</label><input id="com"><div class="acciones"><button id="aut">Autorizar</button><button class="rojo" id="rec">Rechazar</button></div>` : ''}
   ${propio && s.estado === 'Pendiente' ? `<p class="nota" style="margin-top:14px">La hiciste vos, así que la tiene que autorizar otra persona con permiso. Mientras siga pendiente la podés retirar.</p><div class="acciones"><button class="sec" id="ret">Retirar mi solicitud</button></div>` : ''}
-  ${puede('solicitudes.gestionar') && s.estado === 'Autorizada' && ['compra', 'fondo'].includes(s.tipo) ? `<h2>Atender</h2><label>Qué se hizo (se le manda a quien la pidió)</label><textarea id="aten" rows="2" placeholder="${s.tipo === 'compra' ? 'Ej.: Compra hecha a Ferretería X, factura 001-001-01-00001234, se entrega el lunes' : 'Ej.: Transferencia del 6 de noviembre, cheque 1234'}"></textarea><div class="acciones"><button id="atn">Marcar como atendida</button></div>` : ''}
+  ${puede('solicitudes.gestionar') && s.estado === 'Autorizada' && ['compra', 'fondo'].includes(s.tipo) ? `<h2>Atender</h2><label>Qué se hizo (se le manda a quien la pidió)</label><textarea id="aten" rows="2" placeholder="${s.tipo === 'compra' ? 'Ej.: Compra hecha a Ferretería X, factura 001-001-01-00001234, se entrega el lunes' : 'Ej.: Transferencia del 6 de noviembre, cheque 1234'}"></textarea>${s.tipo === 'compra' ? `<h3 style="margin-top:12px">Facturas de la compra</h3><div class="rejilla"><div><label>Fecha de las facturas</label><input type="date" id="fecAten" value="${hoy()}" max="${hoy()}"></div></div><div id="facAten"></div><p class="nota">Al marcarla como atendida, estas facturas entran al libro de compras amarradas a esta solicitud.</p>` : ''}<div class="acciones"><button id="atn">Marcar como atendida</button></div>` : ''}
   ${puede('solicitudes.anular') && ['Autorizada', 'Atendida'].includes(s.estado) ? `<div class="acciones"><button class="sec" id="anu">Anular</button></div>` : ''}
   <div class="acciones"><button class="sec" onclick="print()">Imprimir</button></div></div>`;
   pintarAdjuntos(s);
@@ -838,10 +890,25 @@ async function verSolicitud(id) {
   if ($('#rec')) $('#rec').onclick = () => resolver('Rechazada', !$('#com').value);
   if ($('#anu')) $('#anu').onclick = () => resolver('Anulada', true);
   if ($('#ret')) $('#ret').onclick = () => resolver('Anulada', 'ret');
+  let tfAten = null;
+  if ($('#facAten')) Promise.all([provsActivos(), facturasUsadas()]).then(([provs, us]) => {
+    tfAten = tablaFacturas($('#facAten'), { usadas: us.usadas, provs, nombres: [...new Set([d.proveedor, ...us.nombres].filter(Boolean))] });
+    const p1 = $('#facAten [data-c=proveedor]'); if (p1 && d.proveedor) p1.value = d.proveedor;
+  });
   if ($('#atn')) $('#atn').onclick = async () => {
-    const atencion = $('#aten').value.trim(); if (!atencion) return aviso('Escribí qué se hizo.', true);
-    try { await q(sb.from('solicitudes').update({ estado: 'Atendida', atencion }).eq('id', s.id)); avisar('solicitud', s.id); aviso('Listo. Se le avisa a quien la pidió.'); verSolicitud(s.id); }
-    catch (e) { aviso(falla(e), true); }
+    let atencion = $('#aten').value.trim(), facs = [];
+    if (tfAten) {
+      if (!tfAten.validar()) return aviso('Revisá las facturas de la compra.', true);
+      facs = tfAten.conDatos();
+      if (facs.length) atencion = (atencion ? atencion + ' · ' : '') + `Facturas: ${facs.map(x => x.numero + ' ' + x.proveedor).join(', ')} (${L(tfAten.total())})`;
+    }
+    if (!atencion) return aviso('Escribí qué se hizo o meté las facturas de la compra.', true);
+    try {
+      await q(sb.from('solicitudes').update({ estado: 'Atendida', atencion }).eq('id', s.id));
+      let nota = '';
+      if (facs.length) { try { await facturasAlLibro(facs, { solicitud_id: s.id, fecha: $('#fecAten').value || hoy(), origen: 'Compra ' + s.numero }); nota = ` y ${facs.length} factura${facs.length > 1 ? 's' : ''} al libro de compras`; } catch (e) { nota = '. Las facturas no entraron al libro: ' + falla(e); } }
+      avisar('solicitud', s.id); aviso('Listo. Se le avisa a quien la pidió' + nota + '.', nota.startsWith('.')); verSolicitud(s.id);
+    } catch (e) { aviso(falla(e), true); }
   };
 }
 // Dónde va la solicitud en la cadena: pide → autoriza → administración atiende → resolución a quien pidió
