@@ -919,7 +919,7 @@ RUTAS.cer = async function menuCert() {
     ${puede('padron.crear') ? tarjeta('#/prodf', 'Registrar productor', 'Socio nuevo') : ''}
     ${puede('padron.crear') ? tarjeta('#/parcela', 'Registrar parcela', 'Punto GPS y polígono (obligatorio desde 4 ha)') : ''}
     ${tarjeta('#/eudrparc', 'Revisión EUDR de parcelas', 'Satélite: ¿hubo deforestación después del 31/12/2020? Antes de comprar y despachar')}
-    ${puede('carga.masiva') ? tarjeta('#/carga', 'Carga masiva desde Excel', 'Productores, parcelas, polígonos, acopio anterior, inspecciones, insumos y documentos') : ''}
+    ${S.maestro ? tarjeta('#/carga', 'Carga masiva desde Excel', 'Productores, parcelas, polígonos, acopio anterior, inspecciones, insumos y documentos') : esAdmin() ? tarjeta('#/plan/carga', 'Pedir carga de datos', 'Mandá tu Excel y AgroGestión lo carga') : ''}
   </div>
   <h2 class="grupoMenu">Control interno</h2><div class="tarjetas">
     ${puede('inspeccion.registrar') ? tarjeta('#/inspeccion', 'Inspección interna', 'Resultado anual y no conformidades') : ''}
@@ -1926,6 +1926,11 @@ async function pintarConexionKobo(hayEnlaces) {
   $('#conectar').onclick = conectarKobo;
 }
 async function llamarKobo(cuerpo) {
+  if (S.plan && !S.maestro) {
+    const sat = ['satelite', 'satelite_estado', 'gfw', 'gfw_clave'].includes(cuerpo.accion);
+    if (sat && !S.plan.satelite) throw new Error('La revisión satelital no viene en tu plan. Podés cambiar de plan en «Mi plan».');
+    if (!sat && !S.plan.kobo) throw new Error('Kobo no viene en tu plan. Podés cambiar de plan en «Mi plan».');
+  }
   const { data, error } = await sb.functions.invoke('kobo', { body: { org_id: S.org.id, ...cuerpo } });
   if (error) { let m = error.message; try { m = (await error.context.json()).error || m; } catch (_) {} throw new Error(m); }
   if (data.error) throw new Error(data.error);

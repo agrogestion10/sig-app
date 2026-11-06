@@ -171,6 +171,9 @@ async function cargarUsuario(user) {
   ]);
   if ((m.error && sinRed(m.error)) || (p.error && sinRed(p.error))) throw m.error || p.error;
   S.maestro = !!m.data; S.perfil = p.data;
+  if (!S.maestro && !S.perfil && await crearOrgRegistro(user)) {
+    S.perfil = (await sb.from('perfiles').select('*, organizaciones(id,nombre,es_maestra,activa)').eq('id', user.id).maybeSingle()).data;
+  }
   if (!S.maestro && (!S.perfil || !S.perfil.activo)) throw new Error('Usuario sin acceso');
   S.rol = S.maestro ? 'maestro' : 'personal';
   if (S.maestro) {
@@ -206,6 +209,7 @@ async function cargarOrg() {
   S.cfg = Object.fromEntries((c.data || []).map(x => [x.clave, x.valor]));
   S.leyes = Object.fromEntries((l.data || []).map(x => [x.clave, x.valor]));
   pintarBarra(); if (S.user) guardarSesionLocal();
+  cargarPlan();
 }
 
 async function cambiarOrg(id) {
@@ -252,7 +256,8 @@ function pintarEngrane() {
       ${op('#/roles', 'Roles y permisos', 'Qué puede hacer cada puesto')}
       ${op('#/catalogo', 'Catálogo de certificaciones', 'Cuáles se usan en esta organización')}
       ${op('#/bitacora', 'Bitácora', 'Quién hizo qué')}
-      ${S.maestro ? op('#/orgs', 'Organizaciones', 'Altas y valores de ley') : ''}
+      ${op('#/plan', 'Mi plan', 'Plan, uso, pagos y pedir carga de datos')}
+      ${S.maestro ? op('#/orgs', 'Clientes y organizaciones', 'Planes, pagos, cargas pedidas y valores de ley') : ''}
     </div>`;
   $('#btnEng').onclick = () => {
     const m = $('#menuEng'), abrir = m.hidden; m.hidden = !abrir; $('#btnEng').setAttribute('aria-expanded', abrir);
@@ -277,7 +282,7 @@ const CFG_OPC = { CULTIVO_ACOPIO: ['Café', 'Cacao', 'Café y cacao'], ACOPIO_UN
 const SECCION_DE = { '': '', adm: 'adm', config: '', usuarios: '', bitacora: '', orgs: '', guia: '', aprobar: '', rev: '' };
 ['compra', 'fondo', 'liquidacion', 'vacacion', 'factura', 'facturas', 'fac', 'agregarfac', 'solicitudes', 'solicitud', 'proveedores', 'proveedor', 'empleados', 'empleado', 'presupuesto', 'laboral'].forEach(r => SECCION_DE[r] = 'adm');
 async function ruta() {
-  if (!S.user) return pantallaAcceso();
+  if (!S.user) return /^#\/?registro/.test(location.hash) ? pantallaRegistro() : pantallaAcceso();
   archivarLuego();
   const [r, ...resto] = location.hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent);
   const f = RUTAS[r] || RUTAS[''];
@@ -298,19 +303,23 @@ function pantallaAcceso() {
     <span class="logo">SIG</span>
     <h1>Sistema de Gestión Integral</h1>
     <form class="caja" id="fAcceso" autocomplete="on">
-      <label for="aOrg">Organización</label><input id="aOrg" name="org" required autocomplete="organization" value="${esc(localStorage.getItem('sig_ultima_org') || '')}">
+      <label for="aOrg">Organización <span class="nota">(no hace falta si entrás con tu correo)</span></label><input id="aOrg" name="org" autocomplete="organization" value="${esc(localStorage.getItem('sig_ultima_org') || '')}">
       <label for="aUsr">Usuario</label><input id="aUsr" name="usuario" required autocomplete="username" autocapitalize="none" placeholder="Tu usuario o tu correo">
       <label for="aClave">Contraseña</label><input id="aClave" name="clave" type="password" required autocomplete="current-password">
       <button>Entrar</button>
       <p class="nota error" id="aErr"></p>
-    </form><p class="nota" style="text-align:center"><a href="/privacidad.html" target="_blank" rel="noopener">Aviso de privacidad y términos de uso</a></p></div>`;
+    </form><p style="text-align:center">¿Tu organización todavía no usa el SIG? <a href="#/registro" id="aReg"><b>Probalo gratis 30 días</b></a></p>
+    <p class="nota" style="text-align:center"><a href="/privacidad.html" target="_blank" rel="noopener">Aviso de privacidad y términos de uso</a></p></div>`;
+  $('#aReg').onclick = e => { e.preventDefault(); location.hash = '#/registro'; pantallaRegistro(); };
   $('#fAcceso').onsubmit = async ev => {
-    ev.preventDefault(); const f = ev.target, d = datosForm(f); ocupado(f, true); $('#aErr').textContent = '';
+    ev.preventDefault(); const f = ev.target, d = datosForm(f); $('#aErr').textContent = '';
+    if (!d.usuario.includes('@') && !d.org) { $('#aErr').textContent = 'Escribí tu organización, o entrá con tu correo.'; return; }
+    ocupado(f, true);
     const correo = d.usuario.includes('@') ? d.usuario.toLowerCase() : `${norm(d.usuario)}.${norm(d.org)}@${DOMINIO}`;
     const { data, error } = await sb.auth.signInWithPassword({ email: correo, password: d.clave });
-    if (error) { ocupado(f, false); $('#aErr').textContent = /invalid/i.test(error.message) ? 'Organización, usuario o contraseña incorrectos.' : falla(error); return; }
+    if (error) { ocupado(f, false); $('#aErr').textContent = /not confirmed/i.test(error.message) ? 'Primero confirmá tu correo con el enlace que te mandamos.' : /invalid/i.test(error.message) ? 'Organización, usuario o contraseña incorrectos.' : falla(error); return; }
     try { await cargarUsuario(data.user); localStorage.setItem('sig_ultima_org', d.org); location.hash = '#/'; ruta(); }
-    catch (e) { await sb.auth.signOut({ scope: 'local' }); ocupado(f, false); $('#aErr').textContent = 'Este usuario está desactivado. Hablá con el administrador.'; }
+    catch (e) { await sb.auth.signOut({ scope: 'local' }); ocupado(f, false); $('#aErr').textContent = e.deRegistro ? e.message : /confirm/i.test(e.message || '') ? 'Primero confirmá tu correo con el enlace que te mandamos.' : 'Este usuario está desactivado. Hablá con el administrador.'; }
   };
 }
 
@@ -1242,7 +1251,7 @@ async function verBitacora() {
 async function verOrgs() {
   if (!S.maestro) return inicio();
   const [orgs, leyes] = await Promise.all([q(sb.from('organizaciones').select('*').order('nombre')), q(sb.from('leyes').select('*').order('clave'))]);
-  app().innerHTML = cabecera('Organizaciones') + `
+  app().innerHTML = cabecera('Clientes y organizaciones') + `
   <div class="tabla"><table><thead><tr><th>Nombre</th><th>RTN</th><th>Estado</th></tr></thead><tbody>
   ${orgs.map(o => `<tr><td>${esc(o.nombre)}${o.es_maestra ? ' <span class="estado e-Autorizada">Maestra</span>' : ''}</td><td>${esc(o.rtn)}</td><td>${o.activa ? 'Activa' : 'Suspendida'}</td></tr>`).join('')}
   </tbody></table></div>

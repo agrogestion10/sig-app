@@ -157,3 +157,13 @@ body.impTicket #recibo{width:72mm;font-size:11px}body.impTicket #recibo table{fo
 .grupoMenu{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--suave,#5b6b62);margin:22px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--borde,#d9e2dc)}.grupoMenu:first-of-type{margin-top:6px}
 .soloImprimir{display:none}
 .pestanas{display:flex;gap:4px;flex-wrap:wrap;border-bottom:2px solid var(--borde,#d9e2dc);margin:0 0 14px}.pestanas a{padding:8px 14px;border-radius:10px 10px 0 0;text-decoration:none;color:var(--suave,#5b6b62);font-weight:600}.pestanas a.activa{background:var(--verde,#1f6f43);color:#fff}.tarjeta.alerta{border-left:4px solid #d97706}
+/* planes y prueba gratis */
+.avisoPlan{background:#fef3c7;color:#78350f;border-bottom:1px solid #fde68a;padding:9px 18px;font-size:14px;text-align:center}
+.avisoPlan.mal{background:#fee2e2;color:#7f1d1d;border-color:#fecaca}
+.avisoPlan a{color:inherit;font-weight:700;margin-left:6px}
+.usoBarra{height:8px;background:#e5ece8;border-radius:5px;overflow:hidden;margin:6px 0 3px}
+.usoBarra span{display:block;height:100%;background:var(--verde2)}
+.usoBarra span.lleno{background:var(--rojo)}
+button.chico{padding:5px 10px;font-size:13px}
+label.check{display:flex;gap:8px;align-items:flex-start;font-weight:400;margin-top:12px}
+label.check input{width:auto;margin-top:3px}
