@@ -23,7 +23,7 @@ const opciones = (arr, sel) => arr.map(x => `<option ${x === sel ? 'selected' : 
 const esJefe = () => ['maestro', 'administrador', 'gerencia'].includes(S.rol);
 const esAdmin = () => ['maestro', 'administrador'].includes(S.rol);
 // Secciones que puede abrir el usuario (el administrador y el maestro ven todas)
-const puedeSec = s => S.maestro || S.rol === 'administrador' || (S.permisos || []).includes('sec.' + s) || (S.perfil?.secciones || []).includes(s);
+const puedeSec = s => S.maestro || S.rol === 'administrador' || (S.permisos || []).includes('sec.' + s) || (S.perfil?.secciones || []).includes(s) || (s === 'ger' && S.rol === 'gerencia');
 // Permiso por puesto (gerencia y administración pueden todo; sin roles instalados, como antes)
 const puede = p => S.maestro || esJefe() || !(S.roles || []).length || (S.permisos || []).includes(p);
 function aplicarRol() {
@@ -133,7 +133,7 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); pedirI
 function datosForm(f) { const o = {}; new FormData(f).forEach((v, k) => o[k] = typeof v === 'string' ? v.trim() : v); return o; }
 function ocupado(f, si) { f.querySelectorAll('button').forEach(b => b.disabled = si); }
 // Qué parte de la guía de uso explica cada pantalla
-const GUIA_DE = { adm: 'adm', compra: 'adm', fondo: 'adm', liquidacion: 'adm', vacacion: 'adm', laboral: 'adm', factura: 'adm', facturas: 'adm', fac: 'adm', agregarfac: 'adm', presupuesto: 'adm', empleados: 'adm', proveedores: 'adm', solicitudes: 'adm', solicitud: 'adm',
+const GUIA_DE = { ger: 'ger', adm: 'adm', compra: 'adm', fondo: 'adm', liquidacion: 'adm', vacacion: 'adm', laboral: 'adm', factura: 'adm', facturas: 'adm', fac: 'adm', agregarfac: 'adm', presupuesto: 'adm', empleados: 'adm', proveedores: 'adm', solicitudes: 'adm', solicitud: 'adm',
   cre: 'cre', credito: 'cre', creditos: 'cre', cred: 'cre', cartera: 'cre', recordatorios: 'cre', reportescre: 'cre', pago: 'cre', fondos: 'cre', condiciones: 'cre', edocta: 'cre',
   cer: 'padron', padron: 'padron', prod: 'padron', prodf: 'padron', parcela: 'padron', inspeccion: 'insp', inspecciones: 'insp', insp: 'insp', nc: 'insp', insumos: 'insp', reg: 'insp',
   asistencia: 'capac', quejas: 'capac', queja: 'capac', acopio: 'acopio', acopios: 'acopio', recibo: 'acopio', inventario: 'acopio', basculas: 'acopio',

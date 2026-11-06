@@ -112,6 +112,7 @@ RUTAS[''] = async function portal() {
   ${(adm || cre || cer) ? `<section class="caja pendientes" aria-labelledby="hoyT"><div class="filaT"><h2 id="hoyT">Para atender hoy</h2><span class="nota" id="hoyN">Revisando…</span></div><ul id="hoyL"></ul></section>` : ''}
   ${rap.length ? `<section aria-labelledby="rapT"><h2 id="rapT">Accesos rápidos</h2><div class="rapidos">${rap.map(([h, t], i) => `<a href="${h}" class="boton${i ? ' sec' : ''}">${ic.mas}${t}</a>`).join('')}</div></section>` : ''}
   <section aria-labelledby="secT"><h2 id="secT">Secciones</h2><div class="secciones">
+    ${puedeSec('ger') ? `<a href="#/ger" class="seccionT"><span class="icono"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></span><b>Gerencia</b><span class="nota">Tablero de todo lo que pasa, por secciones</span><span class="estadoSec"></span></a>` : ''}
     ${adm ? `<a href="#/adm" class="seccionT"><span class="icono">${ic.adm}</span><b>Administración</b><span class="nota">Compras, fondos, facturas, vacaciones y presupuesto</span><span class="estadoSec" id="eadm"></span></a>` : ''}
     ${cre ? `<a href="#/cre" class="seccionT"><span class="icono">${ic.cre}</span><b>Crédito interno</b><span class="nota">De la solicitud del productor al desembolso y la recuperación</span><span class="estadoSec" id="ecre"></span></a>` : ''}
     ${cer ? `<a href="#/cer" class="seccionT"><span class="icono">${ic.cer}</span><b>Certificaciones</b><span class="nota">Padrón, inspecciones, acopio, balance de masas y prima</span><span class="estadoSec" id="ecer"></span></a>` : ''}
@@ -196,6 +197,89 @@ RUTAS[''] = async function portal() {
   ul.innerHTML = pend.length ? pend.map(p => `<li><i class="punto ${p.c}"></i><div class="txt"><b>${esc(p.t)}</b><span class="nota">${esc(p.d)}</span></div><span class="nota sec">${esc(p.sec)}</span><a href="${p.h}">${esc(p.a)}</a></li>`).join('') : '<li class="aldia"><i class="punto p-verde"></i><div class="txt"><b>Todo al día</b><span class="nota">No hay nada pendiente en tus secciones.</span></div></li>';
 };
 const num0 = v => num(v);
+
+// =====================================================================
+// GERENCIA: tablero de todo lo que pasa en la organización, por secciones
+// =====================================================================
+RUTAS.ger = async function tableroGerencia(pest) {
+  S.seccion = 'ger';
+  if (!puedeSec('ger')) { app().innerHTML = cabecera('Gerencia', '#/') + '<div class="caja">Esta sección es para gerencia. Pedile al administrador el permiso «Entra a Gerencia».</div>'; return; }
+  const PEST = [['res', 'Resumen'], ...['adm', 'cre', 'cer'].filter(puedeSec).map(k => [k, NOMBRE_SEC[k]]), ['act', 'Actividad']];
+  pest = PEST.some(x => x[0] === pest) ? pest : 'res';
+  app().innerHTML = cabecera('Gerencia · ' + esc(S.org.nombre), '#/') + `<div class="pestanas" role="tablist">${PEST.map(([k, t]) => `<a role="tab" href="#/ger/${k}" class="${k === pest ? 'activa' : ''}" aria-selected="${k === pest}">${t}</a>`).join('')}</div><div id="tab"><p class="nota">Cargando…</p></div>`;
+  const tab = $('#tab');
+  try {
+    if (pest === 'res') tab.innerHTML = await resumenGerencia();
+    else if (pest === 'act') tab.innerHTML = await actividadGerencia();
+    else if (!puedePanel(pest)) tab.innerHTML = `<div class="caja">Los números de ${NOMBRE_SEC[pest]} están en su panel de control, y ese panel solo lo ven las personas que autoriza el administrador (Usuarios › Paneles).</div>`;
+    else if (!S.maestro && !clavePanel(pest)) {
+      tab.innerHTML = `<form class="caja" id="fc" style="max-width:420px"><p class="nota">Los números de ${NOMBRE_SEC[pest]} son información reservada. Escribí la clave del panel de esa sección.</p><label>Clave del panel</label><input name="clave" type="password" required autocomplete="off"><div class="acciones"><button>Ver</button></div><p class="nota error" id="cErr"></p></form>`;
+      $('#fc').onsubmit = async ev => {
+        ev.preventDefault(); const f = ev.target, clave = f.clave.value; ocupado(f, true);
+        const { data, error } = await sb.rpc('panel_ok', { o: S.org.id, sec: pest, clave });
+        if (error || !data) { ocupado(f, false); $('#cErr').textContent = error ? error.message : 'Clave incorrecta.'; return; }
+        CLAVE_PANEL[S.org.id + pest] = clave; RUTAS.ger(pest);
+      };
+    } else tab.innerHTML = (await ({ adm: datosPanelAdm, cre: datosPanelCre, cer: datosPanelCer }[pest])()) + (pest === 'cer' ? await avisosCer() : '') + `<div class="acciones"><a class="boton sec" href="#/pnl/${pest}">Abrir el panel completo con el archivo de PDF</a><a class="boton sec" href="#/${pest}">Ir a ${NOMBRE_SEC[pest]}</a></div>`;
+  } catch (e) { tab.innerHTML = `<div class="caja error">No se pudo cargar: ${esc(falla(e))}</div>`; }
+};
+
+async function resumenGerencia() {
+  const adm = puedeSec('adm'), cre = puedeSec('cre'), cer = puedeSec('cer'), mes = hoy().slice(0, 7), hace30 = new Date(Date.now() - 30 * 864e5).toLocaleDateString('en-CA', { timeZone: 'America/Tegucigalpa' });
+  const ok = p => p.catch(() => null);
+  const [sol, fac, crR, credP, nc, qj, prods, parc, aco, rev] = await Promise.all([
+    adm ? ok(q(sb.from('solicitudes').select('id,tipo,estado,monto,referencia,creado').eq('org_id', S.org.id).in('estado', ['Pendiente', 'Autorizada', 'Atendida']).limit(3000))) : null,
+    adm ? ok(q(sb.from('facturas').select('total,observaciones').eq('org_id', S.org.id).eq('mes_fiscal', mes))) : null,
+    cre ? ok(cuenta('creditos', x => x.in('estado', ['Solicitado', 'En evaluación', 'Aprobado']))) : null,
+    cre ? ok(creditosConPagos(x => x.eq('estado', 'Desembolsado'))) : null,
+    cer ? ok(q(sb.from('no_conformidades').select('plazo').eq('org_id', S.org.id).eq('estado', 'Abierta'))) : null,
+    cer ? ok(cuenta('quejas', x => x.neq('estado', 'Cerrada'))) : null,
+    cer ? ok(q(sb.from('productores').select('id,activo,certificaciones,datos,codigo,identidad,sexo,fecha_nacimiento,comunidad,municipio,fecha_ingreso').eq('org_id', S.org.id).eq('activo', true))) : null,
+    cer ? ok(q(sb.from('parcelas').select('productor_id,nombre,area_ha,lat,poligono').eq('org_id', S.org.id))) : null,
+    cer ? ok(q(sb.from('acopio').select('psec_lb,total').eq('org_id', S.org.id).gte('fecha', hace30))) : null,
+    ok(q(sb.rpc('por_revisar', { o: S.org.id })))
+  ]);
+  const d = (t, v, sub, h, c = '') => `<a class="tarjeta ${c}" href="${h}"><span>${t}</span><b style="font-size:22px;margin:4px 0">${v}</b><span>${sub || ''}</span></a>`;
+  const bloques = [];
+  if (sol) {
+    const pend = sol.filter(x => x.estado === 'Pendiente'), porAt = sol.filter(x => x.estado === 'Autorizada' && ['compra', 'fondo'].includes(x.tipo));
+    const liq = new Set(sol.filter(x => x.tipo === 'liquidacion').map(x => x.referencia)), sinLiq = sol.filter(x => x.tipo === 'fondo' && ['Autorizada', 'Atendida'].includes(x.estado) && !liq.has(x.id));
+    const incompl = (fac || []).filter(f => /falta/.test(f.observaciones || '')).length;
+    bloques.push(['Administración', 'adm', [
+      d('Solicitudes por autorizar', pend.length, pend.length ? 'Esperando a quien autoriza' : 'Nada pendiente', '#/solicitudes', pend.length ? 'alerta' : ''),
+      d('Compras y fondos por atender', porAt.length, 'Autorizados, falta que administración los gestione', '#/solicitudes'),
+      d('Fondos sin liquidar', sinLiq.length, sinLiq.length ? L(sumaP(sinLiq, 'monto')) + ' entregados sin rendir cuentas' : 'Todos liquidados', '#/liquidacion', sinLiq.length ? 'alerta' : ''),
+      d('Facturas de este mes', (fac || []).length, (fac ? L(sumaP(fac, 'total')) : '') + (incompl ? ` · ${incompl} por completar` : ''), '#/facturas/' + mes)]]);
+  }
+  if (credP) {
+    const { cre: cs, de } = credP, est = cs.map(c => estadoCredito(c, de(c.id))), atr = est.filter(e => e.atraso > 0.5);
+    bloques.push(['Crédito interno', 'cre', [
+      d('Créditos por resolver', crR || 0, 'Solicitados, en evaluación o aprobados sin desembolsar', '#/creditos', crR ? 'alerta' : ''),
+      d('Créditos vigentes', cs.length, 'Desembolsados y con saldo', '#/cartera'),
+      d('Con cuotas atrasadas', atr.length, atr.length ? `${Math.round(atr.length / Math.max(cs.length, 1) * 100)} % de los vigentes` : 'Ninguno', '#/recordatorios', atr.length ? 'alerta' : '')]]);
+  }
+  if (prods) {
+    const parDe = {}; (parc || []).forEach(x => (parDe[x.productor_id] = parDe[x.productor_id] || []).push(x));
+    const inc = prods.filter(p => p.certificaciones?.length && faltaPadron(p, parDe[p.id] || []).length).length, venc = (nc || []).filter(x => x.plazo && x.plazo < hoy()).length;
+    const qq = (aco || []).reduce((t, a) => t + num(a.psec_lb), 0) / 100;
+    bloques.push(['Certificaciones', 'cer', [
+      d('Productores activos', prods.length, inc ? `${inc} con datos pendientes en el padrón` : 'Padrón completo', '#/padron', inc ? 'alerta' : ''),
+      d('No conformidades abiertas', (nc || []).length, venc ? `${venc} con el plazo vencido` : 'Ninguna vencida', '#/nc', venc ? 'alerta' : ''),
+      d('Quejas abiertas', qj || 0, 'Sin cerrar', '#/quejas', qj ? 'alerta' : ''),
+      d('Acopio de los últimos 30 días', qqTxt(qq), `${(aco || []).length} entregas · ${L(sumaP(aco || [], 'total'))}`, '#/acopios')]]);
+  }
+  const rp = (rev || []).filter(x => x.revision === 'Pendiente');
+  return `<p class="nota">Lo más importante de cada sección. Tocá una tarjeta para ir al detalle, o una pestaña de arriba para ver los números completos.</p>`
+    + (rp.length ? `<div class="caja" style="border-left:4px solid #d97706"><b>${rp.length} registro${rp.length > 1 ? 's' : ''} por aprobar</b> <span class="nota">${esc([...new Set(rp.map(x => TIPOS_REV[x.tabla] || x.tabla))].join(' · '))}</span> <a href="#/aprobar">Revisar</a></div>` : '')
+    + bloques.map(([t, k, ts]) => `<h2 class="grupoMenu">${t} <a href="#/ger/${k}" style="font-size:13px;text-transform:none;letter-spacing:0;margin-left:8px">ver números</a></h2><div class="tarjetas">${ts.join('')}</div>`).join('')
+    + (!bloques.length ? '<div class="caja">No tenés secciones habilitadas para mostrar.</div>' : '');
+}
+
+async function actividadGerencia() {
+  const l = await q(sb.from('bitacora').select('*').eq('org_id', S.org.id).order('id', { ascending: false }).limit(60)).catch(() => null);
+  if (!l) return '<div class="caja">Para ver la actividad hace falta el permiso «Ve la bitácora».</div>';
+  return `<p class="nota">Lo último que se hizo en la plataforma: quién, qué y cuándo.</p><div class="tabla"><table><thead><tr><th>Cuándo</th><th>Quién</th><th>Qué hizo</th><th>Detalle</th></tr></thead><tbody>${l.map(x => `<tr><td style="white-space:nowrap">${fechaHora(x.creado || x.fecha)}</td><td>${esc(x.usuario || '')}</td><td>${esc(x.accion || '')}</td><td>${esc(x.detalle || '')}</td></tr>`).join('') || '<tr><td colspan="4" class="nota">Sin actividad.</td></tr>'}</tbody></table></div><div class="acciones"><a class="boton sec" href="#/bitacora">Ver toda la bitácora</a></div>`;
+}
 
 // =====================================================================
 // PANEL DE CONTROL

@@ -156,3 +156,4 @@ legend{font-weight:600;padding:0 6px}
 body.impTicket #recibo{width:72mm;font-size:11px}body.impTicket #recibo table{font-size:11px}body.impTicket #recibo th,body.impTicket #recibo td{padding:2px 3px}body.impTicket #recibo>div:last-child{margin-top:28px!important}}
 .grupoMenu{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--suave,#5b6b62);margin:22px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--borde,#d9e2dc)}.grupoMenu:first-of-type{margin-top:6px}
 .soloImprimir{display:none}
+.pestanas{display:flex;gap:4px;flex-wrap:wrap;border-bottom:2px solid var(--borde,#d9e2dc);margin:0 0 14px}.pestanas a{padding:8px 14px;border-radius:10px 10px 0 0;text-decoration:none;color:var(--suave,#5b6b62);font-weight:600}.pestanas a.activa{background:var(--verde,#1f6f43);color:#fff}.tarjeta.alerta{border-left:4px solid #d97706}
