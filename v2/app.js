@@ -576,7 +576,7 @@ function tablaFacturas(raiz, op = {}) {
     });
     filas().forEach((tr, i) => { const x = leer()[i]; tr.style.background = tieneAlgo(x) && faltas(x).length ? '#fee2e2' : ''; });
     raiz.querySelector('[data-err]').innerHTML = errs.map(e => `<li>${esc(e)}</li>`).join('');
-    raiz.querySelector('[data-ok]').innerHTML = errs.length || !l.length ? '' : `Las ${l.length} factura${l.length > 1 ? 's están completas' : ' está completa'}: suman ${L(total())}.` + (avs.length ? `<br><span class="nota">${avs.map(esc).join('<br>')}</span>` : '');
+    raiz.querySelector('[data-ok]').innerHTML = errs.length || !l.length ? '' : (l.length > 1 ? `Las ${l.length} facturas están completas` : 'La factura está completa') + `: suman ${L(total())}.` + (avs.length ? `<br><span class="nota">${avs.map(esc).join('<br>')}</span>` : '');
     return !errs.length;
   };
   tb.addEventListener('change', e => {
