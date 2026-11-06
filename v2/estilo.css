@@ -154,3 +154,4 @@ legend{font-weight:600;padding:0 6px}
 /* Recibo de acopio: al imprimir solo sale el recibo */
 @media print{body.impRecibo #barra,body.impRecibo header,body.impRecibo #app>*:not(#recibo){display:none!important}body.impRecibo #recibo{max-width:none!important;border:0;box-shadow:none;margin:0;padding:0}body.impRecibo main{padding:0}
 body.impTicket #recibo{width:72mm;font-size:11px}body.impTicket #recibo table{font-size:11px}body.impTicket #recibo th,body.impTicket #recibo td{padding:2px 3px}body.impTicket #recibo>div:last-child{margin-top:28px!important}}
+.grupoMenu{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--suave,#5b6b62);margin:22px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--borde,#d9e2dc)}.grupoMenu:first-of-type{margin-top:6px}

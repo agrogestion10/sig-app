@@ -319,21 +319,19 @@ async function inicio() {
   let pend = 0;
   if (esJefe()) { const r = await sb.from('solicitudes').select('id', { count: 'exact', head: true }).eq('org_id', S.org.id).eq('estado', 'Pendiente'); pend = r.count || 0; }
   const t = (h, b, s, n) => `<a class="tarjeta" href="${h}">${n ? `<span class="num">${n}</span>` : ''}<b>${b}</b><span>${s}</span></a>`;
-  app().innerHTML = cabecera('Administración', '#/') + `
-  <div class="tarjetas">
-    ${t('#/compra', 'Solicitud de compra', 'Con cotizaciones y proveedor')}
-    ${t('#/fondo', 'Solicitud de fondos', 'Anticipos para actividades')}
-    ${t('#/liquidacion', 'Liquidar fondos', 'Rendir cuentas de un anticipo')}
-    ${t('#/vacacion', 'Vacaciones', 'Solicitar días')}
-    ${esJefe() ? t('#/laboral', 'Liquidación laboral', 'Prestaciones al terminar la relación') : ''}
-    ${t('#/solicitudes', esJefe() ? 'Autorizaciones' : 'Mis solicitudes', esJefe() ? 'Revisar y resolver' : 'Ver en qué van', pend)}
-    ${t('#/facturas', 'Facturas', 'Libro de compras del mes')}
-    ${t('#/proveedores', 'Proveedores', 'Directorio')}
-    ${esJefe() ? t('#/empleados', 'Empleados', 'Datos del personal') : ''}
-    ${t('#/presupuesto', 'Presupuesto', 'Aprobado y ejecutado')}
-    ${puedePanel('adm') ? t('#/pnl/adm', 'Panel de control', 'Números de la sección y archivo de PDF') : ''}
-  </div>`;
+  app().innerHTML = cabecera('Administración', '#/') + menuGrupos([
+    ['Solicitudes', [t('#/compra', 'Solicitud de compra', 'Con cotizaciones y proveedor'), t('#/fondo', 'Solicitud de fondos', 'Anticipos para actividades'),
+      t('#/liquidacion', 'Liquidar fondos', 'Rendir cuentas de un anticipo con sus facturas'),
+      t('#/solicitudes', puede('solicitudes.autorizar') ? 'Autorizaciones' : 'Mis solicitudes', puede('solicitudes.autorizar') ? 'Revisar y resolver' : 'Ver en qué van', pend)]],
+    ['Personal', [t('#/vacacion', 'Vacaciones', 'Solicitar días'), esJefe() ? t('#/laboral', 'Liquidación laboral', 'Prestaciones al terminar la relación') : '',
+      puede('empleados.gestionar') ? t('#/empleados', 'Empleados', 'Datos del personal') : '']],
+    ['Compras y contabilidad', [t('#/facturas', 'Libro de compras', 'Facturas del mes, ISV y retenciones'), puede('facturas.registrar') ? t('#/agregarfac', 'Agregar facturas', 'Servicios, alquiler, facturas a crédito') : '',
+      t('#/proveedores', 'Proveedores', 'Directorio con RTN'), t('#/presupuesto', 'Presupuesto', 'Aprobado y ejecutado')]],
+    ['Panel de control', [puedePanel('adm') ? t('#/pnl/adm', 'Panel de control', 'Números de la sección y archivo de PDF') : '']]
+  ]);
 }
+// Menú en grupos con título; un grupo sin tarjetas no se muestra
+const menuGrupos = grupos => grupos.map(([titulo, ts]) => { const h = ts.filter(Boolean).join(''); return h ? `<h2 class="grupoMenu">${titulo}</h2><div class="tarjetas">${h}</div>` : ''; }).join('');
 
 // ---------- campos comunes ----------
 function camposPresupuesto(d = {}) {
