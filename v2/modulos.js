@@ -205,7 +205,7 @@ RUTAS.panel = async function panel() {
   const anio = new Date().getFullYear(), mes = hoy().slice(0, 7), ini = anio + '-01-01';
   const [pend, aut, pres, fac, cre, pagos, nprod, ncert, aco, qAb, ncAb] = await Promise.all([
     cuenta('solicitudes', x => x.eq('estado', 'Pendiente')),
-    q(sb.from('solicitudes').select('monto').eq('org_id', S.org.id).eq('estado', 'Autorizada').in('tipo', ['compra', 'fondo']).gte('creado', mes + '-01')),
+    q(sb.from('solicitudes').select('monto').eq('org_id', S.org.id).in('estado', ['Autorizada', 'Atendida']).in('tipo', ['compra', 'fondo']).gte('creado', mes + '-01')),
     q(sb.from('ejecucion_presupuesto').select('aprobado,ejecutado,comprometido').eq('org_id', S.org.id).eq('anio', anio)),
     q(sb.from('facturas').select('total,isv,retencion').eq('org_id', S.org.id).eq('mes_fiscal', mes)),
     q(sb.from('creditos').select('id,monto_aprobado,plan,estado').eq('org_id', S.org.id).eq('estado', 'Desembolsado')),
@@ -1811,7 +1811,7 @@ async function datosPanelAdm() {
     q(sb.from('ejecucion_presupuesto').select('*').eq('org_id', S.org.id).eq('anio', anio)),
     q(sb.from('facturas').select('total,isv,retencion,mes_fiscal').eq('org_id', S.org.id).gte('mes_fiscal', anio + '-01'))
   ]);
-  const pend = sol.filter(s => s.estado === 'Pendiente'), aut = sol.filter(s => s.estado === 'Autorizada');
+  const pend = sol.filter(s => s.estado === 'Pendiente'), aut = sol.filter(s => ['Autorizada', 'Atendida'].includes(s.estado));
   const aprobado = sumaP(pres, 'aprobado'), usado = sumaP(pres, 'ejecutado') + sumaP(pres, 'comprometido');
   const facMes = fac.filter(f => f.mes_fiscal === mes);
   const porTipo = Object.entries(TIPOS).map(([k, n]) => { const t = sol.filter(s => s.tipo === k); return `<tr><td>${n}</td><td class="n">${t.length}</td><td class="n">${t.filter(s => s.estado === 'Pendiente').length}</td><td class="n">${L(sumaP(t.filter(s => s.estado === 'Autorizada'), 'monto'))}</td></tr>`; }).join('');
@@ -2172,12 +2172,12 @@ function conectarRevision(t, id, recargar) {
     const d = b.dataset.rv;
     if (d === 'pdf') return verPdfRegistro(t, id);
     try {
-      if (d === 'reenviar') { await q(sb.rpc('reenviar_revision', { t, r: id })); aviso('Se mandó otra vez a revisión.'); }
+      if (d === 'reenviar') { await q(sb.rpc('reenviar_revision', { t, r: id })); avisar('revision', id, { tabla: t }); aviso('Se mandó otra vez a revisión.'); }
       else {
         const obs = d === 'Devuelto' ? prompt('¿Qué hay que corregir? Lo va a ver quien lo registró.') : null;
         if (d === 'Devuelto' && !obs) return;
         if (d === 'Aprobado' && !confirm('¿Aprobar este registro? Se guarda el PDF final con tu nombre.')) return;
-        await q(sb.rpc('revisar', { t, r: id, decision: d, obs }));
+        await q(sb.rpc('revisar', { t, r: id, decision: d, obs })); avisar('revision', id, { tabla: t });
         aviso(d === 'Aprobado' ? 'Aprobado. El PDF final se está guardando en el Archivo.' : 'Devuelto con tus observaciones.'); archivarLuego(true);
       }
       recargar ? recargar() : ruta();
@@ -2198,11 +2198,11 @@ RUTAS.aprobar = async function porAprobar() {
     const tr = b.closest('tr'), t = tr.dataset.t, id = tr.dataset.id, a = b.dataset.a;
     if (a === 'pdf') return verPdfRegistro(t, id);
     try {
-      if (a === 'reenviar') await q(sb.rpc('reenviar_revision', { t, r: id }));
+      if (a === 'reenviar') { await q(sb.rpc('reenviar_revision', { t, r: id })); avisar('revision', id, { tabla: t }); }
       else {
         const obs = a === 'Devuelto' ? prompt('¿Qué hay que corregir?') : null;
         if (a === 'Devuelto' && !obs) return;
-        await q(sb.rpc('revisar', { t, r: id, decision: a, obs }));
+        await q(sb.rpc('revisar', { t, r: id, decision: a, obs })); avisar('revision', id, { tabla: t });
       }
       aviso(a === 'Aprobado' ? 'Aprobado.' : a === 'Devuelto' ? 'Devuelto.' : 'Enviado otra vez.'); archivarLuego(true); RUTAS.aprobar();
     } catch (e) { aviso(falla(e), true); }
@@ -2340,7 +2340,7 @@ RUTAS.capacitacion = async function formAyudaMemoria(codigo) {
       hombres: num(d.hombres), mujeres: num(d.mujeres), jovenes: num(d.jovenes), evaluacion_aplicada: ev2, evaluados: ev2 ? num(d.evaluados) : null, respondieron_bien: ev2 ? num(d.bien) : null, acuerdos: d.acuerdos, datos: { asistentes: [] } };
     if (!reg.tema) return aviso('Escogé la guía o escribí el tema.', true);
     ocupado(f, true);
-    try { await q(sb.from('capacitaciones').insert(reg)); aviso('Ayuda memoria guardada. Ahora agregá la lista de asistencia.'); archivarLuego(true); location.hash = '#/asistencia/' + reg.id; }
+    try { await q(sb.from('capacitaciones').insert(reg)); avisar('revision', reg.id, { tabla: 'capacitaciones' }); aviso('Ayuda memoria guardada. Ahora agregá la lista de asistencia.'); archivarLuego(true); location.hash = '#/asistencia/' + reg.id; }
     catch (e) { ocupado(f, false); aviso(falla(e), true); }
   };
 };

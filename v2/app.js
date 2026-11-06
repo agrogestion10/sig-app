@@ -467,7 +467,7 @@ async function formFondo() {
 
 // ---------- liquidación ----------
 async function formLiquidacion(refId) {
-  let qy = sb.from('solicitudes').select('id,numero,monto,descripcion,solicitante,proyecto,linea,creado_por').eq('org_id', S.org.id).eq('tipo', 'fondo').eq('estado', 'Autorizada').order('creado', { ascending: false });
+  let qy = sb.from('solicitudes').select('id,numero,monto,descripcion,solicitante,proyecto,linea,creado_por').eq('org_id', S.org.id).eq('tipo', 'fondo').in('estado', ['Autorizada', 'Atendida']).order('creado', { ascending: false });
   if (!esJefe()) qy = qy.eq('creado_por', S.user.id);
   const fondos = await q(qy);
   const liq = await q(sb.from('solicitudes').select('referencia').eq('org_id', S.org.id).eq('tipo', 'liquidacion').in('estado', ['Pendiente', 'Autorizada']));
@@ -559,7 +559,7 @@ function revisarFactura(d) {
   return { errs, avisos, tipo_retencion, retencion: Math.round(retencion * 100) / 100 };
 }
 async function formFactura() {
-  const sol = await q(sb.from('solicitudes').select('id,numero,descripcion').eq('org_id', S.org.id).in('tipo', ['compra', 'fondo']).eq('estado', 'Autorizada').order('creado', { ascending: false }).limit(100));
+  const sol = await q(sb.from('solicitudes').select('id,numero,descripcion').eq('org_id', S.org.id).in('tipo', ['compra', 'fondo']).in('estado', ['Autorizada', 'Atendida']).order('creado', { ascending: false }).limit(100));
   app().innerHTML = cabecera('Registrar factura') + `
   <form class="caja" id="f"><div class="rejilla">
     <div><label>Tipo de documento</label><select name="tipo_documento">${opciones(['Factura', 'Recibo por honorarios', 'Nota de débito', 'Nota de crédito', 'Recibo sin CAI'])}</select></div>
@@ -626,7 +626,7 @@ async function verSolicitudes() {
   if (p.get('tipo')) qy = qy.eq('tipo', p.get('tipo'));
   const filas = await q(qy);
   app().innerHTML = cabecera(puede('solicitudes.autorizar') ? 'Autorizaciones' : 'Mis solicitudes') + `
-  <div class="filtros"><select id="fe"><option value="">Todos los estados</option>${opciones(['Pendiente', 'Autorizada', 'Rechazada', 'Anulada'], p.get('estado'))}</select>
+  <div class="filtros"><select id="fe"><option value="">Todos los estados</option>${opciones(['Pendiente', 'Autorizada', 'Atendida', 'Rechazada', 'Anulada'], p.get('estado'))}</select>
   <select id="ft"><option value="">Todos los tipos</option>${Object.entries(TIPOS).map(([k, v]) => `<option value="${k}" ${k === p.get('tipo') ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
   <div class="tabla"><table><thead><tr><th>Número</th><th>Fecha</th><th>Tipo</th><th>Solicitante</th><th>Descripción</th><th class="n">Monto</th><th>Estado</th></tr></thead><tbody>
   ${filas.map(x => `<tr><td><a href="#/solicitud/${x.id}">${esc(x.numero)}</a></td><td>${fecha(x.creado)}</td><td>${TIPOS[x.tipo]}</td><td>${esc(x.solicitante)}</td><td>${esc((x.descripcion || '').slice(0, 80))}</td><td class="n">${x.monto ? L(x.monto) : ''}</td><td><span class="estado e-${x.estado}">${x.estado}</span></td></tr>`).join('') || '<tr><td colspan="7" class="nota">No hay solicitudes con ese filtro.</td></tr>'}
@@ -639,7 +639,7 @@ async function verSolicitud(id) {
   const d = s.datos || {};
   let extra = '';
   if (s.tipo === 'compra' && d.cotizaciones) extra = `<h2>Cotizaciones</h2><div class="tabla"><table><thead><tr><th>#</th><th>Proveedor</th><th class="n">Monto</th><th>Condiciones</th></tr></thead><tbody>${d.cotizaciones.map(c => `<tr><td>${c.n}${c.n === d.elegida ? ' ✔' : ''}</td><td>${esc(c.proveedor)}</td><td class="n">${L(c.monto)}</td><td>${esc(c.condiciones)}</td></tr>`).join('')}</tbody></table></div>${d.justificacion ? `<p><b>Justificación:</b> ${esc(d.justificacion)}</p>` : ''}`;
-  if (s.tipo === 'fondo') extra = `<dl class="detalle"><dt>Actividad</dt><dd>${esc(d.fecha_actividad)}</dd><dt>Liquidará el</dt><dd>${esc(d.fecha_liquidar || '—')}</dd><dt>Detalle</dt><dd>${esc(d.detalle || '—')}</dd></dl>${s.estado === 'Autorizada' ? `<div class="acciones"><a class="boton sec" href="#/liquidacion/${s.id}">Liquidar este fondo</a></div>` : ''}`;
+  if (s.tipo === 'fondo') extra = `<dl class="detalle"><dt>Actividad</dt><dd>${esc(d.fecha_actividad)}</dd><dt>Liquidará el</dt><dd>${esc(d.fecha_liquidar || '—')}</dd><dt>Detalle</dt><dd>${esc(d.detalle || '—')}</dd></dl>${['Autorizada', 'Atendida'].includes(s.estado) ? `<div class="acciones"><a class="boton sec" href="#/liquidacion/${s.id}">Liquidar este fondo</a></div>` : ''}`;
   if (s.tipo === 'liquidacion') extra = `<dl class="detalle"><dt>Fondo</dt><dd>${esc(d.fondo)} · ${L(d.monto_fondo)}</dd><dt>Gastado</dt><dd>${L(d.total_gastos)}</dd><dt>Resultado</dt><dd>${d.diferencia > 0 ? 'Devuelve ' + L(d.diferencia) : d.diferencia < 0 ? 'Se le reintegra ' + L(-d.diferencia) : 'Cuadra exacto'}</dd></dl>`;
   if (s.tipo === 'vacacion') extra = `<dl class="detalle"><dt>Fechas</dt><dd>${esc(d.desde)} al ${esc(d.hasta)}</dd><dt>Días hábiles</dt><dd>${esc(d.dias)}</dd></dl>`;
   if (s.tipo === 'laboral' && d.rubros) extra = `<dl class="detalle"><dt>Motivo</dt><dd>${esc(d.motivo)}</dd><dt>Período</dt><dd>${esc(d.ingreso)} al ${esc(d.salida)} (${esc(d.antiguedad)})</dd><dt>Salario mensual</dt><dd>${L(d.salario)}</dd></dl>
@@ -655,12 +655,15 @@ async function verSolicitud(id) {
   <dl class="detalle"><dt>Solicitante</dt><dd>${esc(s.solicitante)}</dd><dt>Fecha</dt><dd>${fechaHora(s.creado)}</dd>
   ${s.monto ? `<dt>Monto</dt><dd><b>${L(s.monto)}</b></dd>` : ''}${s.linea ? `<dt>Presupuesto</dt><dd>${esc(s.proyecto)} · ${esc(s.linea)}</dd>` : ''}
   ${d.proveedor ? `<dt>Proveedor</dt><dd>${esc(d.proveedor)}</dd>` : ''}<dt>Descripción</dt><dd>${esc(s.descripcion)}</dd>
-  ${s.resuelto ? `<dt>Resuelto</dt><dd>${esc(s.resuelto_nombre)} · ${fechaHora(s.resuelto)}${s.comentario ? ' · ' + esc(s.comentario) : ''}</dd>` : ''}</dl>
+  ${s.resuelto ? `<dt>${s.estado === 'Anulada' ? 'Anuló' : 'Resolvió'}</dt><dd>${esc(s.resuelto_nombre)} · ${fechaHora(s.resuelto)}${s.comentario ? ' · ' + esc(s.comentario) : ''}</dd>` : ''}
+  ${s.atendido ? `<dt>Atendió</dt><dd>${esc(s.atendido_nombre)} · ${fechaHora(s.atendido)}<br>${esc(s.atencion || '')}</dd>` : ''}</dl>
+  <p class="nota">${pasoSolicitud(s)}</p>
   ${extra}
   <h2>Respaldos</h2><div id="adjs"><p class="nota">Cargando…</p></div>
   ${puedeAut && s.estado === 'Pendiente' ? `<label style="margin-top:14px">Comentario (opcional)</label><input id="com"><div class="acciones"><button id="aut">Autorizar</button><button class="rojo" id="rec">Rechazar</button></div>` : ''}
   ${propio && s.estado === 'Pendiente' ? `<p class="nota" style="margin-top:14px">La hiciste vos, así que la tiene que autorizar otra persona con permiso. Mientras siga pendiente la podés retirar.</p><div class="acciones"><button class="sec" id="ret">Retirar mi solicitud</button></div>` : ''}
-  ${puede('solicitudes.anular') && s.estado === 'Autorizada' ? `<div class="acciones"><button class="sec" id="anu">Anular</button></div>` : ''}
+  ${puede('solicitudes.gestionar') && s.estado === 'Autorizada' && ['compra', 'fondo'].includes(s.tipo) ? `<h2>Atender</h2><label>Qué se hizo (se le manda a quien la pidió)</label><textarea id="aten" rows="2" placeholder="${s.tipo === 'compra' ? 'Ej.: Compra hecha a Ferretería X, factura 001-001-01-00001234, se entrega el lunes' : 'Ej.: Transferencia del 6 de noviembre, cheque 1234'}"></textarea><div class="acciones"><button id="atn">Marcar como atendida</button></div>` : ''}
+  ${puede('solicitudes.anular') && ['Autorizada', 'Atendida'].includes(s.estado) ? `<div class="acciones"><button class="sec" id="anu">Anular</button></div>` : ''}
   <div class="acciones"><button class="sec" onclick="print()">Imprimir</button></div></div>`;
   pintarAdjuntos(s);
   const resolver = async (estado, pedir) => {
@@ -673,14 +676,27 @@ async function verSolicitud(id) {
   if ($('#rec')) $('#rec').onclick = () => resolver('Rechazada', !$('#com').value);
   if ($('#anu')) $('#anu').onclick = () => resolver('Anulada', true);
   if ($('#ret')) $('#ret').onclick = () => resolver('Anulada', 'ret');
+  if ($('#atn')) $('#atn').onclick = async () => {
+    const atencion = $('#aten').value.trim(); if (!atencion) return aviso('Escribí qué se hizo.', true);
+    try { await q(sb.from('solicitudes').update({ estado: 'Atendida', atencion }).eq('id', s.id)); avisar('solicitud', s.id); aviso('Listo. Se le avisa a quien la pidió.'); verSolicitud(s.id); }
+    catch (e) { aviso(falla(e), true); }
+  };
+}
+// Dónde va la solicitud en la cadena: pide → autoriza → administración atiende → resolución a quien pidió
+function pasoSolicitud(s) {
+  const gestion = ['compra', 'fondo'].includes(s.tipo);
+  return ({ Pendiente: 'Paso 1 de ' + (gestion ? 3 : 2) + ': esperando que la autorice quien tiene el permiso.',
+    Autorizada: gestion ? 'Paso 2 de 3: autorizada. Administración la está gestionando; cuando la marque como atendida le llega la resolución a quien la pidió.' : 'Resuelta: autorizada.',
+    Atendida: 'Resuelta: administración la atendió y se le avisó a quien la pidió.',
+    Rechazada: 'Cerrada: rechazada.', Anulada: 'Cerrada: anulada.' })[s.estado] || '';
 }
 async function pintarAdjuntos(s) {
   const caja = $('#adjs'); if (!caja) return;
   let lista;
   try { lista = await q(sb.from('solicitud_adjuntos').select('*').eq('solicitud_id', s.id).order('creado')); }
   catch (e) { caja.innerHTML = '<p class="nota">Los respaldos todavía no están instalados en la base de datos (falta el paso 20).</p>'; return; }
-  const propio = esPropia(s), abierta = ['Pendiente', 'Autorizada'].includes(s.estado);
-  const sube = abierta && (propio || puede('solicitudes.ver') || puede('solicitudes.autorizar'));
+  const propio = esPropia(s), abierta = ['Pendiente', 'Autorizada', 'Atendida'].includes(s.estado);
+  const sube = abierta && (propio || puede('solicitudes.ver') || puede('solicitudes.autorizar') || puede('solicitudes.gestionar'));
   const quita = a => !a.anulado && (s.estado === 'Pendiente' ? (a.creado_por === S.user?.id || puede('solicitudes.anular')) : puede('solicitudes.anular'));
   const kb = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
   const vivos = lista.filter(a => !a.anulado), quitados = lista.filter(a => a.anulado);
@@ -781,6 +797,9 @@ async function verPresupuesto(anio) {
 const CFG_TEXTO = {
   COTIZACION_1_HASTA: 'Compras hasta este monto piden 1 cotización (L)', COTIZACION_2_HASTA: 'Compras hasta este monto piden 2 cotizaciones; arriba, 3 (L)',
   COTIZACION_ARCHIVO: '¿Cada cotización lleva su archivo (foto o PDF)?',
+  CORREO_AUTORIZA: 'Correo de quien autoriza las solicitudes (compras, fondos, liquidaciones)', CORREO_AUTORIZA_VACACIONES: 'Correo de quien autoriza las vacaciones (si es otra persona)',
+  CORREO_ADMINISTRACION: 'Correo de administración: recibe las compras y fondos autorizados para gestionarlos', CORREO_RRHH: 'Correo de talento humano: recibe vacaciones y liquidaciones laborales autorizadas',
+  CORREO_APRUEBA_AYUDAS: 'Correo de quien aprueba las ayudas memoria (además de quien la tenga en Usuarios)',
   PRESUPUESTO_AVISO_PCT: 'Avisar cuando una línea pase este % de uso', AGENTE_RETENCION_1: '¿La organización es agente de retención del 1 %? (Sí/No)',
   LINEAS_PRESUPUESTO: 'Líneas de presupuesto (una por renglón)', PROYECTOS: 'Proyectos o fondos (uno por renglón)', AREAS: 'Áreas (una por renglón)'
 };
@@ -796,7 +815,9 @@ async function verConfig() {
   ${esAdmin() ? `<h2>Clave de Kobo</h2><form class="caja" id="fk"><p class="nota" id="kEstado">Revisando…</p><div class="rejilla"><div class="ancho"><label>Clave API de KoboToolbox (en Kobo: Configuración de la cuenta › Seguridad › Clave API)</label><input name="clave" type="password" autocomplete="off" required></div></div><div class="acciones"><button>Guardar clave</button></div></form>` : ''}
   ${esAdmin() ? `<h2>Claves de los paneles de control</h2><form class="caja" id="fpn"><p class="nota" id="pnEstado">Revisando…</p><div class="rejilla">${Object.entries(SECCIONES).map(([k, v]) => `<div><label>Panel de ${v}</label><input name="${k}" type="password" autocomplete="new-password" placeholder="Dejar vacío para no cambiar"></div>`).join('')}</div><p class="nota">Mínimo 6 caracteres. Quién entra a cada panel se marca en <a href="#/usuarios">Usuarios</a>.</p><div class="acciones"><button>Guardar claves</button></div></form>
   <h2>Copias de seguridad</h2><div class="caja"><p class="nota">Guarda todos los datos de ${esc(S.org.nombre)} en dos archivos: un Excel para revisar (una hoja por tabla) y un respaldo completo para recuperar todo si hiciera falta. Las copias quedan guardadas aquí y no se pueden borrar desde la aplicación.</p><div class="acciones"><button id="hacerCopia">Sacar copia de seguridad ahora</button></div><div id="copias" style="margin-top:12px"></div></div>` : ''}
-  ${esAdmin() ? `<h2>Correos de aviso</h2><div class="caja"><p class="nota">Los avisos de solicitudes, créditos y quejas salen a: <b>${esc(S.cfg.CORREO_AVISOS || '(sin correo)')}</b>. Se cambia arriba en «Correo que recibe los avisos». Además, a cada persona le llega el resultado de lo que pidió si tiene correo en Usuarios.</p><div class="acciones"><button class="sec" id="probarCorreo">Mandar un correo de prueba</button></div></div>` : ''}
+  ${esAdmin() ? `<h2>Correos de aviso</h2><div class="caja"><p class="nota">Así viaja cada solicitud: <b>1.</b> al pedirla le llega a quien autoriza; <b>2.</b> autorizada una compra o fondos, le llega a administración para que la gestione; <b>3.</b> cuando administración la marca como atendida, a quien la pidió le llega la resolución. Vacaciones y liquidaciones quedan resueltas al autorizarlas y le llegan a quien pidió y a talento humano o administración. Las ayudas memoria le llegan a quien las aprueba y ahí quedan; si se devuelven, le llega a quien la registró.</p>
+  <div class="tabla"><table><tbody>${[['Autoriza solicitudes', S.cfg.CORREO_AUTORIZA], ['Autoriza vacaciones', S.cfg.CORREO_AUTORIZA_VACACIONES || S.cfg.CORREO_AUTORIZA], ['Administración', S.cfg.CORREO_ADMINISTRACION], ['Talento humano', S.cfg.CORREO_RRHH || S.cfg.CORREO_ADMINISTRACION], ['Aprueba ayudas memoria', S.cfg.CORREO_APRUEBA_AYUDAS]].map(([k, v]) => `<tr><td>${k}</td><td>${v ? esc(v) : `<span class="nota">vacío: va al correo general (${esc(S.cfg.CORREO_AVISOS || 'sin correo')})</span>`}</td></tr>`).join('')}</tbody></table></div>
+  <p class="nota">Se llenan arriba; en cada uno se pueden poner varios correos separados por coma. A quien pide le llega a su correo de Usuarios.</p><div class="acciones"><button class="sec" id="probarCorreo">Mandar un correo de prueba</button></div></div>` : ''}
   <h2>Valores de ley</h2><div class="caja"><p class="nota">Estos valores los define la organización maestra y aplican a todas.</p><dl class="detalle">${Object.entries(S.leyes).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>${S.maestro ? '<a href="#/orgs">Cambiar valores de ley</a>' : ''}</div>`;
   const fpn = $('#fpn');
   if (fpn) {
@@ -851,7 +872,7 @@ async function verConfig() {
 // ---------- usuarios ----------
 // Pide a la función «avisos» que mande el correo que corresponda (no detiene la pantalla si falla)
 // y deja listo el PDF de respaldo de lo que se acaba de registrar o resolver
-const avisar = (tipo, id) => { archivarLuego(true); return sb.functions.invoke('avisos', { body: { tipo, id } }).catch(() => {}); };
+const avisar = (tipo, id, extra = {}) => { archivarLuego(true); return sb.functions.invoke('avisos', { body: { tipo, id, ...extra } }).catch(() => {}); };
 async function funcionUsuarios(cuerpo) {
   const { data, error } = await sb.functions.invoke('usuarios', { body: cuerpo });
   if (error) { let m = error.message; try { m = (await error.context.json()).error || m; } catch (_) {} throw new Error(m); }
