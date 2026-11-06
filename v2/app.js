@@ -133,7 +133,7 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); pedirI
 function datosForm(f) { const o = {}; new FormData(f).forEach((v, k) => o[k] = typeof v === 'string' ? v.trim() : v); return o; }
 function ocupado(f, si) { f.querySelectorAll('button').forEach(b => b.disabled = si); }
 // Qué parte de la guía de uso explica cada pantalla
-const GUIA_DE = { adm: 'adm', compra: 'adm', fondo: 'adm', liquidacion: 'adm', vacacion: 'adm', laboral: 'adm', factura: 'adm', facturas: 'adm', presupuesto: 'adm', empleados: 'adm', proveedores: 'adm', solicitudes: 'adm', solicitud: 'adm',
+const GUIA_DE = { adm: 'adm', compra: 'adm', fondo: 'adm', liquidacion: 'adm', vacacion: 'adm', laboral: 'adm', factura: 'adm', facturas: 'adm', fac: 'adm', presupuesto: 'adm', empleados: 'adm', proveedores: 'adm', solicitudes: 'adm', solicitud: 'adm',
   cre: 'cre', credito: 'cre', creditos: 'cre', cred: 'cre', cartera: 'cre', recordatorios: 'cre', reportescre: 'cre', pago: 'cre', fondos: 'cre', condiciones: 'cre', edocta: 'cre',
   cer: 'padron', padron: 'padron', prod: 'padron', prodf: 'padron', parcela: 'padron', inspeccion: 'insp', inspecciones: 'insp', insp: 'insp', nc: 'insp', insumos: 'insp', reg: 'insp',
   asistencia: 'capac', quejas: 'capac', queja: 'capac', acopio: 'acopio', acopios: 'acopio', recibo: 'acopio', inventario: 'acopio', basculas: 'acopio',
@@ -267,7 +267,7 @@ function cerrarEngrane() { const m = $('#menuEng'); if (m && !m.hidden) { m.hidd
 // ---------- rutas ----------
 const RUTAS = {
   '': inicio, 'compra': formCompra, 'fondo': formFondo, 'liquidacion': formLiquidacion, 'vacacion': formVacacion,
-  'factura': formFactura, 'facturas': verFacturas, 'solicitudes': verSolicitudes, 'solicitud': verSolicitud,
+  'factura': formFactura, 'facturas': verFacturas, 'fac': verFactura, 'solicitudes': verSolicitudes, 'solicitud': verSolicitud,
   'proveedores': verProveedores, 'proveedor': formProveedor, 'empleados': verEmpleados, 'empleado': formEmpleado,
   'presupuesto': verPresupuesto, 'config': verConfig, 'usuarios': verUsuarios, 'bitacora': verBitacora, 'orgs': verOrgs, 'adm': inicio
 };
@@ -275,7 +275,7 @@ const RUTAS = {
 // Claves de Configuración que se escogen de una lista
 const CFG_OPC = { CULTIVO_ACOPIO: ['Café', 'Cacao', 'Café y cacao'], ACOPIO_UNIDAD: ['lb', 'qq', 'kg'], COTIZACION_ARCHIVO: ['Sí', 'No'] };
 const SECCION_DE = { '': '', adm: 'adm', config: '', usuarios: '', bitacora: '', orgs: '', guia: '', aprobar: '', rev: '' };
-['compra', 'fondo', 'liquidacion', 'vacacion', 'factura', 'facturas', 'solicitudes', 'solicitud', 'proveedores', 'proveedor', 'empleados', 'empleado', 'presupuesto', 'laboral'].forEach(r => SECCION_DE[r] = 'adm');
+['compra', 'fondo', 'liquidacion', 'vacacion', 'factura', 'facturas', 'fac', 'solicitudes', 'solicitud', 'proveedores', 'proveedor', 'empleados', 'empleado', 'presupuesto', 'laboral'].forEach(r => SECCION_DE[r] = 'adm');
 async function ruta() {
   if (!S.user) return pantallaAcceso();
   archivarLuego();
@@ -374,6 +374,68 @@ function campoRespaldos(txt = 'Otros respaldos (proformas, fichas técnicas, cor
 }
 function leerRespaldos(clase = 'Otro') { return [...($('#otrosAdj')?.files || [])].map(archivo => ({ archivo, clase })); }
 const esPropia = s => S.user && s.creado_por === S.user.id;
+
+// ---------- respaldos de cualquier registro (facturas, créditos, inspecciones, ayudas memoria, despachos…) ----------
+// Uso: <div data-adjuntos="tabla:id:Clase1|Clase2"></div> en la página y luego montarAdjuntos(app()).
+const CLASES_REG = {
+  facturas: ['Factura escaneada', 'Comprobante de pago', 'Otro'], creditos: ['Comprobante de desembolso', 'Pagaré o contrato', 'Recibo de pago', 'Otro'],
+  pagos_credito: ['Recibo de pago', 'Comprobante de depósito', 'Otro'], inspecciones: ['Foto de campo', 'Evidencia de cierre', 'Croquis', 'Otro'],
+  no_conformidades: ['Evidencia de cierre', 'Foto', 'Otro'], capacitaciones: ['Lista de asistencia firmada', 'Foto', 'Material usado', 'Otro'],
+  acopio: ['Recibo firmado', 'Foto', 'Otro'], beneficiado: ['Registro de fermentación o secado', 'Foto', 'Otro'], despachos: ['Contrato', 'Factura de venta', 'Guía de remisión o BL', 'Certificado de transacción', 'Otro'],
+  prima_uso: ['Acta de aprobación', 'Factura o recibo', 'Foto', 'Otro'], proveedores: ['RTN', 'Constancia de pagos a cuenta', 'Otro'], quejas: ['Evidencia', 'Respuesta', 'Otro'],
+  insumos_aplicados: ['Factura del insumo', 'Ficha técnica', 'Foto', 'Otro'], empleados: ['Contrato', 'Identidad', 'Otro']
+};
+function agregarAdjuntos(tabla, id) {
+  const c = document.createElement('div'); c.className = 'caja noImprimir'; c.dataset.adjuntos = tabla + ':' + id;
+  app().appendChild(c); pintarAdjReg(c, tabla, id);
+}
+async function montarAdjuntos(raiz) {
+  for (const caja of raiz.querySelectorAll('[data-adjuntos]')) {
+    const [tabla, id] = caja.dataset.adjuntos.split(':');
+    pintarAdjReg(caja, tabla, id);
+  }
+}
+async function pintarAdjReg(caja, tabla, id) {
+  let lista;
+  try { lista = await q(sb.from('adjuntos').select('*').eq('tabla', tabla).eq('registro_id', id).order('creado')); }
+  catch (e) { caja.innerHTML = '<p class="nota">Los respaldos todavía no están instalados (falta el paso 22).</p>'; return; }
+  const clases = CLASES_REG[tabla] || ['Respaldo', 'Otro'];
+  const kb = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round((n || 0) / 1024)) + ' KB';
+  const vivos = lista.filter(a => !a.anulado), quitados = lista.filter(a => a.anulado);
+  const quita = a => esJefe() || a.creado_por === S.user?.id;
+  caja.innerHTML = `<h2>Respaldos</h2>` + (vivos.length ? `<div class="tabla"><table><thead><tr><th>Tipo</th><th>Archivo</th><th>Subió</th><th></th></tr></thead><tbody>
+    ${vivos.map(a => `<tr><td>${esc(a.clase)}</td><td><a href="#" data-doc="${esc(a.ruta)}">${esc(a.nombre)}</a>${a.nota ? `<br><span class="nota">${esc(a.nota)}</span>` : ''}<span class="nota"> · ${kb(a.tamano)}</span></td><td>${esc(a.subido_nombre || '')}<br><span class="nota">${fechaHora(a.creado)}</span></td><td>${quita(a) ? `<button class="sec" data-quitar="${a.id}">Quitar</button>` : ''}</td></tr>`).join('')}
+    </tbody></table></div>` : '<p class="nota">Sin respaldos adjuntos.</p>')
+    + (quitados.length ? `<details style="margin-top:8px"><summary class="nota">${quitados.length} quitado${quitados.length > 1 ? 's' : ''} (queda el registro)</summary><ul>${quitados.map(a => `<li>${esc(a.nombre)} · quitado por ${esc(a.anulado_nombre || '')} el ${fechaHora(a.anulado_en)}: ${esc(a.motivo || '')}</li>`).join('')}</ul></details>` : '')
+    + `<form class="rejilla fAdjR" style="margin-top:10px"><div><label>Tipo de respaldo</label><select name="clase">${opciones(clases, clases[0])}</select></div>
+      <div><label>Archivo</label><input type="file" name="arch" multiple required accept="${ACEPTA_ADJ}"></div><div><label>Nota (opcional)</label><input name="nota"></div>
+      <div class="acciones" style="align-self:end"><button class="sec">Subir respaldo</button></div></form>`;
+  if (typeof verDocumentos === 'function') verDocumentos(caja);
+  caja.querySelectorAll('[data-quitar]').forEach(b => b.onclick = async () => {
+    const motivo = prompt('¿Por qué se quita este respaldo? (el archivo no se borra, queda en el registro)'); if (!motivo) return;
+    try { await q(sb.from('adjuntos').update({ anulado: true, motivo }).eq('id', b.dataset.quitar)); aviso('Respaldo quitado.'); pintarAdjReg(caja, tabla, id); }
+    catch (e) { aviso(falla(e), true); }
+  });
+  const f = caja.querySelector('.fAdjR');
+  f.onsubmit = async ev => {
+    ev.preventDefault(); const d = datosForm(f), adj = [...f.arch.files].map(archivo => ({ archivo, clase: d.clase, nota: d.nota }));
+    const mal = revisarArchivos(adj); if (mal.length) return aviso(mal.join(' '), true);
+    ocupado(f, true); const fallos = await subirAdjReg(tabla, id, adj);
+    aviso(fallos.length ? 'No se subió: ' + fallos.join('; ') : 'Respaldo subido.', !!fallos.length); pintarAdjReg(caja, tabla, id);
+  };
+}
+async function subirAdjReg(tabla, id, lista) {
+  const fallos = [];
+  for (const a of lista) {
+    try {
+      const ruta = `${S.org.id}/adjuntos/${tabla}/${id}/${Date.now()}-${a.archivo.name.replace(/[^\w.\-]+/g, '_')}`;
+      const { error } = await sb.storage.from('documentos').upload(ruta, a.archivo, { contentType: a.archivo.type || undefined });
+      if (error) throw error;
+      await q(sb.from('adjuntos').insert({ org_id: S.org.id, tabla, registro_id: id, clase: a.clase || 'Otro', nombre: a.archivo.name, ruta, tipo_mime: a.archivo.type || null, tamano: a.archivo.size, nota: a.nota || null }));
+    } catch (e) { fallos.push(a.archivo.name + ' (' + falla(e) + ')'); }
+  }
+  return fallos;
+}
 
 // ---------- compra ----------
 function cotizacionesRequeridas(monto) {
@@ -515,13 +577,15 @@ async function formVacacion() {
     <div><label>Hasta</label><input type="date" name="hasta" required></div>
     <div><label>Días hábiles</label><input name="dias" id="dias" readonly></div>
     <div class="ancho"><label>Comentario</label><textarea name="descripcion"></textarea></div>
+    ${campoRespaldos('Respaldos (si aplica: constancia, boleto, cita médica)')}
   </div><div class="acciones"><button>Enviar</button></div></form>`;
   $('#f').oninput = () => { const d = datosForm($('#f')); $('#dias').value = diasHabiles(d.desde, d.hasta) || ''; };
   $('#f').onsubmit = async ev => {
     ev.preventDefault(); const f = ev.target, d = datosForm(f), dias = diasHabiles(d.desde, d.hasta);
     if (!dias) return aviso('Revisá las fechas: la fecha final no puede ser antes que la inicial.', true);
+    const adjuntos = leerRespaldos(), mal = revisarArchivos(adjuntos); if (mal.length) return aviso(mal.join(' '), true);
     ocupado(f, true);
-    try { await guardarSolicitud({ tipo: 'vacacion', solicitante: d.solicitante, correo: S.user.email, monto: 0, descripcion: d.descripcion || `Vacaciones del ${d.desde} al ${d.hasta}`, datos: { desde: d.desde, hasta: d.hasta, dias } }); }
+    try { await guardarSolicitud({ tipo: 'vacacion', solicitante: d.solicitante, correo: S.user.email, monto: 0, descripcion: d.descripcion || `Vacaciones del ${d.desde} al ${d.hasta}`, datos: { desde: d.desde, hasta: d.hasta, dias } }, adjuntos); }
     catch (e) { ocupado(f, false); aviso(falla(e), true); }
   };
 }
@@ -578,6 +642,7 @@ async function formFactura() {
     <div><label>ISV (L)</label><input name="isv" inputmode="decimal" value="0"></div>
     <div><label>Total (L)</label><input name="total" inputmode="decimal" required></div>
     <div class="ancho"><label>Solicitud a la que corresponde (opcional)</label><select name="solicitud_id"><option value="">Ninguna</option>${sol.map(s => `<option value="${s.id}">${esc(s.numero)} · ${esc((s.descripcion || '').slice(0, 70))}</option>`).join('')}</select></div>
+    ${campoRespaldos('Foto o PDF de la factura (y comprobante de pago si hay)')}
   </div>
   <ul class="lista-errores" id="errs"></ul><p class="ok" id="avs"></p>
   <div class="acciones"><button>Registrar factura</button><span class="nota">Se revisa contra las reglas del SAR antes de guardar.</span></div></form>`;
@@ -589,16 +654,28 @@ async function formFactura() {
     const r = revisarFactura(d);
     $('#errs').innerHTML = r.errs.map(e => `<li>${esc(e)}</li>`).join(''); $('#avs').textContent = r.avisos.join(' ');
     if (r.errs.length && !confirm('La factura tiene observaciones del SAR. ¿Registrarla de todos modos como "con observaciones"?')) return;
+    const adjuntos = leerRespaldos('Factura escaneada'), mal = revisarArchivos(adjuntos); if (mal.length) return aviso(mal.join(' '), true);
     ocupado(f, true);
     try {
-      await q(sb.from('facturas').insert({ org_id: S.org.id, solicitud_id: d.solicitud_id || null, registro: S.maestro ? 'Usuario maestro' : S.perfil.nombre, tipo_documento: d.tipo_documento,
+      const fila = await q(sb.from('facturas').insert({ org_id: S.org.id, solicitud_id: d.solicitud_id || null, registro: S.maestro ? 'Usuario maestro' : S.perfil.nombre, tipo_documento: d.tipo_documento,
         numero: d.numero || null, cai: d.cai || null, fecha_emision: d.fecha_emision, fecha_limite: d.fecha_limite || null, rango: d.rango, rtn_emisor: d.rtn_emisor, emisor: d.emisor,
         persona_natural: d.persona_natural === 'si', concepto: d.concepto, tipo_gasto: d.tipo_gasto, exento: num(d.exento), gravado: num(d.gravado), isv: num(d.isv), total: num(d.total),
-        tipo_retencion: r.tipo_retencion, retencion: r.retencion, valida_sar: !r.errs.length, observaciones: r.errs.join(' '), mes_fiscal: d.fecha_emision.slice(0, 7) }));
-      aviso(r.errs.length ? 'Factura registrada con observaciones.' : 'Factura registrada y válida.' + (r.retencion ? ' Recordá la retención.' : ''));
+        tipo_retencion: r.tipo_retencion, retencion: r.retencion, valida_sar: !r.errs.length, observaciones: r.errs.join(' '), mes_fiscal: d.fecha_emision.slice(0, 7) }).select('id').single());
+      const fallos = adjuntos.length ? await subirAdjReg('facturas', fila.id, adjuntos) : [];
+      if (d.solicitud_id && adjuntos.length) await subirAdjuntos(d.solicitud_id, adjuntos.map(a => ({ ...a, clase: 'Factura' })));
+      aviso((r.errs.length ? 'Factura registrada con observaciones.' : 'Factura registrada y válida.' + (r.retencion ? ' Recordá la retención.' : '')) + (fallos.length ? ' No se subió: ' + fallos.join('; ') : ''), !!fallos.length);
       location.hash = '#/facturas';
     } catch (e) { ocupado(f, false); aviso(falla(e), true); }
   };
+}
+async function verFactura(id) {
+  const x = await q(sb.from('facturas').select('*').eq('id', id).single());
+  app().innerHTML = cabecera('Factura ' + (x.numero || x.tipo_documento), '#/facturas/' + (x.mes_fiscal || '')) + `<div class="caja"><dl class="detalle">
+    <dt>Emisor</dt><dd>${esc(x.emisor)} · RTN ${esc(x.rtn_emisor)}</dd><dt>Fecha</dt><dd>${esc(x.fecha_emision)}</dd><dt>CAI</dt><dd>${esc(x.cai || '—')}</dd>
+    <dt>Concepto</dt><dd>${esc(x.concepto || '')}</dd><dt>Total</dt><dd><b>${L(x.total)}</b> (gravado ${L(x.gravado)}, ISV ${L(x.isv)}, exento ${L(x.exento)})</dd>
+    ${x.retencion ? `<dt>Retención</dt><dd>${L(x.retencion)} · ${esc(x.tipo_retencion || '')}</dd>` : ''}<dt>SAR</dt><dd>${x.valida_sar ? 'Válida' : 'Con observaciones: ' + esc(x.observaciones || '')}</dd>
+    <dt>Registró</dt><dd>${esc(x.registro || '')}</dd>${x.solicitud_id ? `<dt>Solicitud</dt><dd><a href="#/solicitud/${x.solicitud_id}">Ver la solicitud</a></dd>` : ''}</dl></div>`;
+  agregarAdjuntos('facturas', id);
 }
 async function verFacturas(mes) {
   mes = mes || hoy().slice(0, 7);
@@ -607,7 +684,7 @@ async function verFacturas(mes) {
   app().innerHTML = cabecera('Facturas') + `
   <div class="filtros"><input type="month" id="mes" value="${mes}"><a class="boton" href="#/factura">+ Registrar factura</a><button class="sec" id="csv">Descargar CSV</button></div>
   <div class="tabla"><table><thead><tr><th>Fecha</th><th>Número</th><th>Emisor</th><th>RTN</th><th class="n">Gravado</th><th class="n">ISV</th><th class="n">Total</th><th class="n">Retención</th><th>SAR</th></tr></thead><tbody>
-  ${fac.map(x => `<tr><td>${esc(x.fecha_emision)}</td><td>${esc(x.numero || x.tipo_documento)}</td><td>${esc(x.emisor)}</td><td>${esc(x.rtn_emisor)}</td><td class="n">${L(x.gravado)}</td><td class="n">${L(x.isv)}</td><td class="n">${L(x.total)}</td><td class="n">${x.retencion ? L(x.retencion) : ''}</td><td>${x.valida_sar ? '<span class="estado e-Autorizada">Válida</span>' : `<span class="estado e-Rechazada" title="${esc(x.observaciones)}">Revisar</span>`}</td></tr>`).join('') || '<tr><td colspan="9" class="nota">No hay facturas en este mes.</td></tr>'}
+  ${fac.map(x => `<tr><td>${esc(x.fecha_emision)}</td><td><a href="#/fac/${x.id}">${esc(x.numero || x.tipo_documento)}</a></td><td>${esc(x.emisor)}</td><td>${esc(x.rtn_emisor)}</td><td class="n">${L(x.gravado)}</td><td class="n">${L(x.isv)}</td><td class="n">${L(x.total)}</td><td class="n">${x.retencion ? L(x.retencion) : ''}</td><td>${x.valida_sar ? '<span class="estado e-Autorizada">Válida</span>' : `<span class="estado e-Rechazada" title="${esc(x.observaciones)}">Revisar</span>`}</td></tr>`).join('') || '<tr><td colspan="9" class="nota">No hay facturas en este mes.</td></tr>'}
   </tbody>${fac.length ? `<tfoot><tr><th colspan="4">Totales del mes (${fac.length})</th><th class="n">${L(s('gravado'))}</th><th class="n">${L(s('isv'))}</th><th class="n">${L(s('total'))}</th><th class="n">${L(s('retencion'))}</th><th></th></tr></tfoot>` : ''}</table></div>
   <p class="nota">El ISV pagado en compras (${L(s('isv'))}) es crédito fiscal para la declaración del mes. Las retenciones se enteran al SAR a más tardar el día 10 del mes siguiente.</p>`;
   $('#mes').onchange = e => location.hash = '#/facturas/' + e.target.value;
@@ -737,6 +814,7 @@ async function formProveedor(id) {
     ${c('bienes', 'Bienes o servicios')}${c('banco', 'Banco')}<div><label>Tipo de cuenta</label><select name="tipo_cuenta">${opciones(['', 'Ahorro', 'Cheques'], p.tipo_cuenta)}</select></div>${c('numero_cuenta', 'Número de cuenta')}${c('titular', 'Titular de la cuenta')}
     ${id ? `<div><label>Estado</label><select name="activo"><option value="true">Activo</option><option value="false" ${p.activo ? '' : 'selected'}>Inactivo</option></select></div>` : ''}
   </div><div class="acciones"><button>Guardar</button></div></form>`;
+  if (id) agregarAdjuntos('proveedores', id);
   $('#f').onsubmit = async ev => {
     ev.preventDefault(); const f = ev.target, d = datosForm(f); d.rtn = (d.rtn || '').replace(/\D/g, '');
     if (d.rtn && d.rtn.length !== 14) return aviso('El RTN debe tener 14 dígitos.', true);

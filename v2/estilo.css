@@ -68,7 +68,7 @@ details.carpeta table{font-size:13px}
 .tarjetas.portal{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
 .portal .tarjeta{padding:22px;min-height:118px;border-left:4px solid var(--verde2)}
 .portal .tarjeta b{font-size:18px;margin-bottom:6px}
-@media print{header,.acciones,.volver,form{display:none!important}main{max-width:none;padding:0}.caja,.tabla{border:0}}
+@media print{header,.acciones,.volver,form,.noImprimir{display:none!important}main{max-width:none;padding:0}.caja,.tabla{border:0}}
 
 .parBarra{display:flex;gap:8px;align-items:center}
 .engrane{position:relative;display:flex}

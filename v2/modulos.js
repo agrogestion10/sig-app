@@ -290,6 +290,7 @@ RUTAS.laboral = async function formLaboral() {
     <div><label>Otros pagos (L)</label><input name="otros" inputmode="decimal" value="0"></div>
     <div><label>Concepto de otros pagos</label><input name="otros_concepto"></div>
     <div><label>Deducciones: préstamos, adelantos (L)</label><input name="deducciones" inputmode="decimal" value="0"></div>
+    ${campoRespaldos('Respaldos (carta de renuncia o despido, contrato, constancias)')}
   </div><div id="res" style="margin-top:14px"></div>
   <p class="nota">Cálculo según el Código de Trabajo (preaviso art. 116, cesantía art. 120, vacaciones art. 346, décimo tercero y décimo cuarto mes). Revisalo con el contador o el abogado antes de pagar.</p>
   <div class="acciones"><button>Enviar a autorización</button></div></form>`;
@@ -303,8 +304,9 @@ RUTAS.laboral = async function formLaboral() {
   f.onsubmit = async ev => {
     ev.preventDefault(); const d = datosForm(f);
     if (d.salida < d.ingreso) return aviso('La fecha de salida no puede ser antes del ingreso.', true);
+    const adjuntos = leerRespaldos(), mal = revisarArchivos(adjuntos); if (mal.length) return aviso(mal.join(' '), true);
     const c = calcularLiquidacion(d); ocupado(f, true);
-    try { await guardarSolicitud({ tipo: 'laboral', solicitante: d.solicitante, correo: S.user.email, monto: c.total, descripcion: `Liquidación laboral · ${d.motivo}`, datos: { ...d, ...c } }); }
+    try { await guardarSolicitud({ tipo: 'laboral', solicitante: d.solicitante, correo: S.user.email, monto: c.total, descripcion: `Liquidación laboral · ${d.motivo}`, datos: { ...d, ...c } }, adjuntos); }
     catch (e) { ocupado(f, false); aviso(falla(e), true); }
   };
 };
@@ -549,6 +551,7 @@ RUTAS.cred = async function verCredito(id) {
   ${c.plan ? `<h2>Plan de pagos</h2><div class="tabla"><table><thead><tr><th>#</th><th>Fecha</th><th class="n">Capital</th><th class="n">Interés</th><th class="n">Cuota</th><th class="n">Saldo</th></tr></thead><tbody>${c.plan.map(x => `<tr${x.fecha < hoy() ? ' style="color:var(--gris)"' : ''}><td>${x.n}</td><td>${esc(x.fecha)}</td><td class="n">${L(x.capital)}</td><td class="n">${L(x.interes)}</td><td class="n">${L(x.cuota)}</td><td class="n">${L(x.saldo)}</td></tr>`).join('')}</tbody></table></div>` : ''}
   ${pagos.length ? `<h2>Pagos recibidos</h2><div class="tabla"><table><thead><tr><th>Fecha</th><th>Recibo</th><th class="n">Monto</th><th class="n">Mora</th><th class="n">Interés</th><th class="n">Capital</th></tr></thead><tbody>${pagos.map(x => `<tr><td>${esc(x.fecha)}</td><td>${esc(x.recibo)}</td><td class="n">${L(x.monto)}</td><td class="n">${L(x.mora)}</td><td class="n">${L(x.interes)}</td><td class="n">${L(x.capital)}</td></tr>`).join('')}</tbody></table></div>` : ''}
   ${acc}<div class="acciones"><button class="sec" onclick="print()">Imprimir</button>${esJefe() && ['Solicitado', 'En evaluación', 'Aprobado'].includes(c.estado) ? '<button class="sec" id="anular">Anular solicitud</button>' : ''}</div>`;
+  agregarAdjuntos('creditos', id);
 
   const recargar = () => { avisar('credito', id); RUTAS.cred(id); };
   if (location.hash.endsWith('/pago') && $('#pago')) setTimeout(() => { $('#pago').scrollIntoView({ behavior: 'smooth' }); $('#fPag').monto.focus(); }, 50);
@@ -1109,6 +1112,7 @@ RUTAS.insp = async function verInspeccion(id) {
   ${(d.lista || []).length ? `<h2>Lista de chequeo</h2><p>${d.lista.filter(x => x.cumple).length} requisitos revisados · <b class="${d.lista.some(x => x.cumple === 'No cumple') ? 'error' : ''}">${d.lista.filter(x => x.cumple === 'No cumple').length} no cumplen</b> · ${d.lista.filter(x => x.cumple === 'No aplica').length} no aplican${d.sellos?.length ? ' · sellos: ' + d.sellos.map(esc).join(', ') : ''}</p>
     ${[...new Set(d.lista.map(x => x.seccion))].map(sc => `<h3>${esc(sc)}</h3><div class="tabla"><table><thead><tr><th>Requisito</th><th>Respuesta</th><th>Evaluación</th></tr></thead><tbody>${d.lista.filter(x => x.seccion === sc).map(x => `<tr${x.cumple === 'No cumple' ? ' style="background:#fef2f2"' : ''}><td>${esc(x.pregunta)}</td><td>${esc(x.respuesta)}</td><td>${x.cumple === 'No cumple' ? `<b class="error">No cumple</b>` : esc(x.cumple || '')}</td></tr>`).join('')}</tbody></table></div>`).join('')}`
   : chequeo.length ? `<h2>Lista de chequeo (Kobo)</h2><p>${chequeo.length} preguntas contestadas · ${malas.length} con «No»${malas.length ? ': ' + malas.map(([k]) => k.toUpperCase()).join(', ') : ''}.</p>` : ''}`;
+  agregarAdjuntos('inspecciones', id);
   conectarRevision('inspecciones', id);
 };
 
@@ -1310,6 +1314,7 @@ RUTAS.recibo = async function verRecibo(id) {
     ${a.observaciones ? `<p class="nota">${esc(a.observaciones)}</p>` : ''}
     <div style="display:flex;justify-content:space-between;gap:24px;margin-top:48px"><div style="flex:1;border-top:1px solid #333;text-align:center;padding-top:4px">Recibió</div><div style="flex:1;border-top:1px solid #333;text-align:center;padding-top:4px">Productor</div></div>
   </div><div class="acciones"><button id="imp">Imprimir (carta)</button><button class="sec" id="impT">Imprimir ticket (80 mm)</button><a class="boton sec" target="_blank" rel="noopener" href="${esc(wa)}">Mandar por WhatsApp</a>${puede('acopio.pagar') && a.estado_pago !== 'Pagado' && !a._local ? '<button class="sec" id="pagar">Marcar como pagado</button>' : ''}<a class="boton sec" href="#/acopio">Registrar otra entrega</a></div>`;
+  agregarAdjuntos('acopio', id);
   $('#imp').onclick = () => imprimirRecibo(false); $('#impT').onclick = () => imprimirRecibo(true);
   if (location.hash.endsWith('/imprimir')) setTimeout(() => imprimirRecibo(false), 300);
   const pg = $('#pagar'); if (pg) pg.onclick = async () => { if (!confirm(`¿Se le pagó ${a.neto_pagar != null ? L(a.neto_pagar) : 'la entrega'} a ${pr.nombre}?`)) return; try { await q(sb.from('acopio').update({ estado_pago: 'Pagado', pagado_fecha: hoy() }).eq('id', id)); aviso('Pago registrado.'); RUTAS.recibo(id); } catch (e) { aviso(falla(e), true); } };
@@ -2218,6 +2223,7 @@ RUTAS.rev = async function verRegistro(t, id) {
   const pares = Object.entries(r).filter(([k, v]) => !omit.has(k) && val(v) !== '');
   app().innerHTML = cabecera(TIPOS_REV[t], '#/aprobar') + revisionHTML(t, r) + `<div class="caja"><dl class="detalle">${pr ? `<dt>Productor</dt><dd><a href="#/prod/${pr.id}">${esc(pr.codigo || '')} ${esc(pr.nombre)}</a></dd>` : ''}${pares.map(([k, v]) => `<dt>${esc(k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, ' '))}</dt><dd>${esc(val(v))}</dd>`).join('')}</dl></div>
   ${(r.revision_historial || []).length ? `<h2>Historial de revisión</h2><div class="tabla"><table><thead><tr><th>Fecha</th><th>Quién</th><th>Decisión</th><th>Observaciones</th></tr></thead><tbody>${r.revision_historial.map(h => `<tr><td>${fechaHora(h.fecha)}</td><td>${esc(h.por || '')}</td><td>${esc(h.decision || '')}</td><td>${esc(h.obs || '')}</td></tr>`).join('')}</tbody></table></div>` : ''}`;
+  if (CLASES_REG[t]) agregarAdjuntos(t, id);
   conectarRevision(t, id, () => RUTAS.rev(t, id));
 };
 
@@ -2296,6 +2302,7 @@ RUTAS.cap = async function verAyudaMemoria(id) {
   <h2>Acuerdos y compromisos</h2><div class="caja">${esc(c.acuerdos || '—')}</div>
   ${(c.datos?.adjuntos || []).length ? `<p class="nota">Tiene ${c.datos.adjuntos.length} foto(s) de Kobo; salen en el PDF.</p>` : ''}
   <div class="acciones"><button class="sec" id="pdfCap">Ver PDF</button></div>`;
+  agregarAdjuntos('capacitaciones', id);
   conectarRevision('capacitaciones', id, () => RUTAS.cap(id));
   $('#pdfCap').onclick = () => verPdfRegistro('capacitaciones', id);
 };
