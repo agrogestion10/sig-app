@@ -30,7 +30,7 @@ Object.assign(CFG_TEXTO, {
 
 const SEC = { cre: 'Crédito interno', cer: 'Certificaciones', adm: 'Administración' };
 ['credito', 'creditos', 'cred', 'cartera', 'condiciones', 'edocta', 'recordatorios', 'fondos', 'reportescre', 'pago'].forEach(r => SECCION_DE[r] = 'cre');
-['padron', 'prod', 'prodf', 'parcela', 'inspeccion', 'insp', 'inspecciones', 'nc', 'acopio', 'acopios', 'despacho', 'balance', 'prima', 'reg', 'quejas', 'queja', 'catalogo', 'kobo', 'eudr', 'insumos', 'lotes', 'lote', 'recibo', 'inventario', 'basculas', 'actas', 'asistencia', 'paquete'].forEach(r => SECCION_DE[r] = 'cer');
+['padron', 'prod', 'prodf', 'parcela', 'inspeccion', 'insp', 'inspecciones', 'nc', 'acopio', 'acopios', 'despacho', 'balance', 'prima', 'reg', 'quejas', 'queja', 'catalogo', 'kobo', 'eudr', 'eudrparc', 'insumos', 'lotes', 'lote', 'recibo', 'inventario', 'basculas', 'actas', 'asistencia', 'paquete'].forEach(r => SECCION_DE[r] = 'cer');
 SECCION_DE.panel = ''; SECCION_DE.bandeja = '';
 
 const tarjeta = (h, b, s, n) => `<a class="tarjeta" href="${h}">${n ? `<span class="num">${n}</span>` : ''}<b>${b}</b><span>${s}</span></a>`;
@@ -235,7 +235,7 @@ async function resumenGerencia() {
     cer ? ok(q(sb.from('no_conformidades').select('plazo').eq('org_id', S.org.id).eq('estado', 'Abierta'))) : null,
     cer ? ok(cuenta('quejas', x => x.neq('estado', 'Cerrada'))) : null,
     cer ? ok(q(sb.from('productores').select('id,activo,certificaciones,datos,codigo,identidad,sexo,fecha_nacimiento,comunidad,municipio,fecha_ingreso').eq('org_id', S.org.id).eq('activo', true))) : null,
-    cer ? ok(q(sb.from('parcelas').select('productor_id,nombre,area_ha,lat,poligono').eq('org_id', S.org.id))) : null,
+    cer ? ok(q(sb.from('parcelas').select('productor_id,nombre,area_ha,lat,poligono,datos').eq('org_id', S.org.id))) : null,
     cer ? ok(q(sb.from('acopio').select('psec_lb,total').eq('org_id', S.org.id).gte('fecha', hace30))) : null,
     ok(q(sb.rpc('por_revisar', { o: S.org.id })))
   ]);
@@ -266,6 +266,8 @@ async function resumenGerencia() {
       d('Productores activos', prods.length, inc ? `${inc} con datos pendientes en el padrón` : 'Padrón completo', '#/padron', inc ? 'alerta' : ''),
       d('No conformidades abiertas', (nc || []).length, venc ? `${venc} con el plazo vencido` : 'Ninguna vencida', '#/nc', venc ? 'alerta' : ''),
       d('Quejas abiertas', qj || 0, 'Sin cerrar', '#/quejas', qj ? 'alerta' : ''),
+      (() => { const pp = parc || [], malas = pp.filter(x => revisarEudr(x).some(y => y[0] === 'error')).length, sin = pp.filter(x => !x.datos?.satelite).length;
+        return d('EUDR: parcelas que no cumplen', malas, sin ? `${sin} de ${pp.length} sin revisión satelital` : 'Todas revisadas con satélite', '#/eudrparc', malas || sin ? 'alerta' : ''); })(),
       d('Acopio de los últimos 30 días', qqTxt(qq), `${(aco || []).length} entregas · ${L(sumaP(aco || [], 'total'))}`, '#/acopios')]]);
   }
   const rp = (rev || []).filter(x => x.revision === 'Pendiente');
@@ -916,6 +918,7 @@ RUTAS.cer = async function menuCert() {
     ${tarjeta('#/padron', 'Padrón de productores', 'Socios, parcelas y certificaciones')}
     ${puede('padron.crear') ? tarjeta('#/prodf', 'Registrar productor', 'Socio nuevo') : ''}
     ${puede('padron.crear') ? tarjeta('#/parcela', 'Registrar parcela', 'Punto GPS y polígono (obligatorio desde 4 ha)') : ''}
+    ${tarjeta('#/eudrparc', 'Revisión EUDR de parcelas', 'Satélite: ¿hubo deforestación después del 31/12/2020? Antes de comprar y despachar')}
     ${puede('carga.masiva') ? tarjeta('#/carga', 'Carga masiva desde Excel', 'Productores, parcelas, polígonos, acopio anterior, inspecciones, insumos y documentos') : ''}
   </div>
   <h2 class="grupoMenu">Control interno</h2><div class="tarjetas">
@@ -1113,6 +1116,7 @@ RUTAS.prod = async function verProductor(id) {
     <div><dt>Certificaciones</dt><dd>${p.certificaciones.map(nombreCert).map(esc).join(', ') || '—'}</dd></div><div><dt>Última inspección</dt><dd>${esc(p.estado_cert || 'Sin inspección')}</dd></div>
   </dl><div class="acciones"><button type="button" id="impFicha">Imprimir ficha</button><a class="boton sec" href="#/prodf/${p.id}">Editar datos</a><a class="boton sec" href="#/parcela/nuevo/${p.id}">+ Parcela</a><a class="boton sec" href="#/inspeccion/${p.id}">+ Inspección</a><a class="boton sec" href="#/acopio/${p.id}">+ Acopio</a><a class="boton sec" href="#/credito">+ Crédito</a></div></div>
   <h2>Parcelas (${parc.length} · ${haTot.toFixed(2)} ha)</h2>
+  ${parc.length ? `<div class="caja noImprimir" style="padding:10px 14px"><b>Revisión satelital EUDR:</b> ${parc.map(x => `${esc(x.nombre || 'Parcela')}: ${chipSat(x)}`).join(' · ')} <button type="button" class="sec" id="satProd" style="margin-left:8px">Revisar sus parcelas con satélite</button><div id="satAv"></div></div>` : ''}
   ${parc.some(x => x.lat || x.poligono) ? '<div id="mapa" style="height:320px;border-radius:12px;border:1px solid var(--borde);margin-bottom:10px"></div>' : ''}
   <div class="tabla"><table><thead><tr><th>Parcela</th><th class="n">Área (ha)</th><th>Variedad</th><th class="n">Altitud</th><th>Ubicación</th><th>Polígono</th><th class="n">Estimado (qq)</th><th>Orgánico</th><th></th></tr></thead><tbody>
   ${parc.map(x => `<tr><td>${esc(x.nombre)}</td><td class="n">${num(x.area_ha).toFixed(2)}</td><td>${esc(x.variedad)}</td><td class="n">${x.altitud ?? ''}</td><td>${x.lat ? `${num(x.lat).toFixed(5)}, ${num(x.lon).toFixed(5)}` : '<span class="error">Sin punto</span>'}</td><td>${x.poligono ? 'Sí' : num(x.area_ha) >= 4 ? '<span class="error">Falta (4 ha o más)</span>' : 'No requerido'}</td><td class="n">${estimadoParcela(x) ? estimadoParcela(x).toLocaleString('es-HN') : ''}</td><td>${chipOrg(estadoOrganico(x))}</td><td><a href="#/parcela/${x.id}">Editar</a></td></tr>`).join('') || '<tr><td colspan="9" class="nota">Sin parcelas.</td></tr>'}
@@ -1130,6 +1134,7 @@ RUTAS.prod = async function verProductor(id) {
   ${aco.length ? `<div class="tabla"><table><thead><tr><th>Número</th><th>Fecha</th><th>Producto</th><th class="n">Peso (lb)</th><th>Certificación</th></tr></thead><tbody>${aco.map(x => `<tr><td>${esc(x.numero)}</td><td>${esc(x.fecha)}</td><td>${esc(x.estado_cafe)}</td><td class="n">${num(x.peso_lb).toLocaleString('es-HN')}</td><td>${esc(nombreCert(x.certificacion))}</td></tr>`).join('')}</tbody></table></div>` : ''}
   ${cre.length ? `<h2>Créditos</h2><div class="tabla"><table><thead><tr><th>Número</th><th class="n">Monto</th><th>Estado</th></tr></thead><tbody>${cre.map(x => `<tr><td><a href="#/cred/${x.id}">${esc(x.numero)}</a></td><td class="n">${L(x.monto_aprobado || x.monto_solicitado)}</td><td>${esc(x.estado)}</td></tr>`).join('')}</tbody></table></div>${esJefe() ? `<div class="acciones"><a class="boton sec" href="#/edocta/${id}">Estado de cuenta</a></div>` : ''}` : ''}`;
   if ($('#mapa')) dibujarMapa($('#mapa'), parc);
+  if ($('#satProd')) $('#satProd').onclick = () => revisarSatelite(parc.filter(x => x.poligono || x.lat != null).map(x => x.id), $('#satAv'), () => setTimeout(() => RUTAS.prod(id), 1500));
   $('#impFicha').onclick = () => { app().querySelectorAll('details').forEach(d => d.open = true); setTimeout(() => print(), 400); };
   estimadoProductor(id).then(e => { const el = $('#estProd'); if (el) el.innerHTML = e.est ? `Cosecha actual (desde ${inicioCosecha()}): entregado <b>${qqTxt(e.ent)}</b> de un estimado de <b>${qqTxt(e.est)}</b>${e.ent > e.tope ? ' · <span class="error">pasa el estimado más la tolerancia</span>' : ''}.` : 'Sin estimado de cosecha: se pone en cada parcela.'; }).catch(() => {});
   fichaDocumentos(id).catch(() => {});
@@ -2131,8 +2136,74 @@ function revisarEudr(p) {
   if (dt.area_protegida === 'si') r.push(['error', 'Dentro de un área protegida']);
   if (dt.cultivo_2020 === 'no_sabe' || dt.area_protegida === 'no_sabe') r.push(['duda', 'Falta confirmar el uso en 2020 o si es área protegida']);
   if (num(p.anio_siembra) > 2020) r.push(['duda', 'Sembrada después de 2020: confirmar que antes no había bosque']);
+  const sat = dt.satelite;
+  if (!sat) r.push(['duda', 'Sin revisión satelital']);
+  else {
+    if (sat.deforestacion_despues_2020 === 'sí') r.push(['error', 'El satélite muestra pérdida de bosque después del 31/12/2020']);
+    if (['high', 'very high'].includes(String(sat.riesgo || '').toLowerCase())) r.push(['error', 'Riesgo satelital alto']);
+    else if (String(sat.riesgo || '').toLowerCase() === 'more_info_needed') r.push(['duda', 'El satélite pide más información (revisar en campo)']);
+  }
   return r;
 }
+// Resultado satelital de una parcela, como etiqueta
+const RIESGO_SAT = { low: ['Bajo', 'Autorizada'], medium: ['Medio', 'Pendiente'], high: ['Alto', 'Rechazada'], 'very high': ['Muy alto', 'Rechazada'], more_info_needed: ['Falta información', 'Pendiente'] };
+function chipSat(p) {
+  const sat = p.datos?.satelite; if (!sat) return '<span class="nota">Sin revisar</span>';
+  const [t, c] = RIESGO_SAT[String(sat.riesgo || '').toLowerCase()] || [sat.riesgo || '—', ''];
+  return `${estadoChip('Riesgo ' + t.toLowerCase(), c)}${sat.deforestacion_despues_2020 === 'sí' ? ' <b class="error">pérdida de bosque después de 2020</b>' : ''}<br><span class="nota">${esc(sat.fecha || '')}${sat.bosque_2020 ? ' · bosque en 2020: ' + esc(sat.bosque_2020) : ''}</span>`;
+}
+// Manda parcelas a Whisp (FAO) y espera el resultado; caja = elemento donde se muestra el avance
+async function revisarSatelite(ids, caja, alTerminar) {
+  const pon = t => { if (caja) caja.innerHTML = t; };
+  if (!ids.length) return aviso('No hay parcelas para revisar.', true);
+  pon(`<p class="nota">Mandando ${ids.length} parcela${ids.length > 1 ? 's' : ''} al análisis satelital…</p>`);
+  try {
+    const r = await llamarKobo({ accion: 'satelite', parcelas: ids });
+    if (r.estado === 'sin_clave') { pon(`<p class="error">${esc(r.mensaje)} ${esAdmin() ? '<a href="#/config">Ponerla ahora</a>' : 'Pedile al administrador que la ponga.'}</p>`); return; }
+    if (!r.token) throw new Error('Whisp no devolvió el número de trabajo.');
+    const ini = Date.now();
+    while (Date.now() - ini < 30 * 60000) {
+      await new Promise(x => setTimeout(x, 6000));
+      const e = await llamarKobo({ accion: 'satelite_estado', token: r.token, orden: r.orden });
+      if (e.estado === 'completo') {
+        pon(`<p class="ok">Listo: ${e.guardadas} parcela${e.guardadas === 1 ? '' : 's'} revisada${e.guardadas === 1 ? '' : 's'} con imágenes de satélite.${r.sinUbicacion ? ` ${r.sinUbicacion} no se mandaron porque no tienen punto GPS ni polígono.` : ''}</p>`);
+        S._parc = null; if (alTerminar) alTerminar(e); return e;
+      }
+      if (['analysis_error', 'analysis_timeout', 'analysis_cancelled', 'analysis_job_not_found'].includes(e.estado)) throw new Error('El análisis no terminó: ' + (e.mensaje || e.estado));
+      pon(`<p class="nota">Analizando ${r.enviadas} parcela${r.enviadas > 1 ? 's' : ''} con imágenes de satélite… ${esc((e.avance || []).slice(-1)[0] || '')} (${Math.round((Date.now() - ini) / 1000)} s)</p>`);
+    }
+    throw new Error('El análisis está tardando mucho; volvé a intentarlo más tarde.');
+  } catch (e) { pon(`<p class="error">${esc(falla(e))}</p>`); }
+}
+
+// ---------- Revisión EUDR de todas las parcelas, antes de despachar ----------
+RUTAS.eudrparc = async function revisionEudrParcelas() {
+  const [ps, parc] = await Promise.all([q(sb.from('productores').select('id,codigo,nombre,certificaciones,activo').eq('org_id', S.org.id)), q(sb.from('parcelas').select('*').eq('org_id', S.org.id).order('nombre'))]);
+  const P = Object.fromEntries(ps.map(p => [p.id, p]));
+  const filas = parc.filter(x => P[x.productor_id]?.activo !== false).map(p => ({ p, r: revisarEudr(p), pr: P[p.productor_id] || {} }))
+    .sort((a, b) => (a.pr.nombre || '').localeCompare(b.pr.nombre || ''));
+  const nivel = x => x.r.some(y => y[0] === 'error') ? 2 : x.r.length ? 1 : 0;
+  const sinSat = filas.filter(x => !x.p.datos?.satelite && (x.p.poligono || x.p.lat != null)), malas = filas.filter(x => nivel(x) === 2), ok = filas.filter(x => nivel(x) === 0);
+  app().innerHTML = cabecera('Revisión EUDR de parcelas', '#/cer') + `<div class="caja">
+    <p>Revisá aquí las fincas <b>antes de comprar y de despachar</b>. Cada parcela se revisa con lo que declaró el productor (uso de la tierra en 2020, área protegida, polígono) y con <b>imágenes de satélite</b> (Whisp, de la FAO), que dicen si hubo pérdida de bosque después del 31 de diciembre de 2020.</p>
+    <div class="tarjetas">${datoP('Parcelas', filas.length, `${ok.length} sin observaciones`)}${datoP('No cumplen', malas.length, 'Corregir o sacar del producto EUDR')}${datoP('Sin revisión satelital', sinSat.length, 'Con ubicación, falta mandarlas')}</div>
+    <div class="acciones"><button id="satTodas" ${sinSat.length ? '' : 'disabled'}>Revisar con satélite las ${sinSat.length} que faltan</button><button class="sec" id="satSel">Revisar las marcadas</button><button class="sec" id="csvE">Descargar CSV</button></div>
+    <div id="satAv"></div></div>
+  <div class="filtros"><input id="bus" placeholder="Buscar productor o parcela"><select id="fn"><option value="">Todas</option><option value="2">No cumplen</option><option value="1">Por revisar</option><option value="0">Sin observaciones</option><option value="s">Sin revisión satelital</option></select></div>
+  <div class="tabla"><table><thead><tr><th><input type="checkbox" id="todo" title="Marcar todas" style="width:auto"></th><th>Productor</th><th>Parcela</th><th class="n">Área (ha)</th><th>Satélite</th><th>Revisión</th></tr></thead><tbody id="cuerpo"></tbody></table></div>`;
+  const pintar = () => {
+    const t = norm($('#bus').value), fn = $('#fn').value;
+    const l = filas.filter(x => (!t || norm((x.pr.nombre || '') + (x.pr.codigo || '') + (x.p.nombre || '')).includes(t)) && (!fn || (fn === 's' ? !x.p.datos?.satelite : String(nivel(x)) === fn)));
+    $('#cuerpo').innerHTML = l.map(x => `<tr><td><input type="checkbox" data-id="${x.p.id}" style="width:auto" ${x.p.poligono || x.p.lat != null ? '' : 'disabled'}></td><td><a href="#/prod/${x.p.productor_id}">${esc(x.pr.codigo || '')} ${esc(x.pr.nombre || '')}</a></td><td>${esc(x.p.nombre || '')}</td><td class="n">${num(x.p.area_ha).toFixed(2)}</td><td>${chipSat(x.p)}</td><td>${chipEudr(x.r)}</td></tr>`).join('') || '<tr><td colspan="6" class="nota">Nada con ese filtro.</td></tr>';
+  };
+  $('#bus').oninput = pintar; $('#fn').onchange = pintar; pintar();
+  $('#todo').onchange = e => app().querySelectorAll('#cuerpo [data-id]:not(:disabled)').forEach(c => c.checked = e.target.checked);
+  const fin = () => setTimeout(() => RUTAS.eudrparc(), 1500);
+  $('#satTodas').onclick = () => revisarSatelite(sinSat.map(x => x.p.id), $('#satAv'), fin);
+  $('#satSel').onclick = () => { const ids = [...app().querySelectorAll('#cuerpo [data-id]:checked')].map(c => c.dataset.id); if (!ids.length) return aviso('Marcá al menos una parcela.', true); revisarSatelite(ids, $('#satAv'), fin); };
+  $('#csvE').onclick = () => descargarCSV('revision_eudr.csv', ['codigo', 'productor', 'parcela', 'area_ha', 'lat', 'lon', 'poligono', 'riesgo_satelital', 'deforestacion_despues_2020', 'bosque_2020', 'fecha_revision', 'observaciones'],
+    filas.map(x => { const sat = x.p.datos?.satelite || {}; return [x.pr.codigo, x.pr.nombre, x.p.nombre, num(x.p.area_ha).toFixed(2), x.p.lat, x.p.lon, x.p.poligono ? 'sí' : 'no', sat.riesgo, sat.deforestacion_despues_2020, sat.bosque_2020, sat.fecha, x.r.map(y => y[1]).join('; ')]; }));
+};
 const chipEudr = r => r.length ? r.map(([n, t]) => `<span class="estado" style="background:${n === 'error' ? '#fee2e2;color:#991b1b' : '#fef3c7;color:#92400e'};display:inline-block;margin:0 4px 4px 0;white-space:normal">${esc(t)}</span>`).join('') : '<span class="estado e-Autorizada">Cumple</span>';
 
 RUTAS.eudr = async function verEudr(id) {
@@ -2155,9 +2226,10 @@ RUTAS.eudr = async function verEudr(id) {
   <form class="caja" id="fd"><div class="rejilla"><div class="ancho"><label>Número de la declaración de debida diligencia (sistema TRACES de la Unión Europea)</label><input name="dds" value="${esc(d.dds_numero || '')}" placeholder="Se pega cuando la declaración ya está hecha"></div></div>
     <div class="acciones"><button>Guardar número</button><button type="button" class="sec" id="bajar" ${fc.features.length ? '' : 'disabled'}>Descargar ubicaciones (GeoJSON)</button></div>
     <p class="nota">El archivo trae un polígono por parcela (o el punto, si es de menos de 4 ha), con el nombre del productor, el país y el área. Se sube tal cual al hacer la declaración.</p></form>
-  <h2>Parcelas de este despacho</h2><div class="tabla"><table><thead><tr><th>Productor</th><th>Parcela</th><th class="n">Área (ha)</th><th>Ubicación</th><th>Revisión</th></tr></thead><tbody>
-  ${filas.map(({ p, r }) => `<tr><td><a href="#/prod/${p.productor_id}">${esc(p.productores?.codigo || '')} ${esc(p.productores?.nombre || '')}</a></td><td><a href="#/parcela/${p.id}">${esc(p.nombre)}</a></td><td class="n">${num(p.area_ha).toFixed(2)}</td><td>${p.poligono ? 'Polígono' : p.lat !== null && p.lat !== undefined ? 'Punto' : '—'}</td><td>${chipEudr(r)}</td></tr>`).join('') || '<tr><td colspan="5" class="nota">No hay parcelas para mostrar.</td></tr>'}</tbody></table></div>`;
+  <h2>Parcelas de este despacho</h2>${parc.length ? `<div class="acciones" style="justify-content:flex-start"><button type="button" id="satDesp">Revisar estas ${parc.length} parcelas con satélite</button></div><div id="satAv"></div>` : ''}<div class="tabla"><table><thead><tr><th>Productor</th><th>Parcela</th><th class="n">Área (ha)</th><th>Ubicación</th><th>Satélite</th><th>Revisión</th></tr></thead><tbody>
+  ${filas.map(({ p, r }) => `<tr><td><a href="#/prod/${p.productor_id}">${esc(p.productores?.codigo || '')} ${esc(p.productores?.nombre || '')}</a></td><td><a href="#/parcela/${p.id}">${esc(p.nombre)}</a></td><td class="n">${num(p.area_ha).toFixed(2)}</td><td>${p.poligono ? 'Polígono' : p.lat !== null && p.lat !== undefined ? 'Punto' : '—'}</td><td>${chipSat(p)}</td><td>${chipEudr(r)}</td></tr>`).join('') || '<tr><td colspan="6" class="nota">No hay parcelas para mostrar.</td></tr>'}</tbody></table></div>`;
   $('#bajar').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(fc)], { type: 'application/geo+json' })); a.download = `EUDR_${d.numero}.geojson`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); };
+  if ($('#satDesp')) $('#satDesp').onclick = () => revisarSatelite(parc.filter(p => p.poligono || p.lat != null).map(p => p.id), $('#satAv'), () => setTimeout(() => RUTAS.eudr(id), 1500));
   $('#fd').onsubmit = async ev => {
     ev.preventDefault(); const f = ev.target; ocupado(f, true);
     try { await q(sb.from('despachos').update({ dds_numero: f.dds.value.trim() || null, geojson: fc }).eq('id', id)); aviso('Guardado.'); RUTAS.eudr(id); }

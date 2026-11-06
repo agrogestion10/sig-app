@@ -137,7 +137,7 @@ const GUIA_DE = { ger: 'ger', adm: 'adm', compra: 'adm', fondo: 'adm', liquidaci
   cre: 'cre', credito: 'cre', creditos: 'cre', cred: 'cre', cartera: 'cre', recordatorios: 'cre', reportescre: 'cre', pago: 'cre', fondos: 'cre', condiciones: 'cre', edocta: 'cre',
   cer: 'padron', padron: 'padron', prod: 'padron', prodf: 'padron', parcela: 'padron', inspeccion: 'insp', inspecciones: 'insp', insp: 'insp', nc: 'insp', insumos: 'insp', reg: 'insp',
   asistencia: 'capac', quejas: 'capac', queja: 'capac', acopio: 'acopio', acopios: 'acopio', recibo: 'acopio', inventario: 'acopio', basculas: 'acopio',
-  despacho: 'venta', eudr: 'venta', lotes: 'venta', lote: 'venta', balance: 'venta', prima: 'prima', actas: 'prima', paquete: 'auditoria', kobo: 'kobo', bandeja: 'campo',
+  despacho: 'venta', eudr: 'venta', eudrparc: 'venta', lotes: 'venta', lote: 'venta', balance: 'venta', prima: 'prima', actas: 'prima', paquete: 'auditoria', kobo: 'kobo', bandeja: 'campo',
   capacitacion: 'capac', capacitaciones: 'capac', cap: 'capac', guias: 'capac', aprobar: 'aprobacion', rev: 'aprobacion', carga: 'carga',
   panel: 'paneles', pnl: 'paneles', config: 'config', usuarios: 'config', catalogo: 'config', bitacora: 'config', orgs: 'config' };
 function cabecera(titulo, volver = S.seccion ? '#/' + S.seccion : '#/') {
@@ -1040,6 +1040,7 @@ async function verConfig() {
   app().innerHTML = cabecera('Configuración de ' + S.org.nombre) + `<form class="caja" id="f"><div class="rejilla">
     ${claves.map(k => `<div class="${largo(k) ? 'ancho' : ''}"><label>${esc(CFG_TEXTO[k] || k)}</label>${largo(k) ? `<textarea name="${k}" rows="5">${esc(lista(val[k]).join('\n'))}</textarea>` : CFG_OPC[k] ? `<select name="${k}">${CFG_OPC[k].map(o => `<option ${o === val[k] ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>` : `<input name="${k}" value="${esc(val[k])}">`}</div>`).join('')}
   </div><div class="acciones"><button>Guardar cambios</button></div></form>
+  ${esAdmin() ? `<h2>Clave de Whisp (revisión satelital EUDR)</h2><form class="caja" id="fw"><p class="nota" id="wEstado">Revisando…</p><p class="nota">Whisp es la herramienta gratuita de la FAO que revisa con imágenes de satélite si hubo deforestación en las parcelas. Creá una cuenta en <a href="https://whisp.openforis.org" target="_blank" rel="noopener">whisp.openforis.org</a>, generá la clave API en tu cuenta y pegala aquí.</p><div class="rejilla"><div class="ancho"><label>Clave API de Whisp</label><input name="clave" type="password" autocomplete="off" required></div></div><div class="acciones"><button>Guardar clave</button></div></form>` : ''}
   ${esAdmin() ? `<h2>Clave de Kobo</h2><form class="caja" id="fk"><p class="nota" id="kEstado">Revisando…</p><div class="rejilla"><div class="ancho"><label>Clave API de KoboToolbox (en Kobo: Configuración de la cuenta › Seguridad › Clave API)</label><input name="clave" type="password" autocomplete="off" required></div></div><div class="acciones"><button>Guardar clave</button></div></form>` : ''}
   ${esAdmin() ? `<h2>Claves de los paneles de control</h2><form class="caja" id="fpn"><p class="nota" id="pnEstado">Revisando…</p><div class="rejilla">${Object.entries(SECCIONES).map(([k, v]) => `<div><label>Panel de ${v}</label><input name="${k}" type="password" autocomplete="new-password" placeholder="Dejar vacío para no cambiar"></div>`).join('')}</div><p class="nota">Mínimo 6 caracteres. Quién entra a cada panel se marca en <a href="#/usuarios">Usuarios</a>.</p><div class="acciones"><button>Guardar claves</button></div></form>
   <h2>Copias de seguridad</h2><div class="caja"><p class="nota">Guarda todos los datos de ${esc(S.org.nombre)} en dos archivos: un Excel para revisar (una hoja por tabla) y un respaldo completo para recuperar todo si hiciera falta. Las copias quedan guardadas aquí y no se pueden borrar desde la aplicación.</p><div class="acciones"><button id="hacerCopia">Sacar copia de seguridad ahora</button></div><div id="copias" style="margin-top:12px"></div></div>` : ''}
@@ -1078,6 +1079,17 @@ async function verConfig() {
     try { const { data, error } = await sb.functions.invoke('avisos', { body: { tipo: 'prueba', id: S.org.id } }); if (error) throw error; aviso(data.estado === 'enviado' ? 'Correo enviado a ' + data.para.join(', ') : 'No se envió: ' + (data.detalle || data.estado || data.error), data.estado !== 'enviado'); }
     catch (e) { aviso(falla(e), true); } finally { pc.disabled = false; }
   };
+  const fw = $('#fw');
+  if (fw) {
+    sb.rpc('tiene_secreto', { o: S.org.id, k: 'WHISP_API_KEY' }).then(({ data }) => { $('#wEstado').textContent = data ? 'Ya hay una clave guardada. Si escribís otra, reemplaza la anterior.' : 'Todavía no hay clave: sin ella no se puede hacer la revisión satelital.'; });
+    fw.onsubmit = async ev => {
+      ev.preventDefault(); const v = fw.clave.value.trim();
+      if (v.length < 16) return aviso('Esa clave parece incompleta.', true);
+      ocupado(fw, true);
+      try { await q(sb.from('configuracion').upsert({ org_id: S.org.id, clave: 'WHISP_API_KEY', valor: v, secreta: true }, { onConflict: 'org_id,clave' })); await q(sb.from('bitacora').insert({ org_id: S.org.id, usuario: nombreQuien(), accion: 'Guardó la clave de Whisp' })); aviso('Clave guardada.'); fw.clave.value = ''; ocupado(fw, false); $('#wEstado').textContent = 'Ya hay una clave guardada. Si escribís otra, reemplaza la anterior.'; }
+      catch (e) { ocupado(fw, false); aviso(falla(e), true); }
+    };
+  }
   const fk = $('#fk');
   if (fk) {
     sb.rpc('tiene_secreto', { o: S.org.id, k: 'KOBO_TOKEN' }).then(({ data }) => { $('#kEstado').textContent = data ? 'Ya hay una clave guardada. Si escribís otra, reemplaza la anterior.' : 'Todavía no hay clave: sin ella Kobo no se conecta.'; });
