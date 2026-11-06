@@ -563,7 +563,7 @@ async function formLiquidacion(refId) {
   const renumerar = () => filas().forEach((tr, i) => tr.firstElementChild.textContent = i + 1);
   const agregar = (foco = true) => {
     if (filas().length >= MAX) return aviso(`Llegaste al máximo de ${MAX} facturas en una liquidación.`, true);
-    tb.insertAdjacentHTML('beforeend', `<tr><td class="nota"></td><td><input data-c="numero" placeholder="000-001-01-00000001" autocomplete="off"></td><td><input data-c="descripcion" placeholder="Qué se compró" autocomplete="off"></td><td><input data-c="total" inputmode="decimal" style="text-align:right" autocomplete="off"></td><td><button type="button" class="sec" data-quitar title="Quitar esta factura">✕</button></td></tr>`);
+    tb.insertAdjacentHTML('beforeend', `<tr><td class="nota"></td><td><input data-c="numero" placeholder="000-001-01-00000001" autocomplete="off" style="min-width:185px"></td><td><input data-c="descripcion" placeholder="Qué se compró" autocomplete="off" style="min-width:150px"></td><td><input data-c="total" inputmode="decimal" style="text-align:right" autocomplete="off"></td><td><button type="button" class="sec" data-quitar title="Quitar esta factura">✕</button></td></tr>`);
     renumerar(); $('#masFac').disabled = filas().length >= MAX;
     if (foco) tb.lastElementChild.querySelector('[data-c=numero]').focus();
   };
