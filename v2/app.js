@@ -529,6 +529,7 @@ async function formFondo() {
 
 // ---------- liquidación ----------
 const SAR_VALIDADOR = 'https://oficinavirtual.sar.gob.hn/fac/validador-doc-fiscales/';
+const abrirValidadorSar = () => window.open(SAR_VALIDADOR, '_blank', 'noopener');
 async function formLiquidacion(refId) {
   let qy = sb.from('solicitudes').select('id,numero,monto,descripcion,solicitante,proyecto,linea,creado_por').eq('org_id', S.org.id).eq('tipo', 'fondo').in('estado', ['Autorizada', 'Atendida']).order('creado', { ascending: false });
   if (!esJefe()) qy = qy.eq('creado_por', S.user.id);
@@ -538,11 +539,11 @@ async function formLiquidacion(refId) {
   const hechas = new Set(liq.map(x => x.referencia));
   const libres = fondos.filter(x => !hechas.has(x.id));
   if (!libres.length) { app().innerHTML = cabecera('Liquidar fondos') + '<div class="caja">No hay fondos autorizados pendientes de liquidar.</div>'; return; }
-  // números de factura ya usados en otras liquidaciones (las que esta persona puede ver), por RTN y número
-  const usadas = new Map(); liq.forEach(l => (l.datos?.facturas || []).forEach(x => usadas.set(normFac(x.rtn) + '|' + normFac(x.numero), l.numero)));
-  // lo que ya se sabe de cada proveedor: RTN del directorio y de liquidaciones anteriores
-  const rtnDe = new Map(provs.filter(p => p.rtn).map(p => [norm(p.nombre), p.rtn]));
-  liq.forEach(l => (l.datos?.facturas || []).forEach(x => { if (x.proveedor && x.rtn && !rtnDe.has(norm(x.proveedor))) rtnDe.set(norm(x.proveedor), x.rtn); }));
+  // facturas ya usadas en otras liquidaciones (las que esta persona puede ver): mismo proveedor y número
+  const clave = x => norm(x.proveedor) + '|' + normFac(x.numero);
+  const usadas = new Map(); liq.forEach(l => (l.datos?.facturas || []).forEach(x => usadas.set(clave(x), l.numero)));
+  // el RTN no se pide: si el proveedor está en el directorio, se guarda solo para el libro de compras
+  const provDe = new Map(provs.map(p => [norm(p.nombre), p]));
   const MAX = 30;
   app().innerHTML = cabecera('Liquidar fondos') + `
   <form class="caja" id="f"><div class="rejilla">
@@ -550,9 +551,9 @@ async function formLiquidacion(refId) {
   </div>
   <datalist id="dlProv">${[...new Set([...provs.map(p => p.nombre), ...liq.flatMap(l => (l.datos?.facturas || []).map(x => x.proveedor)).filter(Boolean)])].map(n => `<option value="${esc(n)}">`).join('')}</datalist>
   <h2>Facturas</h2>
-  <p class="nota">Llená cada factura y dale Enter para pasar al siguiente dato; en el total, Enter abre la siguiente (hasta ${MAX}). Si el proveedor ya está registrado, el RTN sale solo.</p>
-  <div id="facs"></div>
-  <div class="acciones" style="justify-content:flex-start"><button type="button" class="sec" id="masFac">+ Otra factura</button><button type="button" id="valFac">Validar facturas</button></div>
+  <p class="nota">Número, proveedor, descripción y total de cada factura. Enter pasa al siguiente dato; en el total abre la siguiente factura (hasta ${MAX}). Si tenés dudas de una factura, validala en el SAR con 🔍.</p>
+  <div class="tabla"><table id="tfac"><thead><tr><th style="width:30px">#</th><th>Número de factura</th><th>Proveedor</th><th>Descripción</th><th class="n" style="width:130px">Total (L)</th><th style="width:76px"></th></tr></thead><tbody></tbody></table></div>
+  <div class="acciones" style="justify-content:flex-start"><button type="button" class="sec" id="masFac">+ Otra factura</button><button type="button" id="valFac">Validar facturas</button><button type="button" class="sec" id="sarFac">Validar en el SAR ↗</button></div>
   <ul class="lista-errores" id="errFac"></ul><p class="ok" id="okFac"></p>
   <div class="rejilla" style="margin-top:10px">
     <div><label>Total gastado con facturas (L)</label><input name="total_gastos" id="tg" readonly></div>
@@ -563,119 +564,77 @@ async function formLiquidacion(refId) {
   </div>
   <p class="nota">Al autorizarse la liquidación, estas facturas entran solas al libro de compras, amarradas a la liquidación.</p>
   <div class="acciones"><button>Enviar liquidación</button></div></form>`;
-  const f = $('#f'), caja = $('#facs');
-  const tarjetas = () => [...caja.querySelectorAll('.fac')];
-  const campo = (t, c) => t.querySelector(`[data-c=${c}]`);
-  const ORDEN = ['numero', 'fecha', 'proveedor', 'rtn', 'descripcion', 'isv', 'total'];
-  const leerUna = (t, i) => ({ n: i + 1, numero: campo(t, 'numero').value.trim(), fecha: campo(t, 'fecha').value, proveedor: campo(t, 'proveedor').value.trim(), rtn: campo(t, 'rtn').value.replace(/\D/g, ''),
-    descripcion: campo(t, 'descripcion').value.trim(), isv: num(campo(t, 'isv').value), total: num(campo(t, 'total').value), sar: campo(t, 'sar').value, sar_fecha: t.dataset.sarFecha || '', sar_por: t.dataset.sarPor || '' });
-  const leer = () => tarjetas().map(leerUna);
+  const f = $('#f'), tb = $('#tfac tbody');
+  const filas = () => [...tb.querySelectorAll('tr')];
+  const ORDEN = ['numero', 'proveedor', 'descripcion', 'total'];
+  const leer = () => filas().map((tr, i) => { const v = c => tr.querySelector(`[data-c=${c}]`).value.trim(); return { n: i + 1, numero: v('numero'), proveedor: v('proveedor'), descripcion: v('descripcion'), total: num(v('total')) }; });
   const tieneAlgo = x => x.numero || x.proveedor || x.descripcion || x.total;
   const conDatos = () => leer().filter(tieneAlgo);
-  const renumerar = () => tarjetas().forEach((t, i) => t.querySelector('.nfac').textContent = 'Factura ' + (i + 1));
+  const renumerar = () => filas().forEach((tr, i) => tr.firstElementChild.textContent = i + 1);
   const agregar = (foco = true) => {
-    if (tarjetas().length >= MAX) return aviso(`Llegaste al máximo de ${MAX} facturas en una liquidación.`, true);
-    caja.insertAdjacentHTML('beforeend', `<div class="fac caja" style="margin:8px 0;padding:10px">
-      <div style="display:flex;justify-content:space-between;align-items:center"><b class="nfac"></b><span class="estFac nota"></span><button type="button" class="sec" data-quitar title="Quitar esta factura">✕</button></div>
-      <div class="rejilla">
-        <div><label>Número de factura</label><input data-c="numero" placeholder="000-001-01-00000001" autocomplete="off"></div>
-        <div><label>Fecha de emisión</label><input data-c="fecha" type="date" max="${hoy()}"></div>
-        <div><label>Proveedor</label><input data-c="proveedor" list="dlProv" placeholder="Nombre como sale en la factura" autocomplete="off"></div>
-        <div><label>RTN del proveedor</label><input data-c="rtn" inputmode="numeric" maxlength="16" placeholder="14 dígitos" autocomplete="off"></div>
-        <div class="ancho"><label>Descripción</label><input data-c="descripcion" placeholder="Qué se compró" autocomplete="off"></div>
-        <div><label>ISV de la factura (L, si trae)</label><input data-c="isv" inputmode="decimal" placeholder="0.00" autocomplete="off"></div>
-        <div><label>Total (L)</label><input data-c="total" inputmode="decimal" style="font-weight:bold" autocomplete="off"></div>
-      </div>
-      <div class="acciones" style="justify-content:flex-start;margin-top:6px"><button type="button" class="sec" data-sar>Validar en el SAR ↗</button>
-        <label style="display:flex;gap:6px;align-items:center;margin:0">Lo que dijo el SAR <select data-c="sar" style="width:auto"><option value="">Sin validar</option><option>Válida</option><option>No válida</option></select></label></div>
-    </div>`);
-    renumerar(); $('#masFac').disabled = tarjetas().length >= MAX;
-    if (foco) campo(caja.lastElementChild, 'numero').focus();
+    if (filas().length >= MAX) return aviso(`Llegaste al máximo de ${MAX} facturas en una liquidación.`, true);
+    tb.insertAdjacentHTML('beforeend', `<tr><td class="nota"></td>
+      <td><input data-c="numero" placeholder="000-001-01-00000001" autocomplete="off" style="min-width:185px"></td>
+      <td><input data-c="proveedor" list="dlProv" placeholder="Nombre del proveedor" autocomplete="off" style="min-width:150px"></td>
+      <td><input data-c="descripcion" placeholder="Qué se compró" autocomplete="off" style="min-width:150px"></td>
+      <td><input data-c="total" inputmode="decimal" style="text-align:right" autocomplete="off"></td>
+      <td style="white-space:nowrap"><button type="button" class="sec" data-sar title="Validar esta factura en el SAR">🔍</button> <button type="button" class="sec" data-quitar title="Quitar esta factura">✕</button></td></tr>`);
+    renumerar(); $('#masFac').disabled = filas().length >= MAX;
+    if (foco) tb.lastElementChild.querySelector('[data-c=numero]').focus();
   };
   const resumir = () => {
     const fo = libres.find(x => x.id === $('#ref').value), l = conDatos(), g = Math.round(l.reduce((a, x) => a + x.total, 0) * 100) / 100, dif = Math.round((num(fo.monto) - g) * 100) / 100;
-    const val = l.filter(x => x.sar === 'Válida').length, noVal = l.filter(x => x.sar === 'No válida').length;
     $('#tg').value = g ? g.toFixed(2) : ''; $('#nf').value = l.length || '';
-    $('#resumen').innerHTML = `<b>Resumen</b><dl class="detalle" style="margin-top:6px"><dt>Fondo entregado</dt><dd>${L(fo.monto)}</dd><dt>Facturas</dt><dd>${l.length}</dd>
-      <dt>Total gastado</dt><dd><b>${L(g)}</b>${l.some(x => x.isv) ? ` (ISV ${L(l.reduce((a, x) => a + x.isv, 0))})` : ''}</dd>
-      <dt>Resultado</dt><dd>${!g ? '—' : dif > 0 ? `Devuelve <b>${L(dif)}</b>` : dif < 0 ? `La organización le reintegra <b>${L(-dif)}</b>` : 'Cuadra exacto'}</dd>
-      <dt>En el SAR</dt><dd>${val} válida${val === 1 ? '' : 's'}${noVal ? ` · <b class="error">${noVal} NO válida${noVal > 1 ? 's' : ''}</b>` : ''} · ${l.length - val - noVal} sin validar</dd></dl>`;
-    tarjetas().forEach(t => { const v = campo(t, 'sar').value; t.querySelector('.estFac').innerHTML = v === 'Válida' ? '<span class="estado e-Autorizada">Válida en el SAR</span>' : v === 'No válida' ? '<span class="estado e-Rechazada">NO válida en el SAR</span>' : ''; });
+    $('#resumen').innerHTML = `<b>Resumen</b><dl class="detalle" style="margin-top:6px"><dt>Fondo entregado</dt><dd>${L(fo.monto)}</dd><dt>Facturas</dt><dd>${l.length}</dd><dt>Total gastado</dt><dd><b>${L(g)}</b></dd>
+      <dt>Resultado</dt><dd>${!g ? '—' : dif > 0 ? `Devuelve <b>${L(dif)}</b>` : dif < 0 ? `La organización le reintegra <b>${L(-dif)}</b>` : 'Cuadra exacto'}</dd></dl>`;
   };
-  const faltas = x => [!x.numero && 'el número', !x.fecha && 'la fecha', !x.proveedor && 'el proveedor', x.rtn.length !== 14 && 'el RTN (14 dígitos)', !x.descripcion && 'la descripción', !(x.total > 0) && 'el total', x.isv > x.total && 'un ISV menor que el total'].filter(Boolean);
-  const revisar = () => {
+  const faltas = x => [!x.numero && 'el número', !x.proveedor && 'el proveedor', !x.descripcion && 'la descripción', !(x.total > 0) && 'el total'].filter(Boolean);
+  const validar = () => {
     const l = conDatos(), errs = [], avs = [], vistos = new Map();
     if (!l.length) errs.push('Agregá al menos una factura.');
     l.forEach(x => {
       const fl = faltas(x); if (fl.length) errs.push(`Factura ${x.n}: falta ${fl.join(', ')}.`);
-      if (x.numero) {
-        const k = normFac(x.rtn) + '|' + normFac(x.numero);
+      if (x.numero && x.proveedor) {
+        const k = clave(x);
         if (vistos.has(k)) errs.push(`Factura ${x.n}: está repetida (es la misma que la ${vistos.get(k)}).`); else vistos.set(k, x.n);
         if (usadas.has(k)) errs.push(`Factura ${x.n}: ya se usó en la liquidación ${usadas.get(k)}.`);
-        if (!RE_NUM.test(x.numero)) avs.push(`Factura ${x.n}: «${x.numero}» no tiene el formato del SAR (000-001-01-00000001). Si es un recibo, está bien.`);
       }
-      if (x.sar === 'No válida') avs.push(`Factura ${x.n}: el SAR la dio como NO válida. Así no sirve como respaldo fiscal.`);
+      if (x.numero && !RE_NUM.test(x.numero)) avs.push(`Factura ${x.n}: «${x.numero}» no tiene el formato del SAR (000-001-01-00000001). Si es un recibo, está bien.`);
     });
-    tarjetas().forEach((t, i) => { const x = leerUna(t, i); t.style.borderColor = tieneAlgo(x) && faltas(x).length ? '#dc2626' : x.sar === 'Válida' ? '#16a34a' : ''; });
+    filas().forEach((tr, i) => { const x = leer()[i]; tr.style.background = tieneAlgo(x) && faltas(x).length ? '#fee2e2' : ''; });
     $('#errFac').innerHTML = errs.map(e => `<li>${esc(e)}</li>`).join('');
-    const sinSar = l.filter(x => !x.sar).length;
-    $('#okFac').innerHTML = errs.length ? '' : `Las ${l.length} factura${l.length > 1 ? 's están completas' : ' está completa'}: suman ${L($('#tg').value)}.${sinSar ? ` Faltan ${sinSar} por validar en el SAR.` : ' Todas tienen el resultado del SAR.'}` + (avs.length ? `<br><span class="nota">${avs.map(esc).join('<br>')}</span>` : '');
+    $('#okFac').innerHTML = errs.length ? '' : `Las ${l.length} factura${l.length > 1 ? 's están completas' : ' está completa'}: suman ${L($('#tg').value)}.` + (avs.length ? `<br><span class="nota">${avs.map(esc).join('<br>')}</span>` : '');
     return !errs.length;
   };
-  // abre el validador del SAR con los datos copiados para pegarlos
-  const abrirSar = async t => {
-    const x = leerUna(t, 0), fl = [!x.numero && 'el número', !x.fecha && 'la fecha', x.rtn.length !== 14 && 'el RTN'].filter(Boolean);
-    if (fl.length) { aviso('Para validarla en el SAR falta ' + fl.join(', ') + '.', true); return false; }
-    const datos = `RTN: ${x.rtn}\nNúmero: ${x.numero}\nFecha: ${x.fecha.split('-').reverse().join('/')}`;
-    try { await navigator.clipboard.writeText(x.rtn); } catch (_) {}
-    window.open(SAR_VALIDADOR, '_blank', 'noopener');
-    t.querySelectorAll('.datosSar').forEach(e => e.remove());
-    t.insertAdjacentHTML('beforeend', `<div class="datosSar nota" style="margin-top:6px;padding:8px;border:1px dashed var(--borde,#ccc);border-radius:8px">Se abrió el validador del SAR en otra pestaña. Escribí ahí estos datos, el código de la imagen y «Siguiente»; después volvé y poné aquí lo que dijo el SAR.<br><b style="white-space:pre-line;color:var(--texto)">${esc(datos)}</b> <button type="button" class="sec" data-copiar="${esc(x.numero)}">Copiar número</button></div>`);
-    campo(t, 'sar').focus(); return true;
-  };
-  caja.addEventListener('change', e => {
-    const c = e.target.dataset.c, t = e.target.closest('.fac');
-    if (c === 'numero') { const d = e.target.value.replace(/\D/g, ''); if (d.length === 16 && !/-/.test(e.target.value)) e.target.value = `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6, 8)}-${d.slice(8)}`; }
-    if (c === 'proveedor') { const r = rtnDe.get(norm(e.target.value)); if (r && !campo(t, 'rtn').value) campo(t, 'rtn').value = r; }
-    if ((c === 'total' || c === 'isv') && e.target.value) e.target.value = num(e.target.value).toFixed(2);
-    if (c === 'sar') { t.dataset.sarFecha = e.target.value ? hoy() : ''; t.dataset.sarPor = e.target.value ? (S.perfil?.nombre || 'Usuario maestro') : ''; }
+  tb.addEventListener('change', e => {
+    if (e.target.dataset.c === 'numero') { const d = e.target.value.replace(/\D/g, ''); if (d.length === 16 && !/-/.test(e.target.value)) e.target.value = `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6, 8)}-${d.slice(8)}`; }
+    if (e.target.dataset.c === 'total' && e.target.value) e.target.value = num(e.target.value).toFixed(2);
     resumir();
   });
-  // Enter pasa al siguiente dato; en el total abre la factura siguiente
-  caja.addEventListener('keydown', e => {
+  tb.addEventListener('keydown', e => {
     if (e.key !== 'Enter' || !e.target.dataset.c) return; e.preventDefault();
-    const t = e.target.closest('.fac'), c = e.target.dataset.c, i = ORDEN.indexOf(c);
+    const tr = e.target.closest('tr'), c = e.target.dataset.c;
     e.target.dispatchEvent(new Event('change', { bubbles: true }));
-    if (c !== 'total' && i >= 0) return campo(t, ORDEN[i + 1]).focus();
-    if (c === 'total') {
-      const sig = t.nextElementSibling; if (sig) return campo(sig, 'numero').focus();
-      if (!num(e.target.value)) return aviso('Poné el total antes de pasar a la siguiente.', true);
-      agregar();
-    }
+    if (c !== 'total') return tr.querySelector(`[data-c=${ORDEN[ORDEN.indexOf(c) + 1]}]`).focus();
+    const sig = tr.nextElementSibling; if (sig) return sig.querySelector('[data-c=numero]').focus();
+    if (!num(e.target.value)) return aviso('Poné el total antes de pasar a la siguiente.', true);
+    agregar();
   });
-  caja.addEventListener('click', async e => {
-    const t = e.target.closest('.fac');
-    if (e.target.closest('[data-quitar]')) { t.remove(); if (!tarjetas().length) agregar(); renumerar(); $('#masFac').disabled = false; resumir(); }
-    if (e.target.closest('[data-sar]')) await abrirSar(t);
-    const cp = e.target.closest('[data-copiar]'); if (cp) { try { await navigator.clipboard.writeText(cp.dataset.copiar); aviso('Número copiado.'); } catch (_) { aviso('No se pudo copiar; escribilo a mano.', true); } }
+  tb.addEventListener('click', e => {
+    if (e.target.closest('[data-sar]')) return abrirValidadorSar();
+    if (!e.target.closest('[data-quitar]')) return;
+    e.target.closest('tr').remove(); if (!filas().length) agregar(); renumerar(); $('#masFac').disabled = false; resumir();
   });
   $('#masFac').onclick = () => agregar();
-  // Validar facturas: revisa que estén completas y manda al SAR la primera que falta validar
-  $('#valFac').onclick = async () => {
-    resumir(); if (!revisar()) return;
-    const t = tarjetas().find((t, i) => tieneAlgo(leerUna(t, i)) && !campo(t, 'sar').value);
-    if (!t) return aviso('Todas las facturas ya tienen el resultado del SAR.');
-    t.scrollIntoView({ behavior: 'smooth', block: 'center' }); await abrirSar(t);
-  };
+  $('#valFac').onclick = () => { resumir(); validar(); };
+  $('#sarFac').onclick = abrirValidadorSar;
   f.oninput = resumir; $('#ref').onchange = resumir;
   agregar(false); resumir();
   f.onsubmit = async ev => {
     ev.preventDefault(); resumir();
-    if (!revisar()) return aviso('Revisá las facturas marcadas antes de enviar.', true);
-    const l = conDatos(), sinSar = l.filter(x => !x.sar).length, noVal = l.filter(x => x.sar === 'No válida').length;
-    if ((sinSar || noVal) && !confirm(`${sinSar ? sinSar + ' factura(s) sin validar en el SAR. ' : ''}${noVal ? noVal + ' factura(s) que el SAR dio como NO válidas. ' : ''}¿Enviar la liquidación así?`)) return;
+    if (!validar()) return aviso('Revisá las facturas marcadas antes de enviar.', true);
     const d = datosForm(f), fo = libres.find(x => x.id === d.ref), g = num($('#tg').value);
-    const facturas = l.map((x, i) => ({ ...x, n: i + 1, proveedor_id: provs.find(p => norm(p.nombre) === norm(x.proveedor))?.id || null }));
+    const facturas = conDatos().map((x, i) => { const p = provDe.get(norm(x.proveedor)); return { ...x, n: i + 1, proveedor_id: p?.id || null, rtn: p?.rtn || '' }; });
     const adjuntos = leerRespaldos('Factura'), mal = revisarArchivos(adjuntos); if (mal.length) return aviso(mal.join(' '), true);
     ocupado(f, true);
     try { await guardarSolicitud({ tipo: 'liquidacion', referencia: fo.id, solicitante: fo.solicitante, correo: S.user.email, monto: g, proyecto: fo.proyecto, linea: fo.linea, descripcion: d.descripcion || ('Liquidación de ' + fo.numero),
@@ -841,7 +800,8 @@ async function verSolicitud(id) {
   if (s.tipo === 'compra' && d.cotizaciones) extra = `<h2>Cotizaciones</h2><div class="tabla"><table><thead><tr><th>#</th><th>Proveedor</th><th class="n">Monto</th><th>Condiciones</th></tr></thead><tbody>${d.cotizaciones.map(c => `<tr><td>${c.n}${c.n === d.elegida ? ' ✔' : ''}</td><td>${esc(c.proveedor)}</td><td class="n">${L(c.monto)}</td><td>${esc(c.condiciones)}</td></tr>`).join('')}</tbody></table></div>${d.justificacion ? `<p><b>Justificación:</b> ${esc(d.justificacion)}</p>` : ''}`;
   if (s.tipo === 'fondo') extra = `<dl class="detalle"><dt>Actividad</dt><dd>${esc(d.fecha_actividad)}</dd><dt>Liquidará el</dt><dd>${esc(d.fecha_liquidar || '—')}</dd><dt>Detalle</dt><dd>${esc(d.detalle || '—')}</dd></dl>${['Autorizada', 'Atendida'].includes(s.estado) ? `<div class="acciones"><a class="boton sec" href="#/liquidacion/${s.id}">Liquidar este fondo</a></div>` : ''}`;
   if (s.tipo === 'liquidacion') extra = `<dl class="detalle"><dt>Fondo</dt><dd>${esc(d.fondo)} · ${L(d.monto_fondo)}</dd><dt>Gastado</dt><dd>${L(d.total_gastos)}</dd><dt>Resultado</dt><dd>${d.diferencia > 0 ? 'Devuelve ' + L(d.diferencia) : d.diferencia < 0 ? 'Se le reintegra ' + L(-d.diferencia) : 'Cuadra exacto'}</dd></dl>`;
-  if (s.tipo === 'liquidacion' && d.facturas?.length) extra += `<h2>Facturas (${d.facturas.length})</h2><div class="tabla"><table><thead><tr><th>#</th><th>Número</th><th>Fecha</th><th>Proveedor</th><th>Descripción</th><th class="n">Total</th><th>SAR</th></tr></thead><tbody>${d.facturas.map(x => `<tr><td>${x.n}</td><td>${esc(x.numero)}</td><td>${esc(x.fecha || '')}</td><td>${esc(x.proveedor || '')}${x.rtn ? `<br><span class="nota">RTN ${esc(x.rtn)}</span>` : ''}</td><td>${esc(x.descripcion)}</td><td class="n">${L(x.total)}${x.isv ? `<br><span class="nota">ISV ${L(x.isv)}</span>` : ''}</td><td>${x.sar === 'Válida' ? '<span class="estado e-Autorizada">Válida</span>' : x.sar === 'No válida' ? '<span class="estado e-Rechazada">No válida</span>' : '<span class="nota">Sin validar</span>'}</td></tr>`).join('')}</tbody><tfoot><tr><th colspan="5">Total gastado</th><th class="n">${L(d.total_gastos)}</th><th></th></tr></tfoot></table></div>
+  if (s.tipo === 'liquidacion' && d.facturas?.length) extra += `<h2>Facturas (${d.facturas.length})</h2><div class="tabla"><table><thead><tr><th>#</th><th>Número</th><th>Proveedor</th><th>Descripción</th><th class="n">Total</th></tr></thead><tbody>${d.facturas.map(x => `<tr><td>${x.n}</td><td>${esc(x.numero)}</td><td>${esc(x.proveedor || '')}</td><td>${esc(x.descripcion)}</td><td class="n">${L(x.total)}</td></tr>`).join('')}</tbody><tfoot><tr><th colspan="4">Total gastado</th><th class="n">${L(d.total_gastos)}</th></tr></tfoot></table></div>
+  <div class="acciones" style="justify-content:flex-start"><button type="button" class="sec" onclick="abrirValidadorSar()">¿Dudas con una factura? Validala en el SAR ↗</button></div>
   <p class="nota">${['Autorizada', 'Atendida'].includes(s.estado) ? 'Estas facturas ya están en el <a href="#/facturas">libro de compras</a>, amarradas a esta liquidación.' : 'Al autorizarse, estas facturas entran solas al libro de compras.'}</p>`;
   if (s.tipo === 'vacacion') extra = `<dl class="detalle"><dt>Fechas</dt><dd>${esc(d.desde)} al ${esc(d.hasta)}</dd><dt>Días hábiles</dt><dd>${esc(d.dias)}</dd></dl>`;
   if (s.tipo === 'laboral' && d.rubros) extra = `<dl class="detalle"><dt>Motivo</dt><dd>${esc(d.motivo)}</dd><dt>Período</dt><dd>${esc(d.ingreso)} al ${esc(d.salida)} (${esc(d.antiguedad)})</dd><dt>Salario mensual</dt><dd>${L(d.salario)}</dd></dl>
