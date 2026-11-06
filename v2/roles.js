@@ -6,10 +6,20 @@ const PERMISOS = [
   ['Productores y control interno', [['padron.crear', 'Registra productores, parcelas y documentos'], ['padron.editar', 'Corrige productores y parcelas'], ['inspeccion.registrar', 'Hace inspecciones internas y anota no conformidades'], ['inspeccion.editar', 'Corrige inspecciones y cierra no conformidades'], ['insumos.registrar', 'Registra insumos aplicados'], ['capacitacion.registrar', 'Registra ayudas memoria y asistencia'], ['capacitacion.editar', 'Corrige ayudas memoria'], ['quejas.gestionar', 'Ve y responde quejas'], ['catalogo.editar', 'Cambia guías de capacitación y certificaciones'], ['auditoria.paquete', 'Arma el paquete para la certificadora']]],
   ['Acopio y comercialización', [['acopio.registrar', 'Recibe entregas y hace recibos'], ['acopio.editar', 'Corrige entregas ya guardadas'], ['acopio.pagar', 'Marca entregas como pagadas'], ['basculas.gestionar', 'Registra básculas y su calibración'], ['beneficiado.registrar', 'Registra beneficiado, fermentación y secado'], ['despacho.registrar', 'Registra despachos y ventas'], ['prima.registrar', 'Registra el uso de la prima'], ['actas.registrar', 'Registra actas de asamblea y junta']]],
   ['Crédito', [['credito.solicitar', 'Recibe solicitudes de crédito'], ['credito.evaluar', 'Hace la evaluación técnica'], ['credito.desembolsar', 'Registra el desembolso de lo aprobado'], ['credito.cobrar', 'Registra pagos de crédito'], ['cartera.ver', 'Ve la cartera, la mora y los reportes']]],
-  ['Administración', [['facturas.registrar', 'Registra facturas'], ['facturas.gestionar', 'Ve y corrige todas las facturas'], ['solicitudes.ver', 'Ve todas las solicitudes de fondos y vacaciones'], ['proveedores.editar', 'Registra y corrige proveedores'], ['empleados.gestionar', 'Maneja empleados y salarios'], ['presupuesto.editar', 'Carga el presupuesto']]],
+  ['Administración', [['facturas.registrar', 'Registra facturas'], ['facturas.gestionar', 'Ve y corrige todas las facturas'], ['solicitudes.ver', 'Ve todas las solicitudes de fondos y vacaciones'], ['solicitudes.autorizar', 'Autoriza o rechaza compras, fondos, vacaciones y liquidaciones (nunca lo que él mismo pidió)'], ['solicitudes.anular', 'Anula lo ya autorizado y quita respaldos de solicitudes resueltas'], ['proveedores.editar', 'Registra y corrige proveedores'], ['empleados.gestionar', 'Maneja empleados y salarios'], ['presupuesto.editar', 'Carga el presupuesto']]],
   ['Generales', [['carga.masiva', 'Sube datos desde Excel'], ['bitacora.ver', 'Ve la bitácora de cambios']]]
 ];
 const NOMBRE_PERMISO = Object.fromEntries(PERMISOS.flatMap(([, l]) => l));
+const QUIEN_AUTORIZA = [
+  ['Compra, fondos, vacaciones, liquidación', 'Cualquier usuario que entre a Administración, con sus cotizaciones y respaldos', 'Gerencia o quien tenga «Autoriza solicitudes». Nunca quien la pidió', 'Pendiente: la retira quien la hizo. Autorizada: solo quien tenga «Anula lo ya autorizado», con motivo'],
+  ['Respaldos de una solicitud', 'Quien hizo la solicitud, administración o quien autoriza', '—', 'Pendiente: los quita quien los subió. Resuelta: solo quien tenga «Anula lo ya autorizado». El archivo no se borra'],
+  ['Crédito', 'Técnico u oficial de crédito («Recibe solicitudes»)', 'Gerencia dentro de su límite o el comité de crédito. Nunca quien registró la solicitud', 'Monto, tasa y plazo aprobados: solo gerencia. Pasar a incobrable: solo el administrador'],
+  ['Desembolso y pagos de crédito', 'Oficial de crédito o contabilidad', 'Se desembolsa solo lo aprobado', 'Borrar un pago: solo el administrador'],
+  ['Entrega de acopio', 'Encargado de acopio', '—', 'Corregir pesos o precios: solo quien tenga «Corrige entregas». Contabilidad solo marca el pago'],
+  ['Factura', 'Contabilidad («Registra facturas»)', '—', 'Corregir: «Ve y corrige facturas». Borrar: solo el administrador'],
+  ['Inspección interna', 'Inspector o técnico', '—', 'Corregir y cerrar no conformidades: «Corrige inspecciones»'],
+  ['Usuarios, roles y configuración', '—', 'Solo el administrador', 'Solo el administrador']
+];
 const NIVELES = { administrador: 'Administrador (todo)', gerencia: 'Gerencia (hace y autoriza todo lo operativo)', personal: 'Según sus permisos' };
 
 RUTAS.roles = async function verRoles(cod) {
@@ -52,6 +62,12 @@ RUTAS.roles = async function verRoles(cod) {
   <div class="tabla"><table><thead><tr><th>Rol</th><th>Qué hace</th><th>Secciones</th>${ed ? '<th class="n">Usuarios</th>' : ''}</tr></thead><tbody>
   ${roles.map(r => `<tr${r.activo ? '' : ' style="opacity:.5"'}><td><a href="#/roles/${esc(r.codigo)}"><b>${esc(r.nombre)}</b></a>${r.activo ? '' : '<br><span class="nota">Desactivado</span>'}</td><td>${esc(r.descripcion || '')}</td><td>${r.base !== 'personal' ? 'Todas' : ['adm', 'cre', 'cer'].filter(s => r.permisos.includes('sec.' + s)).map(s => SECCIONES[s]).join(', ')}</td>${ed ? `<td class="n">${cuantos(r.codigo)}</td>` : ''}</tr>`).join('')}
   </tbody></table></div>
+  <h2>Quién pide, quién autoriza y quién anula</h2>
+  <p class="nota">Regla general: <b>nadie autoriza lo que él mismo pidió</b>, ni gerencia ni el administrador. Lo autorizado no se borra: se anula con motivo y queda en la bitácora. Lo que dice una solicitud (monto, proveedor, cotizaciones) ya no se cambia después de enviada.</p>
+  <div class="tabla"><table><thead><tr><th>Trámite</th><th>Lo pide</th><th>Lo autoriza</th><th>Lo anula o corrige después</th></tr></thead><tbody>
+    ${QUIEN_AUTORIZA.map(f => `<tr>${f.map((c, i) => i ? `<td>${esc(c)}</td>` : `<td><b>${esc(c)}</b></td>`).join('')}</tr>`).join('')}
+  </tbody></table></div>
+  <p class="nota">«Gerencia» incluye al administrador. Si querés que alguien de la junta (presidencia o tesorería) autorice, por ejemplo las compras que pide la misma gerencia, dale el permiso «Autoriza o rechaza compras…» en su usuario o en su rol.</p>
   <h2>Qué permiso tiene cada rol</h2><div class="tabla"><table><thead><tr><th>Permiso</th>${roles.filter(r => r.activo).map(r => `<th style="writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;font-size:12px">${esc(r.nombre)}</th>`).join('')}</tr></thead><tbody>
   ${PERMISOS.map(([g, l]) => `<tr><th colspan="${roles.length + 1}" style="text-align:left;background:var(--fondo2,#f3f4f1)">${esc(g)}</th></tr>` + l.map(([k, t]) => `<tr><td>${esc(t)}</td>${roles.filter(r => r.activo).map(r => `<td style="text-align:center">${r.base !== 'personal' || r.permisos.includes(k) ? '✓' : ''}</td>`).join('')}</tr>`).join('')).join('')}
   </tbody></table></div>`;

@@ -273,7 +273,7 @@ const RUTAS = {
 };
 // A qué sección vuelve el botón «Volver» de cada pantalla ('' = portal)
 // Claves de Configuración que se escogen de una lista
-const CFG_OPC = { CULTIVO_ACOPIO: ['Café', 'Cacao', 'Café y cacao'], ACOPIO_UNIDAD: ['lb', 'qq', 'kg'] };
+const CFG_OPC = { CULTIVO_ACOPIO: ['Café', 'Cacao', 'Café y cacao'], ACOPIO_UNIDAD: ['lb', 'qq', 'kg'], COTIZACION_ARCHIVO: ['Sí', 'No'] };
 const SECCION_DE = { '': '', adm: 'adm', config: '', usuarios: '', bitacora: '', orgs: '', guia: '', aprobar: '', rev: '' };
 ['compra', 'fondo', 'liquidacion', 'vacacion', 'factura', 'facturas', 'solicitudes', 'solicitud', 'proveedores', 'proveedor', 'empleados', 'empleado', 'presupuesto', 'laboral'].forEach(r => SECCION_DE[r] = 'adm');
 async function ruta() {
@@ -343,13 +343,37 @@ function camposPresupuesto(d = {}) {
           <div><label>Línea de presupuesto</label><select name="linea" required><option value="">Elegir…</option>${opciones(lin, d.linea)}</select></div>`;
 }
 function solicitanteDefecto() { return S.maestro ? '' : S.perfil.nombre; }
-async function guardarSolicitud(reg) {
+async function guardarSolicitud(reg, adjuntos = []) {
   reg.org_id = S.org.id;
   const fila = await q(sb.from('solicitudes').insert(reg).select('id,numero').single());
+  const fallos = adjuntos.length ? await subirAdjuntos(fila.id, adjuntos) : [];
   avisar('solicitud', fila.id);
-  aviso('Listo. Quedó registrada como ' + fila.numero);
+  aviso(fallos.length ? `Quedó registrada como ${fila.numero}, pero no se subió: ${fallos.join('; ')}. Subilo desde la solicitud.` : 'Listo. Quedó registrada como ' + fila.numero + (adjuntos.length ? ` con ${adjuntos.length} respaldo${adjuntos.length > 1 ? 's' : ''}` : ''), !!fallos.length);
   location.hash = '#/solicitud/' + fila.id;
 }
+
+// ---------- respaldos de solicitudes (cotizaciones, proformas, facturas) ----------
+const CLASES_ADJ = ['Cotización', 'Proforma', 'Factura', 'Recibo', 'Otro'];
+const ACEPTA_ADJ = 'image/*,application/pdf,.doc,.docx,.xls,.xlsx';
+const MAX_ADJ_MB = 10;
+function revisarArchivos(lista) { return lista.filter(a => a.archivo.size > MAX_ADJ_MB * 1048576).map(a => `«${a.archivo.name}» pesa más de ${MAX_ADJ_MB} MB.`); }
+async function subirAdjuntos(solId, lista) {
+  const fallos = [];
+  for (const a of lista) {
+    try {
+      const ruta = `${S.org.id}/solicitudes/${solId}/${Date.now()}-${a.archivo.name.replace(/[^\w.\-]+/g, '_')}`;
+      const { error } = await sb.storage.from('documentos').upload(ruta, a.archivo, { contentType: a.archivo.type || undefined });
+      if (error) throw error;
+      await q(sb.from('solicitud_adjuntos').insert({ org_id: S.org.id, solicitud_id: solId, clase: a.clase || 'Otro', nombre: a.archivo.name, ruta, tipo_mime: a.archivo.type || null, tamano: a.archivo.size, nota: a.nota || null }));
+    } catch (e) { fallos.push(a.archivo.name + ' (' + falla(e) + ')'); }
+  }
+  return fallos;
+}
+function campoRespaldos(txt = 'Otros respaldos (proformas, fichas técnicas, correos, fotos)') {
+  return `<div class="ancho"><label>${txt}</label><input type="file" id="otrosAdj" multiple accept="${ACEPTA_ADJ}"><p class="nota">Fotos, PDF, Word o Excel; hasta ${MAX_ADJ_MB} MB cada uno.</p></div>`;
+}
+function leerRespaldos(clase = 'Otro') { return [...($('#otrosAdj')?.files || [])].map(archivo => ({ archivo, clase })); }
+const esPropia = s => S.user && s.creado_por === S.user.id;
 
 // ---------- compra ----------
 function cotizacionesRequeridas(monto) {
@@ -371,14 +395,16 @@ async function formCompra() {
   <div class="rejilla" style="margin-top:14px">
     <div><label>Cotización elegida</label><select name="elegida" id="elegida"></select></div>
     <div class="ancho"><label>Por qué se elige (si no es la más barata)</label><input name="justificacion"></div>
+    ${campoRespaldos()}
   </div>
   <ul class="lista-errores" id="errs"></ul>
   <div class="acciones"><button>Enviar a autorización</button></div></form>`;
-  const cots = $('#cots'); let n = 0;
+  const cots = $('#cots'); let n = 0; const pideArchivo = S.cfg.COTIZACION_ARCHIVO !== 'No';
   const agregar = () => { n++; cots.insertAdjacentHTML('beforeend', `<div class="cot rejilla">
       <div><label>Proveedor ${n}</label><select name="prov${n}">${opProv}</select></div>
       <div><label>Monto con ISV (L)</label><input name="monto${n}" inputmode="decimal"></div>
-      <div><label>Entrega / condiciones</label><input name="cond${n}"></div></div>`); actualizar(); };
+      <div><label>Entrega / condiciones</label><input name="cond${n}"></div>
+      <div><label>Archivo de la cotización ${n}${pideArchivo ? '' : ' (opcional)'}</label><input type="file" name="arch${n}" accept="${ACEPTA_ADJ}"></div></div>`); actualizar(); };
   const actualizar = () => {
     const d = datosForm($('#f')), montos = [];
     for (let i = 1; i <= n; i++) if (num(d['monto' + i]) > 0) montos.push(num(d['monto' + i]));
@@ -390,10 +416,12 @@ async function formCompra() {
   $('#masCot').onclick = agregar; $('#f').oninput = actualizar;
   agregar();
   $('#f').onsubmit = async ev => {
-    ev.preventDefault(); const f = ev.target, d = datosForm(f), errs = [], cotizaciones = [];
+    ev.preventDefault(); const f = ev.target, d = datosForm(f), errs = [], cotizaciones = [], adjuntos = [];
     for (let i = 1; i <= n; i++) {
       if (!d['prov' + i] && !num(d['monto' + i])) continue;
-      const p = prov.find(x => x.id === d['prov' + i]);
+      const p = prov.find(x => x.id === d['prov' + i]), arch = f['arch' + i]?.files[0];
+      if (arch) adjuntos.push({ archivo: arch, clase: 'Cotización', nota: 'Cotización ' + i + (p ? ' · ' + p.nombre : '') });
+      else if (pideArchivo) errs.push(`Falta el archivo de la cotización ${i} (foto o PDF).`);
       if (!p) errs.push(`Falta el proveedor en la cotización ${i}.`);
       if (num(d['monto' + i]) <= 0) errs.push(`Falta el monto en la cotización ${i}.`);
       cotizaciones.push({ n: i, proveedor_id: p?.id, proveedor: p?.nombre, rtn: p?.rtn, monto: num(d['monto' + i]), condiciones: d['cond' + i] });
@@ -404,11 +432,12 @@ async function formCompra() {
     if (cotizaciones.length < req) errs.push(`Para ${L(eleg?.monto)} se necesitan ${req} cotizaciones.`);
     const minimo = Math.min(...cotizaciones.map(c => c.monto));
     if (eleg && eleg.monto > minimo && !d.justificacion) errs.push('Explicá por qué no se elige la cotización más barata.');
+    adjuntos.push(...leerRespaldos()); errs.push(...revisarArchivos(adjuntos));
     $('#errs').innerHTML = errs.map(e => `<li>${esc(e)}</li>`).join(''); if (errs.length) return;
     ocupado(f, true);
     try {
       await guardarSolicitud({ tipo: 'compra', solicitante: d.solicitante, correo: S.user.email, monto: eleg.monto, proyecto: d.proyecto, linea: d.linea, descripcion: d.descripcion,
-        datos: { area: d.area, cotizaciones, elegida: eleg.n, proveedor: eleg.proveedor, proveedor_id: eleg.proveedor_id, justificacion: d.justificacion } });
+        datos: { area: d.area, cotizaciones, elegida: eleg.n, proveedor: eleg.proveedor, proveedor_id: eleg.proveedor_id, justificacion: d.justificacion } }, adjuntos);
     } catch (e) { ocupado(f, false); aviso(falla(e), true); }
   };
 }
@@ -424,12 +453,14 @@ async function formFondo() {
     <div><label>Fecha en que vas a liquidar</label><input type="date" name="fecha_liquidar"></div>
     <div class="ancho"><label>Para qué es el dinero</label><textarea name="descripcion" required></textarea></div>
     <div class="ancho"><label>Detalle de gastos previstos</label><textarea name="detalle" placeholder="Ej.: Alimentación 20 personas L 3,000; transporte L 1,500"></textarea></div>
+    ${campoRespaldos('Respaldos (cotizaciones, invitación, plan de la actividad)')}
   </div><div class="acciones"><button>Enviar a autorización</button></div></form>`;
   $('#f').onsubmit = async ev => {
     ev.preventDefault(); const f = ev.target, d = datosForm(f);
     if (num(d.monto) <= 0) return aviso('Poné un monto mayor que cero.', true);
+    const adjuntos = leerRespaldos(), mal = revisarArchivos(adjuntos); if (mal.length) return aviso(mal.join(' '), true);
     ocupado(f, true);
-    try { await guardarSolicitud({ tipo: 'fondo', solicitante: d.solicitante, correo: S.user.email, monto: num(d.monto), proyecto: d.proyecto, linea: d.linea, descripcion: d.descripcion, datos: { fecha_actividad: d.fecha_actividad, fecha_liquidar: d.fecha_liquidar, detalle: d.detalle } }); }
+    try { await guardarSolicitud({ tipo: 'fondo', solicitante: d.solicitante, correo: S.user.email, monto: num(d.monto), proyecto: d.proyecto, linea: d.linea, descripcion: d.descripcion, datos: { fecha_actividad: d.fecha_actividad, fecha_liquidar: d.fecha_liquidar, detalle: d.detalle } }, adjuntos); }
     catch (e) { ocupado(f, false); aviso(falla(e), true); }
   };
 }
@@ -450,6 +481,7 @@ async function formLiquidacion(refId) {
     <div><label>Facturas que respaldan</label><input name="num_facturas" inputmode="numeric" placeholder="Cantidad"></div>
     <div class="ancho"><p id="resultado" class="nota"></p></div>
     <div class="ancho"><label>Comentarios</label><textarea name="descripcion"></textarea></div>
+    ${campoRespaldos('Fotos o PDF de las facturas y recibos')}
   </div>
   <p class="nota">Registrá cada factura en <a href="#/factura">Registrar factura</a> para que quede revisada contra el SAR.</p>
   <div class="acciones"><button>Enviar liquidación</button></div></form>`;
@@ -460,9 +492,10 @@ async function formLiquidacion(refId) {
   $('#f').oninput = calc;
   $('#f').onsubmit = async ev => {
     ev.preventDefault(); const f = ev.target, d = datosForm(f), fo = libres.find(x => x.id === d.ref), g = num(d.total_gastos);
+    const adjuntos = leerRespaldos('Factura'), mal = revisarArchivos(adjuntos); if (mal.length) return aviso(mal.join(' '), true);
     ocupado(f, true);
     try { await guardarSolicitud({ tipo: 'liquidacion', referencia: fo.id, solicitante: fo.solicitante, correo: S.user.email, monto: g, proyecto: fo.proyecto, linea: fo.linea, descripcion: d.descripcion || ('Liquidación de ' + fo.numero),
-      datos: { fondo: fo.numero, monto_fondo: num(fo.monto), total_gastos: g, diferencia: num(fo.monto) - g, num_facturas: d.num_facturas } }); }
+      datos: { fondo: fo.numero, monto_fondo: num(fo.monto), total_gastos: g, diferencia: num(fo.monto) - g, num_facturas: d.num_facturas } }, adjuntos); }
     catch (e) { ocupado(f, false); aviso(falla(e), true); }
   };
 }
@@ -592,7 +625,7 @@ async function verSolicitudes() {
   if (p.get('estado')) qy = qy.eq('estado', p.get('estado'));
   if (p.get('tipo')) qy = qy.eq('tipo', p.get('tipo'));
   const filas = await q(qy);
-  app().innerHTML = cabecera(esJefe() ? 'Autorizaciones' : 'Mis solicitudes') + `
+  app().innerHTML = cabecera(puede('solicitudes.autorizar') ? 'Autorizaciones' : 'Mis solicitudes') + `
   <div class="filtros"><select id="fe"><option value="">Todos los estados</option>${opciones(['Pendiente', 'Autorizada', 'Rechazada', 'Anulada'], p.get('estado'))}</select>
   <select id="ft"><option value="">Todos los tipos</option>${Object.entries(TIPOS).map(([k, v]) => `<option value="${k}" ${k === p.get('tipo') ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
   <div class="tabla"><table><thead><tr><th>Número</th><th>Fecha</th><th>Tipo</th><th>Solicitante</th><th>Descripción</th><th class="n">Monto</th><th>Estado</th></tr></thead><tbody>
@@ -616,6 +649,7 @@ async function verSolicitud(id) {
     const pr = await sb.from('ejecucion_presupuesto').select('*').eq('org_id', S.org.id).eq('anio', anio).eq('linea', s.linea).eq('proyecto', s.proyecto || '').maybeSingle();
     if (pr.data) { const usado = num(pr.data.ejecutado) + num(pr.data.comprometido), disp = num(pr.data.aprobado) - usado; extra += `<p class="nota">Presupuesto ${esc(s.linea)} ${anio}: aprobado ${L(pr.data.aprobado)}, usado ${L(usado)}, disponible ${L(disp)}${s.estado === 'Pendiente' && disp < num(s.monto) ? ' <b class="error">— no alcanza para esta solicitud</b>' : ''}.</p>`; }
   }
+  const propio = esPropia(s), puedeAut = puede('solicitudes.autorizar') && !propio;
   app().innerHTML = cabecera(`${TIPOS[s.tipo]} ${s.numero}`, '#/solicitudes') + `
   <div class="caja"><span class="estado e-${s.estado}">${s.estado}</span>
   <dl class="detalle"><dt>Solicitante</dt><dd>${esc(s.solicitante)}</dd><dt>Fecha</dt><dd>${fechaHora(s.creado)}</dd>
@@ -623,11 +657,14 @@ async function verSolicitud(id) {
   ${d.proveedor ? `<dt>Proveedor</dt><dd>${esc(d.proveedor)}</dd>` : ''}<dt>Descripción</dt><dd>${esc(s.descripcion)}</dd>
   ${s.resuelto ? `<dt>Resuelto</dt><dd>${esc(s.resuelto_nombre)} · ${fechaHora(s.resuelto)}${s.comentario ? ' · ' + esc(s.comentario) : ''}</dd>` : ''}</dl>
   ${extra}
-  ${esJefe() && s.estado === 'Pendiente' ? `<label style="margin-top:14px">Comentario (opcional)</label><input id="com"><div class="acciones"><button id="aut">Autorizar</button><button class="rojo" id="rec">Rechazar</button></div>` : ''}
-  ${esJefe() && s.estado === 'Autorizada' ? `<div class="acciones"><button class="sec" id="anu">Anular</button></div>` : ''}
+  <h2>Respaldos</h2><div id="adjs"><p class="nota">Cargando…</p></div>
+  ${puedeAut && s.estado === 'Pendiente' ? `<label style="margin-top:14px">Comentario (opcional)</label><input id="com"><div class="acciones"><button id="aut">Autorizar</button><button class="rojo" id="rec">Rechazar</button></div>` : ''}
+  ${propio && s.estado === 'Pendiente' ? `<p class="nota" style="margin-top:14px">La hiciste vos, así que la tiene que autorizar otra persona con permiso. Mientras siga pendiente la podés retirar.</p><div class="acciones"><button class="sec" id="ret">Retirar mi solicitud</button></div>` : ''}
+  ${puede('solicitudes.anular') && s.estado === 'Autorizada' ? `<div class="acciones"><button class="sec" id="anu">Anular</button></div>` : ''}
   <div class="acciones"><button class="sec" onclick="print()">Imprimir</button></div></div>`;
+  pintarAdjuntos(s);
   const resolver = async (estado, pedir) => {
-    const comentario = pedir ? prompt('¿Por qué se ' + (estado === 'Anulada' ? 'anula' : 'rechaza') + '?') : $('#com')?.value;
+    const comentario = pedir ? prompt(pedir === 'ret' ? '¿Por qué la retirás?' : '¿Por qué se ' + (estado === 'Anulada' ? 'anula' : 'rechaza') + '?') : $('#com')?.value;
     if (pedir && !comentario) return;
     try { await q(sb.from('solicitudes').update({ estado, comentario: comentario || null }).eq('id', s.id)); avisar('solicitud', s.id); aviso('Solicitud ' + estado.toLowerCase() + '.'); verSolicitud(s.id); }
     catch (e) { aviso(falla(e), true); }
@@ -635,6 +672,37 @@ async function verSolicitud(id) {
   if ($('#aut')) $('#aut').onclick = () => resolver('Autorizada');
   if ($('#rec')) $('#rec').onclick = () => resolver('Rechazada', !$('#com').value);
   if ($('#anu')) $('#anu').onclick = () => resolver('Anulada', true);
+  if ($('#ret')) $('#ret').onclick = () => resolver('Anulada', 'ret');
+}
+async function pintarAdjuntos(s) {
+  const caja = $('#adjs'); if (!caja) return;
+  let lista;
+  try { lista = await q(sb.from('solicitud_adjuntos').select('*').eq('solicitud_id', s.id).order('creado')); }
+  catch (e) { caja.innerHTML = '<p class="nota">Los respaldos todavía no están instalados en la base de datos (falta el paso 20).</p>'; return; }
+  const propio = esPropia(s), abierta = ['Pendiente', 'Autorizada'].includes(s.estado);
+  const sube = abierta && (propio || puede('solicitudes.ver') || puede('solicitudes.autorizar'));
+  const quita = a => !a.anulado && (s.estado === 'Pendiente' ? (a.creado_por === S.user?.id || puede('solicitudes.anular')) : puede('solicitudes.anular'));
+  const kb = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+  const vivos = lista.filter(a => !a.anulado), quitados = lista.filter(a => a.anulado);
+  caja.innerHTML = (vivos.length ? `<div class="tabla"><table><thead><tr><th>Tipo</th><th>Archivo</th><th>Subió</th><th></th></tr></thead><tbody>
+    ${vivos.map(a => `<tr><td>${esc(a.clase)}</td><td><a href="#" data-doc="${esc(a.ruta)}">${esc(a.nombre)}</a>${a.nota ? `<br><span class="nota">${esc(a.nota)}</span>` : ''}<span class="nota"> · ${kb(a.tamano || 0)}</span></td><td>${esc(a.subido_nombre || '')}<br><span class="nota">${fechaHora(a.creado)}</span></td><td>${quita(a) ? `<button class="sec" data-quitar="${a.id}">Quitar</button>` : ''}</td></tr>`).join('')}
+    </tbody></table></div>` : `<p class="nota">${s.tipo === 'compra' ? 'Esta solicitud no tiene cotizaciones adjuntas.' : 'Sin respaldos adjuntos.'}</p>`)
+    + (quitados.length ? `<details style="margin-top:8px"><summary class="nota">${quitados.length} respaldo${quitados.length > 1 ? 's' : ''} quitado${quitados.length > 1 ? 's' : ''} (queda el registro)</summary><ul>${quitados.map(a => `<li>${esc(a.nombre)} · quitado por ${esc(a.anulado_nombre || '')} el ${fechaHora(a.anulado_en)}: ${esc(a.motivo || '')}</li>`).join('')}</ul></details>` : '')
+    + (sube ? `<form id="fAdj" class="rejilla" style="margin-top:10px"><div><label>Tipo de respaldo</label><select name="clase">${opciones(CLASES_ADJ, s.tipo === 'liquidacion' ? 'Factura' : 'Cotización')}</select></div>
+      <div><label>Archivo</label><input type="file" name="arch" multiple required accept="${ACEPTA_ADJ}"></div><div><label>Nota (opcional)</label><input name="nota"></div>
+      <div class="acciones" style="align-self:end"><button class="sec">Subir respaldo</button></div></form>` : '');
+  verDocumentos(caja);
+  caja.querySelectorAll('[data-quitar]').forEach(b => b.onclick = async () => {
+    const motivo = prompt('¿Por qué se quita este respaldo? (el archivo no se borra, queda en el registro)'); if (!motivo) return;
+    try { await q(sb.from('solicitud_adjuntos').update({ anulado: true, motivo }).eq('id', b.dataset.quitar)); aviso('Respaldo quitado.'); pintarAdjuntos(s); }
+    catch (e) { aviso(falla(e), true); }
+  });
+  const f = $('#fAdj'); if (f) f.onsubmit = async ev => {
+    ev.preventDefault(); const d = datosForm(f), adj = [...f.arch.files].map(archivo => ({ archivo, clase: d.clase, nota: d.nota }));
+    const mal = revisarArchivos(adj); if (mal.length) return aviso(mal.join(' '), true);
+    ocupado(f, true); const fallos = await subirAdjuntos(s.id, adj);
+    aviso(fallos.length ? 'No se subió: ' + fallos.join('; ') : 'Respaldo subido.', !!fallos.length); pintarAdjuntos(s);
+  };
 }
 
 // ---------- proveedores ----------
@@ -712,6 +780,7 @@ async function verPresupuesto(anio) {
 // ---------- configuración ----------
 const CFG_TEXTO = {
   COTIZACION_1_HASTA: 'Compras hasta este monto piden 1 cotización (L)', COTIZACION_2_HASTA: 'Compras hasta este monto piden 2 cotizaciones; arriba, 3 (L)',
+  COTIZACION_ARCHIVO: '¿Cada cotización lleva su archivo (foto o PDF)?',
   PRESUPUESTO_AVISO_PCT: 'Avisar cuando una línea pase este % de uso', AGENTE_RETENCION_1: '¿La organización es agente de retención del 1 %? (Sí/No)',
   LINEAS_PRESUPUESTO: 'Líneas de presupuesto (una por renglón)', PROYECTOS: 'Proyectos o fondos (uno por renglón)', AREAS: 'Áreas (una por renglón)'
 };

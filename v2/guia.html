@@ -1,9 +1,17 @@
 <!-- Guía de uso del SIG, versión 2. Se actualiza junto con cada cambio de la aplicación:
      cambiar la sección que toca, poner la fecha en data-actualizada y agregar el cambio en «Novedades». -->
-<div id="guiaDatos" data-actualizada="2026-11-05"></div>
+<div id="guiaDatos" data-actualizada="2026-11-06"></div>
 
 <section id="novedades" data-para="todos">
 <h2>Novedades</h2>
+<h3>6 de noviembre de 2026 · Respaldos en las solicitudes y quién autoriza</h3>
+<ul>
+<li>La <b>solicitud de compra</b> lleva el archivo de cada cotización (foto o PDF) y deja subir otros respaldos. Fondos y liquidaciones también aceptan archivos. Si la organización no quiere exigir el archivo de cada cotización, se cambia en Configuración.</li>
+<li>Desde cada solicitud se pueden seguir subiendo respaldos, por ejemplo la factura cuando llega la compra.</li>
+<li><b>Nadie autoriza lo que él mismo pidió</b>, ni gerencia ni el administrador. Lo mismo con los créditos: quien registró la solicitud no la aprueba.</li>
+<li>Lo autorizado no se borra: se anula con motivo, y solo quien tenga ese permiso. Un respaldo tampoco se borra: se quita con motivo y queda el registro de quién lo quitó.</li>
+<li>En el engranaje › Roles y permisos hay un cuadro nuevo: quién pide, quién autoriza y quién anula cada trámite.</li>
+</ul>
 <h3>5 de noviembre de 2026 · Inspección interna por sello</h3>
 <ul>
 <li>La ficha de inspección empieza preguntando <b>para qué sellos</b> se levanta (se pueden marcar varios) y las preguntas salen según eso. Ahora cubre orgánico UE, USDA, Bio Suisse, Comercio Justo, Rainforest Alliance y EUDR, con 83 requisitos y la referencia de la norma en cada uno.</li>
@@ -123,13 +131,19 @@
 <h2>Administración</h2>
 <h3>Solicitudes</h3>
 <ul>
-<li><b>Solicitud de compra</b>: lo que se necesita, con sus cotizaciones y el proveedor escogido.</li>
+<li><b>Solicitud de compra</b>: lo que se necesita, con sus cotizaciones (cada una con su foto o PDF), el proveedor escogido y otros respaldos si hay.</li>
 <li><b>Solicitud de fondos</b>: anticipo para una actividad. En los reembolsos, cada factura va en su propio renglón (número, fecha, proveedor y RTN, concepto y monto).</li>
 <li><b>Liquidar fondos</b>: rendir cuentas de un anticipo con las facturas.</li>
 <li><b>Vacaciones</b>: pedir días, del tal al tal; el sistema cuenta los días.</li>
 <li><b>Liquidación laboral</b>: calcula las prestaciones al terminar la relación laboral con los valores de ley.</li>
 </ul>
-<p>Gerencia las autoriza o rechaza en <b>Solicitudes</b>. Cada cambio de estado queda en el PDF de respaldo.</p>
+<p>Las autoriza o rechaza gerencia, o quien tenga el permiso «Autoriza solicitudes», en <b>Solicitudes</b>. Cada cambio de estado queda en el PDF de respaldo y en la bitácora.</p>
+<ul>
+<li><b>Nadie autoriza lo suyo.</b> Si la gerente pide una compra, la autoriza el administrador u otra persona con permiso (por ejemplo presidencia o tesorería de la junta, si se les da).</li>
+<li>Una vez enviada, la solicitud ya no se cambia: monto, proveedor y cotizaciones quedan como se mandaron. Si algo está mal, se retira y se hace otra.</li>
+<li>Mientras está <b>pendiente</b>, quien la hizo la puede retirar. Ya <b>autorizada</b>, solo la anula quien tenga el permiso «Anula lo ya autorizado», y tiene que escribir el motivo.</li>
+<li><b>Respaldos</b>: en la solicitud, abajo, se ven los archivos y se suben más (cotización, proforma, factura, recibo). Mientras está pendiente, quien subió un archivo lo puede quitar; después, solo quien tenga permiso de anular. Nada se borra: queda quién lo quitó, cuándo y por qué.</li>
+</ul>
 <h3>Facturas y presupuesto</h3>
 <ul>
 <li><b>Registrar factura</b>: revisa el CAI, el rango y la fecha límite, y calcula las retenciones. Si tiene observaciones del SAR, avisa antes de guardarla.</li>
@@ -369,6 +383,7 @@
 <li><b>Asignar el rol</b>: en el engranaje › Usuarios, columna «Rol». Debajo sale lo que hace ese rol.</li>
 <li><b>Algo más para una sola persona</b>: en Usuarios se le pueden marcar secciones o «Permisos extra» sin cambiarle el rol.</li>
 <li><b>Cambiar un rol o crear otro</b>: engranaje › <b>Roles y permisos</b>. Ahí está el cuadro de qué permiso tiene cada rol. Los roles nuevos pueden ser de nivel «Gerencia» o «Según sus permisos».</li>
+<li><b>Quién autoriza qué</b>: en Roles y permisos está el cuadro de quién pide, quién autoriza y quién anula cada trámite. La regla de fondo es que nadie autoriza lo que él mismo pidió, y lo autorizado se anula con motivo, no se borra.</li>
 <li>Aparte del rol siguen igual: quién <b>aprueba</b> cada tipo de registro, quién es del <b>comité de crédito</b> y quién ve cada <b>panel de control</b>.</li>
 </ul>
 </section>
