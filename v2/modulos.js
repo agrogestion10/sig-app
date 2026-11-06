@@ -985,7 +985,8 @@ RUTAS.prodf = async function formProductor(id) {
     ${c('comunidad', 'Comunidad o aldea')}${c('municipio', 'Municipio')}${c('departamento', 'Departamento')}${c('fecha_ingreso', 'Fecha de ingreso a la organización', 'date')}
     <div><label>Cultivo</label>${cultivos().length > 1 ? `<select name="cultivo">${opciones(['Café', 'Cacao'], cultivoProd(p))}</select>` : `<input name="cultivo" value="${esc(p.cultivo || cultivos()[0])}" readonly>`}</div>
     ${id ? `<div><label>Estado</label><select name="activo"><option value="true">Activo</option><option value="false" ${p.activo ? '' : 'selected'}>Retirado</option></select></div>` : ''}
-    <div class="ancho"><label>Certificaciones en las que participa</label>${checksCert(cs, p.certificaciones)}</div>
+    <div class="ancho"><label>Certificaciones en las que participa</label>${checksCert(cs, p.certificaciones)}
+      <p class="nota">¿No sale Rainforest Alliance u otra? Solo aparecen las que la organización tiene activas.${puede('catalogo.editar') ? ' Activalas en el <a href="#/catalogo">catálogo de certificaciones</a>.' : ' Pedile al administrador que las active en el catálogo de certificaciones.'}</p></div>
   </div>
   <h2>Lo que pide cada certificación</h2><div id="reqPad"></div>
   <p class="nota">Un solo cultivo por productor (café).</p><div class="acciones"><button>Guardar</button></div></form>`;
