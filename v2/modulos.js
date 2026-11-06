@@ -2136,9 +2136,13 @@ function revisarEudr(p) {
   if (dt.area_protegida === 'si') r.push(['error', 'Dentro de un área protegida']);
   if (dt.cultivo_2020 === 'no_sabe' || dt.area_protegida === 'no_sabe') r.push(['duda', 'Falta confirmar el uso en 2020 o si es área protegida']);
   if (num(p.anio_siembra) > 2020) r.push(['duda', 'Sembrada después de 2020: confirmar que antes no había bosque']);
-  const sat = dt.satelite;
-  if (!sat) r.push(['duda', 'Sin revisión satelital']);
-  else {
+  const sat = dt.satelite, gfw = dt.gfw;
+  if (!sat && !gfw) r.push(['duda', 'Sin revisión satelital']);
+  if (gfw && num(gfw.perdida_ha) > 0) {
+    const pct = num(p.area_ha) ? num(gfw.perdida_ha) / num(p.area_ha) * 100 : 0;
+    r.push([num(gfw.perdida_ha) >= 0.5 || pct >= 20 ? 'error' : 'duda', `Global Forest Watch: ${num(gfw.perdida_ha).toFixed(2)} ha de pérdida de árboles desde 2021 (revisar en campo si fue poda de sombra o deforestación)`]);
+  }
+  if (sat) {
     if (sat.deforestacion_despues_2020 === 'sí') r.push(['error', 'El satélite muestra pérdida de bosque después del 31/12/2020']);
     if (['high', 'very high'].includes(String(sat.riesgo || '').toLowerCase())) r.push(['error', 'Riesgo satelital alto']);
     else if (String(sat.riesgo || '').toLowerCase() === 'more_info_needed') r.push(['duda', 'El satélite pide más información (revisar en campo)']);
@@ -2148,9 +2152,13 @@ function revisarEudr(p) {
 // Resultado satelital de una parcela, como etiqueta
 const RIESGO_SAT = { low: ['Bajo', 'Autorizada'], medium: ['Medio', 'Pendiente'], high: ['Alto', 'Rechazada'], 'very high': ['Muy alto', 'Rechazada'], more_info_needed: ['Falta información', 'Pendiente'] };
 function chipSat(p) {
-  const sat = p.datos?.satelite; if (!sat) return '<span class="nota">Sin revisar</span>';
-  const [t, c] = RIESGO_SAT[String(sat.riesgo || '').toLowerCase()] || [sat.riesgo || '—', ''];
-  return `${estadoChip('Riesgo ' + t.toLowerCase(), c)}${sat.deforestacion_despues_2020 === 'sí' ? ' <b class="error">pérdida de bosque después de 2020</b>' : ''}<br><span class="nota">${esc(sat.fecha || '')}${sat.bosque_2020 ? ' · bosque en 2020: ' + esc(sat.bosque_2020) : ''}</span>`;
+  const sat = p.datos?.satelite, gfw = p.datos?.gfw; if (!sat && !gfw) return '<span class="nota">Sin revisar</span>';
+  let h = '';
+  if (sat) { const [t, c] = RIESGO_SAT[String(sat.riesgo || '').toLowerCase()] || [sat.riesgo || '—', ''];
+    h += `<span class="nota">Whisp:</span> ${estadoChip('Riesgo ' + t.toLowerCase(), c)}${sat.deforestacion_despues_2020 === 'sí' ? ' <b class="error">pérdida de bosque después de 2020</b>' : ''}<br><span class="nota">${esc(sat.fecha || '')}${sat.bosque_2020 ? ' · bosque en 2020: ' + esc(sat.bosque_2020) : ''}</span>`; }
+  if (gfw) { const anios = Object.entries(gfw.por_anio || {}).filter(([, v]) => v > 0).map(([a, v]) => `${a}: ${num(v).toFixed(2)} ha`).join(' · ');
+    h += `${h ? '<br>' : ''}<span class="nota">Global Forest Watch:</span> ${num(gfw.perdida_ha) > 0 ? `<b class="${num(gfw.perdida_ha) >= 0.5 ? 'error' : ''}">${num(gfw.perdida_ha).toFixed(2)} ha perdidas desde 2021</b>` : estadoChip('Sin pérdida desde 2021', 'Autorizada')}<br><span class="nota">${esc(gfw.fecha || '')}${anios ? ' · ' + esc(anios) : ''}${gfw.solo_punto ? ' · calculado alrededor del punto GPS' : ''}</span>`; }
+  return h;
 }
 // Manda parcelas a Whisp (FAO) y espera el resultado; caja = elemento donde se muestra el avance
 async function revisarSatelite(ids, caja, alTerminar) {
@@ -2158,21 +2166,39 @@ async function revisarSatelite(ids, caja, alTerminar) {
   if (!ids.length) return aviso('No hay parcelas para revisar.', true);
   pon(`<p class="nota">Mandando ${ids.length} parcela${ids.length > 1 ? 's' : ''} al análisis satelital…</p>`);
   try {
-    const r = await llamarKobo({ accion: 'satelite', parcelas: ids });
-    if (r.estado === 'sin_clave') { pon(`<p class="error">${esc(r.mensaje)} ${esAdmin() ? '<a href="#/config">Ponerla ahora</a>' : 'Pedile al administrador que la ponga.'}</p>`); return; }
-    if (!r.token) throw new Error('Whisp no devolvió el número de trabajo.');
-    const ini = Date.now();
-    while (Date.now() - ini < 30 * 60000) {
-      await new Promise(x => setTimeout(x, 6000));
-      const e = await llamarKobo({ accion: 'satelite_estado', token: r.token, orden: r.orden });
-      if (e.estado === 'completo') {
-        pon(`<p class="ok">Listo: ${e.guardadas} parcela${e.guardadas === 1 ? '' : 's'} revisada${e.guardadas === 1 ? '' : 's'} con imágenes de satélite.${r.sinUbicacion ? ` ${r.sinUbicacion} no se mandaron porque no tienen punto GPS ni polígono.` : ''}</p>`);
-        S._parc = null; if (alTerminar) alTerminar(e); return e;
+    const notas = [], faltan = [];
+    // 1. Whisp (FAO): riesgo EUDR
+    try {
+      const r = await llamarKobo({ accion: 'satelite', parcelas: ids });
+      if (r.estado === 'sin_clave') faltan.push('Whisp');
+      else {
+        if (!r.token) throw new Error('Whisp no devolvió el número de trabajo.');
+        const ini = Date.now(); let listo = false;
+        while (Date.now() - ini < 30 * 60000) {
+          await new Promise(x => setTimeout(x, 6000));
+          const e = await llamarKobo({ accion: 'satelite_estado', token: r.token, orden: r.orden });
+          if (e.estado === 'completo') { notas.push(`Whisp: ${e.guardadas} parcela${e.guardadas === 1 ? '' : 's'} con su riesgo EUDR.`); listo = true; break; }
+          if (['analysis_error', 'analysis_timeout', 'analysis_cancelled', 'analysis_job_not_found'].includes(e.estado)) throw new Error('el análisis no terminó (' + (e.mensaje || e.estado) + ')');
+          pon(`<p class="nota">Whisp está analizando ${r.enviadas} parcela${r.enviadas > 1 ? 's' : ''} con imágenes de satélite… ${esc((e.avance || []).slice(-1)[0] || '')} (${Math.round((Date.now() - ini) / 1000)} s)</p>`);
+        }
+        if (!listo) notas.push('Whisp está tardando mucho; volvé a intentarlo más tarde.');
+        if (r.sinUbicacion) notas.push(`${r.sinUbicacion} parcela${r.sinUbicacion > 1 ? 's' : ''} sin punto GPS ni polígono no se pudieron revisar.`);
       }
-      if (['analysis_error', 'analysis_timeout', 'analysis_cancelled', 'analysis_job_not_found'].includes(e.estado)) throw new Error('El análisis no terminó: ' + (e.mensaje || e.estado));
-      pon(`<p class="nota">Analizando ${r.enviadas} parcela${r.enviadas > 1 ? 's' : ''} con imágenes de satélite… ${esc((e.avance || []).slice(-1)[0] || '')} (${Math.round((Date.now() - ini) / 1000)} s)</p>`);
+    } catch (e) { notas.push('Whisp: ' + falla(e)); }
+    // 2. Global Forest Watch: hectáreas perdidas por año desde 2021, de 10 en 10
+    let hechas = 0;
+    for (let i = 0; i < ids.length; i += 10) {
+      pon(`<p class="nota">Global Forest Watch: revisando parcelas ${i + 1} a ${Math.min(i + 10, ids.length)} de ${ids.length}…</p>`);
+      try {
+        const g = await llamarKobo({ accion: 'gfw', parcelas: ids.slice(i, i + 10) });
+        if (g.estado === 'sin_clave') { faltan.push('Global Forest Watch'); break; }
+        hechas += g.guardadas || 0; if (g.error) { notas.push(g.error); if (!g.guardadas) break; }
+      } catch (e) { notas.push('Global Forest Watch: ' + falla(e)); break; }
     }
-    throw new Error('El análisis está tardando mucho; volvé a intentarlo más tarde.');
+    if (hechas) notas.push(`Global Forest Watch: ${hechas} parcela${hechas === 1 ? '' : 's'} con la pérdida de árboles por año.`);
+    if (faltan.length) notas.push(`Falta la clave de ${faltan.join(' y de ')} en Configuración${esAdmin() ? ' (<a href="#/config">ponerla</a>)' : '; pedísela al administrador'}.`);
+    pon(`<p class="${faltan.length === 2 ? 'error' : 'ok'}">${notas.map(t => t.includes('<a ') ? t : esc(t)).join('<br>')}</p>`);
+    S._parc = null; if (alTerminar && faltan.length < 2) alTerminar(); return true;
   } catch (e) { pon(`<p class="error">${esc(falla(e))}</p>`); }
 }
 
@@ -2183,9 +2209,9 @@ RUTAS.eudrparc = async function revisionEudrParcelas() {
   const filas = parc.filter(x => P[x.productor_id]?.activo !== false).map(p => ({ p, r: revisarEudr(p), pr: P[p.productor_id] || {} }))
     .sort((a, b) => (a.pr.nombre || '').localeCompare(b.pr.nombre || ''));
   const nivel = x => x.r.some(y => y[0] === 'error') ? 2 : x.r.length ? 1 : 0;
-  const sinSat = filas.filter(x => !x.p.datos?.satelite && (x.p.poligono || x.p.lat != null)), malas = filas.filter(x => nivel(x) === 2), ok = filas.filter(x => nivel(x) === 0);
+  const sinSat = filas.filter(x => (!x.p.datos?.satelite || !x.p.datos?.gfw) && (x.p.poligono || x.p.lat != null)), malas = filas.filter(x => nivel(x) === 2), ok = filas.filter(x => nivel(x) === 0);
   app().innerHTML = cabecera('Revisión EUDR de parcelas', '#/cer') + `<div class="caja">
-    <p>Revisá aquí las fincas <b>antes de comprar y de despachar</b>. Cada parcela se revisa con lo que declaró el productor (uso de la tierra en 2020, área protegida, polígono) y con <b>imágenes de satélite</b> (Whisp, de la FAO), que dicen si hubo pérdida de bosque después del 31 de diciembre de 2020.</p>
+    <p>Revisá aquí las fincas <b>antes de comprar y de despachar</b>. Cada parcela se revisa con lo que declaró el productor (uso de la tierra en 2020, área protegida, polígono) y con <b>imágenes de satélite</b> de dos fuentes: <b>Whisp</b> (FAO), que da el riesgo EUDR y dice si hubo pérdida de bosque después del 31 de diciembre de 2020, y <b>Global Forest Watch</b>, que da las hectáreas de árboles perdidas cada año desde 2021. Una pérdida pequeña en un cafetal con sombra puede ser poda: confirmala en campo.</p>
     <div class="tarjetas">${datoP('Parcelas', filas.length, `${ok.length} sin observaciones`)}${datoP('No cumplen', malas.length, 'Corregir o sacar del producto EUDR')}${datoP('Sin revisión satelital', sinSat.length, 'Con ubicación, falta mandarlas')}</div>
     <div class="acciones"><button id="satTodas" ${sinSat.length ? '' : 'disabled'}>Revisar con satélite las ${sinSat.length} que faltan</button><button class="sec" id="satSel">Revisar las marcadas</button><button class="sec" id="csvE">Descargar CSV</button></div>
     <div id="satAv"></div></div>
@@ -2193,7 +2219,7 @@ RUTAS.eudrparc = async function revisionEudrParcelas() {
   <div class="tabla"><table><thead><tr><th><input type="checkbox" id="todo" title="Marcar todas" style="width:auto"></th><th>Productor</th><th>Parcela</th><th class="n">Área (ha)</th><th>Satélite</th><th>Revisión</th></tr></thead><tbody id="cuerpo"></tbody></table></div>`;
   const pintar = () => {
     const t = norm($('#bus').value), fn = $('#fn').value;
-    const l = filas.filter(x => (!t || norm((x.pr.nombre || '') + (x.pr.codigo || '') + (x.p.nombre || '')).includes(t)) && (!fn || (fn === 's' ? !x.p.datos?.satelite : String(nivel(x)) === fn)));
+    const l = filas.filter(x => (!t || norm((x.pr.nombre || '') + (x.pr.codigo || '') + (x.p.nombre || '')).includes(t)) && (!fn || (fn === 's' ? !x.p.datos?.satelite || !x.p.datos?.gfw : String(nivel(x)) === fn)));
     $('#cuerpo').innerHTML = l.map(x => `<tr><td><input type="checkbox" data-id="${x.p.id}" style="width:auto" ${x.p.poligono || x.p.lat != null ? '' : 'disabled'}></td><td><a href="#/prod/${x.p.productor_id}">${esc(x.pr.codigo || '')} ${esc(x.pr.nombre || '')}</a></td><td>${esc(x.p.nombre || '')}</td><td class="n">${num(x.p.area_ha).toFixed(2)}</td><td>${chipSat(x.p)}</td><td>${chipEudr(x.r)}</td></tr>`).join('') || '<tr><td colspan="6" class="nota">Nada con ese filtro.</td></tr>';
   };
   $('#bus').oninput = pintar; $('#fn').onchange = pintar; pintar();
@@ -2201,8 +2227,8 @@ RUTAS.eudrparc = async function revisionEudrParcelas() {
   const fin = () => setTimeout(() => RUTAS.eudrparc(), 1500);
   $('#satTodas').onclick = () => revisarSatelite(sinSat.map(x => x.p.id), $('#satAv'), fin);
   $('#satSel').onclick = () => { const ids = [...app().querySelectorAll('#cuerpo [data-id]:checked')].map(c => c.dataset.id); if (!ids.length) return aviso('Marcá al menos una parcela.', true); revisarSatelite(ids, $('#satAv'), fin); };
-  $('#csvE').onclick = () => descargarCSV('revision_eudr.csv', ['codigo', 'productor', 'parcela', 'area_ha', 'lat', 'lon', 'poligono', 'riesgo_satelital', 'deforestacion_despues_2020', 'bosque_2020', 'fecha_revision', 'observaciones'],
-    filas.map(x => { const sat = x.p.datos?.satelite || {}; return [x.pr.codigo, x.pr.nombre, x.p.nombre, num(x.p.area_ha).toFixed(2), x.p.lat, x.p.lon, x.p.poligono ? 'sí' : 'no', sat.riesgo, sat.deforestacion_despues_2020, sat.bosque_2020, sat.fecha, x.r.map(y => y[1]).join('; ')]; }));
+  $('#csvE').onclick = () => descargarCSV('revision_eudr.csv', ['codigo', 'productor', 'parcela', 'area_ha', 'lat', 'lon', 'poligono', 'riesgo_whisp', 'deforestacion_despues_2020_whisp', 'bosque_2020_whisp', 'fecha_whisp', 'perdida_ha_gfw_desde_2021', 'perdida_por_anio_gfw', 'fecha_gfw', 'observaciones'],
+    filas.map(x => { const sat = x.p.datos?.satelite || {}; const g = x.p.datos?.gfw || {}; return [x.pr.codigo, x.pr.nombre, x.p.nombre, num(x.p.area_ha).toFixed(2), x.p.lat, x.p.lon, x.p.poligono ? 'sí' : 'no', sat.riesgo, sat.deforestacion_despues_2020, sat.bosque_2020, sat.fecha, g.perdida_ha, Object.entries(g.por_anio || {}).map(([a, v]) => a + ':' + v).join(' '), g.fecha, x.r.map(y => y[1]).join('; ')]; }));
 };
 const chipEudr = r => r.length ? r.map(([n, t]) => `<span class="estado" style="background:${n === 'error' ? '#fee2e2;color:#991b1b' : '#fef3c7;color:#92400e'};display:inline-block;margin:0 4px 4px 0;white-space:normal">${esc(t)}</span>`).join('') : '<span class="estado e-Autorizada">Cumple</span>';
 
