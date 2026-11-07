@@ -847,19 +847,29 @@ async function verFacturas(mes) {
 
 // ---------- solicitudes ----------
 async function verSolicitudes() {
-  const p = new URLSearchParams(sessionStorage.getItem('sig_filtro') || (esJefe() ? 'estado=Pendiente' : ''));
-  let qy = sb.from('solicitudes').select('id,numero,tipo,creado,solicitante,estado,monto,descripcion').eq('org_id', S.org.id).order('creado', { ascending: false }).limit(200);
-  if (p.get('estado')) qy = qy.eq('estado', p.get('estado'));
-  if (p.get('tipo')) qy = qy.eq('tipo', p.get('tipo'));
-  const filas = await q(qy);
-  app().innerHTML = cabecera(puede('solicitudes.autorizar') ? 'Autorizaciones' : 'Mis solicitudes') + `
-  <div class="filtros"><select id="fe"><option value="">Todos los estados</option>${opciones(['Pendiente', 'Autorizada', 'Atendida', 'Rechazada', 'Anulada'], p.get('estado'))}</select>
-  <select id="ft"><option value="">Todos los tipos</option>${Object.entries(TIPOS).map(([k, v]) => `<option value="${k}" ${k === p.get('tipo') ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
-  <div class="tabla"><table><thead><tr><th>Número</th><th>Fecha</th><th>Tipo</th><th>Solicitante</th><th>Descripción</th><th class="n">Monto</th><th>Estado</th></tr></thead><tbody>
-  ${filas.map(x => `<tr><td><a href="#/solicitud/${x.id}">${esc(x.numero)}</a></td><td>${fecha(x.creado)}</td><td>${TIPOS[x.tipo]}</td><td>${esc(x.solicitante)}</td><td>${esc((x.descripcion || '').slice(0, 80))}</td><td class="n">${x.monto ? L(x.monto) : ''}</td><td><span class="estado e-${x.estado}">${x.estado}</span></td></tr>`).join('') || '<tr><td colspan="7" class="nota">No hay solicitudes con ese filtro.</td></tr>'}
-  </tbody></table></div>`;
-  const cambiar = () => { const n = new URLSearchParams(); if ($('#fe').value) n.set('estado', $('#fe').value); if ($('#ft').value) n.set('tipo', $('#ft').value); sessionStorage.setItem('sig_filtro', n.toString() || 'x=1'); verSolicitudes(); };
-  $('#fe').onchange = cambiar; $('#ft').onchange = cambiar;
+  const aut = puede('solicitudes.autorizar'), mes = new Date().toISOString().slice(0, 7);
+  const filas = await q(sb.from('solicitudes').select('id,numero,tipo,creado,solicitante,estado,monto,descripcion').eq('org_id', S.org.id).order('creado', { ascending: false }).limit(300));
+  const GRUPO = { pend: ['Pendiente'], aut: ['Autorizada'], aten: ['Atendida'], rech: ['Rechazada', 'Anulada'], todas: null };
+  let pest = sessionStorage.getItem('sig_sol_pest') || (esJefe() ? 'pend' : 'todas');
+  const cuantas = k => GRUPO[k] ? filas.filter(x => GRUPO[k].includes(x.estado)).length : filas.length;
+  const delMes = filas.filter(x => String(x.creado).startsWith(mes)), autMes = delMes.filter(x => ['Autorizada', 'Atendida'].includes(x.estado));
+  app().innerHTML = moldeCab(aut ? 'Autorizaciones' : 'Mis solicitudes', `<a class="boton" href="#/compra">+ Solicitud de compra</a><a class="boton sec" href="#/fondo">Pedir fondos</a>`) + `
+  <div class="barraFiltros"><select id="ft"><option value="">Todos los tipos</option>${Object.entries(TIPOS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
+    <input id="bus" class="busca" type="search" placeholder="Buscar por número, solicitante o descripción"></div>
+  ${kpis([kpi(cuantas('pend') ? 'ambar' : 'gris', 'reloj', 'Por resolver', cuantas('pend'), 'Esperando autorización'),
+    kpi('verde', 'dinero', 'Autorizado este mes', L(autMes.reduce((t, x) => t + num(x.monto), 0)), autMes.length + ' solicitudes'),
+    kpi('azul', 'doc', 'Solicitudes del mes', delMes.length, 'Compras, fondos, vacaciones…')])}
+  ${pestanas([['pend', 'Pendientes', cuantas('pend')], ['aut', 'Autorizadas', cuantas('aut')], ['aten', 'Atendidas', cuantas('aten')], ['rech', 'Rechazadas', cuantas('rech')], ['todas', 'Todas', cuantas('todas')]], pest)}
+  <div id="lista"></div>`;
+  const pintar = () => {
+    const t = norm($('#bus').value), tipo = $('#ft').value;
+    const f = filas.filter(x => (!GRUPO[pest] || GRUPO[pest].includes(x.estado)) && (!tipo || x.tipo === tipo) && (!t || norm(x.numero + ' ' + x.solicitante + ' ' + (x.descripcion || '')).includes(t)));
+    $('#lista').innerHTML = !f.length ? vacio(filas.length ? 'No hay solicitudes con ese filtro.' : 'Todavía no hay solicitudes.', '<a class="boton" href="#/compra">Hacer una solicitud</a>') : `<div class="tabla"><table><thead><tr><th>Número</th><th>Fecha</th><th>Tipo</th><th>Solicitante</th><th>Descripción</th><th class="n">Monto</th><th>Estado</th></tr></thead><tbody>
+    ${f.map(x => `<tr><td><a href="#/solicitud/${x.id}">${esc(x.numero)}</a></td><td>${fecha(x.creado)}</td><td>${TIPOS[x.tipo]}</td><td>${esc(x.solicitante)}</td><td>${esc((x.descripcion || '').slice(0, 80))}</td><td class="n">${x.monto ? L(x.monto) : ''}</td><td><span class="estado e-${x.estado}">${x.estado}</span></td></tr>`).join('')}
+    </tbody></table></div>`;
+  };
+  alPestana(app(), k => { pest = k; sessionStorage.setItem('sig_sol_pest', k); pintar(); });
+  $('#bus').oninput = pintar; $('#ft').onchange = pintar; pintar();
 }
 async function verSolicitud(id) {
   const s = await q(sb.from('solicitudes').select('*').eq('id', id).single());

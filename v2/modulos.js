@@ -894,16 +894,25 @@ RUTAS.cartera = async function verCartera() {
   const filas = cre.map(c => ({ c, e: estadoCredito(c, pagos.filter(p => p.credito_id === c.id)) })).sort((a, b) => b.e.dias - a.e.dias);
   const total = filas.reduce((t, x) => t + x.e.saldo, 0), tramo = (a, b) => filas.filter(x => x.e.dias >= a && x.e.dias <= b).reduce((t, x) => t + x.e.saldo, 0);
   const t = [['Al día', tramo(0, 0)], ['1 a 30 días', tramo(1, 30)], ['31 a 60', tramo(31, 60)], ['61 a 90', tramo(61, 90)], ['Más de 90', tramo(91, 1e9)]];
-  const mes = hoy().slice(0, 7), recMes = pagos.filter(p => p.fecha.startsWith(mes));
-  app().innerHTML = cabecera('Cartera de crédito') + `<div class="tarjetas">
-    <div class="tarjeta"><span>Cartera vigente</span><b style="font-size:22px">${L(total)}</b><span>${filas.length} créditos</span></div>
-    <div class="tarjeta"><span>Cartera en riesgo (más de 30 días)</span><b style="font-size:22px">${total ? ((total - tramo(0, 30)) / total * 100).toFixed(1) : 0} %</b><span>${L(total - tramo(0, 30))}</span></div>
-    <div class="tarjeta"><span>Recuperado este mes</span><b style="font-size:22px">${L(recMes.reduce((s, p) => s + num(p.capital), 0))}</b><span>Intereses ${L(recMes.reduce((s, p) => s + num(p.interes), 0))}</span></div>
-  </div>
-  <h2>Antigüedad de la mora</h2><div class="tabla"><table><thead><tr>${t.map(x => `<th class="n">${x[0]}</th>`).join('')}</tr></thead><tbody><tr>${t.map(x => `<td class="n">${L(x[1])}<br><span class="nota">${total ? (x[1] / total * 100).toFixed(1) : 0} %</span></td>`).join('')}</tr></tbody></table></div>
-  <h2>Créditos vigentes</h2><div class="tabla"><table><thead><tr><th>Número</th><th>Productor</th><th>Comunidad</th><th class="n">Desembolsado</th><th class="n">Saldo</th><th class="n">Atrasado</th><th class="n">Días</th><th>Próxima cuota</th>${puede('credito.cobrar') ? '<th></th>' : ''}</tr></thead><tbody>
-  ${filas.map(({ c, e }) => `<tr><td><a href="#/cred/${c.id}">${esc(c.numero)}</a></td><td><a href="#/edocta/${c.productor_id}">${esc(c.productores?.nombre)}</a></td><td>${esc(c.productores?.comunidad)}</td><td class="n">${L(c.monto_aprobado)}</td><td class="n">${L(e.saldo)}</td><td class="n ${e.atraso ? 'error' : ''}">${e.atraso ? L(e.atraso) : ''}</td><td class="n">${e.dias || ''}</td><td>${e.prox ? esc(e.prox.fecha) + ' · ' + L(e.prox.cuota) : ''}</td>${puede('credito.cobrar') ? `<td><a class="boton sec" href="#/cred/${c.id}/pago">Cobrar</a></td>` : ''}</tr>`).join('') || '<tr><td colspan="9" class="nota">No hay créditos desembolsados.</td></tr>'}
+  const mes = hoy().slice(0, 7), recMes = pagos.filter(p => p.fecha.startsWith(mes)), riesgo = total - tramo(0, 30);
+  const GR = { todos: () => true, dia: x => !x.e.dias, mora: x => x.e.dias > 0, m90: x => x.e.dias > 90 };
+  let pest = 'todos';
+  app().innerHTML = moldeCab('Cartera de crédito', `<a class="boton sec" href="#/creditos">Todos los créditos</a>`) + `
+  <div class="barraFiltros"><input id="bus" class="busca" type="search" placeholder="Buscar por productor, comunidad o número"></div>
+  ${kpis([kpi('azul', 'dinero', 'Cartera vigente', L(total), filas.length + ' créditos'),
+    kpi(riesgo ? 'rojo' : 'verde', 'alerta', 'En riesgo (más de 30 días)', (total ? (riesgo / total * 100).toFixed(1) : 0) + ' %', L(riesgo)),
+    kpi('verde', 'sube', 'Recuperado este mes', L(recMes.reduce((s, p) => s + num(p.capital), 0)), 'Intereses ' + L(recMes.reduce((s, p) => s + num(p.interes), 0)))])}
+  ${pestanas([['todos', 'Todos', filas.length], ['dia', 'Al día', filas.filter(GR.dia).length], ['mora', 'En mora', filas.filter(GR.mora).length], ['m90', 'Más de 90 días', filas.filter(GR.m90).length]], pest)}
+  <div id="lista"></div>
+  <h2>Antigüedad de la mora</h2><div class="tabla"><table><thead><tr>${t.map(x => `<th class="n">${x[0]}</th>`).join('')}</tr></thead><tbody><tr>${t.map(x => `<td class="n">${L(x[1])}<br><span class="nota">${total ? (x[1] / total * 100).toFixed(1) : 0} %</span></td>`).join('')}</tr></tbody></table></div>`;
+  const pintar = () => {
+    const b = norm($('#bus').value), f = filas.filter(x => GR[pest](x) && (!b || norm((x.c.productores?.nombre || '') + (x.c.productores?.comunidad || '') + x.c.numero).includes(b)));
+    $('#lista').innerHTML = !f.length ? vacio(filas.length ? 'No hay créditos con ese filtro.' : 'No hay créditos desembolsados.', filas.length ? '' : '<a class="boton" href="#/cre">Ir a crédito interno</a>') : `<div class="tabla"><table><thead><tr><th>Número</th><th>Productor</th><th>Comunidad</th><th class="n">Desembolsado</th><th class="n">Saldo</th><th class="n">Atrasado</th><th class="n">Días</th><th>Próxima cuota</th>${puede('credito.cobrar') ? '<th></th>' : ''}</tr></thead><tbody>
+  ${f.map(({ c, e }) => `<tr><td><a href="#/cred/${c.id}">${esc(c.numero)}</a></td><td><a href="#/edocta/${c.productor_id}">${esc(c.productores?.nombre)}</a></td><td>${esc(c.productores?.comunidad)}</td><td class="n">${L(c.monto_aprobado)}</td><td class="n">${L(e.saldo)}</td><td class="n ${e.atraso ? 'error' : ''}">${e.atraso ? L(e.atraso) : ''}</td><td class="n">${e.dias || ''}</td><td>${e.prox ? esc(e.prox.fecha) + ' · ' + L(e.prox.cuota) : ''}</td>${puede('credito.cobrar') ? `<td><a class="boton sec" href="#/cred/${c.id}/pago">Cobrar</a></td>` : ''}</tr>`).join('')}
   </tbody></table></div>`;
+  };
+  alPestana(app(), k => { pest = k; pintar(); });
+  $('#bus').oninput = pintar; pintar();
 };
 
 // =====================================================================
@@ -957,20 +966,31 @@ RUTAS.padron = async function verPadron() {
   const ha = {}, np = {}, sinPol = {}, parDe = {};
   parc.forEach(p => { ha[p.productor_id] = (ha[p.productor_id] || 0) + num(p.area_ha); np[p.productor_id] = (np[p.productor_id] || 0) + 1; if (num(p.area_ha) >= 4 && !p.poligono) sinPol[p.productor_id] = 1; (parDe[p.productor_id] = parDe[p.productor_id] || []).push(p); });
   const falta = Object.fromEntries(ps.map(p => [p.id, faltaPadron(p, parDe[p.id] || [])]));
-  app().innerHTML = cabecera('Padrón de productores') + `<div class="filtros"><input id="bus" placeholder="Buscar por nombre, código o comunidad"><select id="fc"><option value="">Todas las certificaciones</option>${cs.map(c => `<option value="${c.codigo}">${esc(c.nombre)}</option>`).join('')}</select>
-    <label style="display:flex;gap:6px;align-items:center;margin:0;font-weight:400"><input type="checkbox" id="soloInc" style="width:auto">Solo los incompletos</label>
-    <a class="boton" href="#/prodf">+ Nuevo productor</a><a class="boton sec" href="#/carga/productores">Subir varios desde Excel</a><a class="boton sec" href="#/carga/parcelas">Subir parcelas desde Excel</a><a class="boton sec" href="#/carga/poligonos">Subir polígonos (KML o GeoJSON)</a><button class="sec" id="csv">Descargar padrón</button></div>
-  <p class="nota" id="notaCsv">El padrón que se descarga trae las columnas que pide la certificación escogida arriba. Con «Todas», trae todas.</p>
-  <div class="tabla"><table><thead><tr><th>Código</th><th>Nombre</th><th>Comunidad</th><th class="n">Parcelas</th><th class="n">Hectáreas</th><th>Certificaciones</th><th>Padrón</th><th>Inspección</th></tr></thead><tbody id="cuerpo"></tbody></table></div><p class="nota" id="tot"></p>`;
-  const filtrar = () => { const t = norm($('#bus').value), c = $('#fc').value, inc = $('#soloInc').checked; return ps.filter(p => (!t || norm(p.nombre + p.codigo + p.comunidad).includes(t)) && (!c || p.certificaciones.includes(c)) && (!inc || falta[p.id].length)); };
+  const act = ps.filter(p => p.activo), inc = act.filter(p => falta[p.id].length), conSinPol = act.filter(p => sinPol[p.id]);
+  const GR = { act: p => p.activo, inc: p => p.activo && falta[p.id].length, pol: p => p.activo && sinPol[p.id], inact: p => !p.activo };
+  let pest = 'act';
+  const carga = S.maestro ? '<a class="boton sec" href="#/carga/productores">Subir desde Excel</a>' : esAdmin() ? '<a class="boton sec" href="#/plan/carga">Pedir carga de datos</a>' : '';
+  app().innerHTML = moldeCab('Padrón de productores', `${puede('padron.crear') ? '<a class="boton" href="#/prodf">+ Nuevo productor</a>' : ''}${carga}<button class="sec" id="csv">Descargar padrón</button>`) + `
+  <div class="barraFiltros"><input id="bus" class="busca" type="search" placeholder="Buscar por nombre, código o comunidad"><select id="fc"><option value="">Todas las certificaciones</option>${cs.map(c => `<option value="${c.codigo}">${esc(c.nombre)}</option>`).join('')}</select></div>
+  ${kpis([kpi('verde', 'gente', 'Productores activos', act.length, act.filter(p => p.certificaciones.length).length + ' con alguna certificación'),
+    kpi('azul', 'mapa', 'Hectáreas', act.reduce((t, p) => t + (ha[p.id] || 0), 0).toLocaleString('es-HN', { maximumFractionDigits: 1 }), parc.length + ' parcelas'),
+    kpi(inc.length ? 'ambar' : 'verde', 'doc', 'Padrón incompleto', inc.length, inc.length ? 'Les faltan datos para sus certificaciones' : 'Todo completo'),
+    kpi(conSinPol.length ? 'rojo' : 'verde', 'alerta', 'Sin polígono (4 ha o más)', conSinPol.length, 'Lo pide la EUDR')])}
+  ${pestanas([['act', 'Activos', act.length], ['inc', 'Incompletos', inc.length], ['pol', 'Sin polígono', conSinPol.length], ['inact', 'Inactivos', ps.length - act.length]], pest)}
+  <div id="lista"></div><p class="nota" id="tot"></p>
+  ${S.maestro ? '<p class="nota">Carga masiva: <a href="#/carga/parcelas">parcelas desde Excel</a> · <a href="#/carga/poligonos">polígonos (KML o GeoJSON)</a></p>' : ''}
+  <p class="nota">El padrón que se descarga trae las columnas que pide la certificación escogida arriba. Con «Todas», trae todas.</p>`;
+  const filtrar = () => { const t = norm($('#bus').value), c = $('#fc').value; return ps.filter(p => GR[pest](p) && (!t || norm(p.nombre + p.codigo + p.comunidad).includes(t)) && (!c || p.certificaciones.includes(c))); };
   const pintar = () => {
-    const f = filtrar(), inc = f.filter(p => falta[p.id].length).length;
-    $('#cuerpo').innerHTML = f.map(p => `<tr${p.activo ? '' : ' style="opacity:.5"'}><td>${esc(p.codigo)}</td><td><a href="#/prod/${p.id}">${esc(p.nombre)}</a></td><td>${esc(p.comunidad)}</td><td class="n">${np[p.id] || 0}${sinPol[p.id] ? ' <span class="error" title="Parcela de 4 ha o más sin polígono">⚠</span>' : ''}</td><td class="n">${(ha[p.id] || 0).toFixed(2)}</td><td>${p.certificaciones.map(nombreCert).map(esc).join(', ')}</td>
+    const f = filtrar(), ninc = f.filter(p => falta[p.id].length).length;
+    $('#lista').innerHTML = !f.length ? vacio(ps.length ? 'No hay productores con ese filtro.' : 'Todavía no hay productores en el padrón.', ps.length ? '' : (puede('padron.crear') ? '<a class="boton" href="#/prodf">Agregar el primero</a> ' : '') + (S.maestro ? '' : esAdmin() ? '<a class="boton sec" href="#/plan/carga">Pedir carga desde Excel</a>' : '')) : `<div class="tabla"><table><thead><tr><th>Código</th><th>Nombre</th><th>Comunidad</th><th class="n">Parcelas</th><th class="n">Hectáreas</th><th>Certificaciones</th><th>Padrón</th><th>Inspección</th></tr></thead><tbody>
+    ${f.map(p => `<tr${p.activo ? '' : ' style="opacity:.5"'}><td>${esc(p.codigo)}</td><td><a href="#/prod/${p.id}">${esc(p.nombre)}</a></td><td>${esc(p.comunidad)}</td><td class="n">${np[p.id] || 0}${sinPol[p.id] ? ' <span class="error" title="Parcela de 4 ha o más sin polígono">⚠</span>' : ''}</td><td class="n">${(ha[p.id] || 0).toFixed(2)}</td><td>${p.certificaciones.map(nombreCert).map(esc).join(', ')}</td>
       <td>${!p.certificaciones.length ? '' : falta[p.id].length ? `<span class="estado e-Pendiente" title="${esc(falta[p.id].join(' · '))}">Faltan ${falta[p.id].length}</span>` : '<span class="estado e-Autorizada">Completo</span>'}</td>
-      <td>${p.estado_cert ? estadoChip(p.estado_cert, { Aprobado: 'Autorizada', Condicionado: 'Pendiente', 'No aprobado': 'Rechazada' }[p.estado_cert]) : ''}</td></tr>`).join('') || '<tr><td colspan="8" class="nota">Sin productores.</td></tr>';
-    $('#tot').textContent = `${f.length} productores · ${f.reduce((t, p) => t + (ha[p.id] || 0), 0).toFixed(2)} ha · ${inc ? inc + ' con datos pendientes para sus certificaciones' : 'todos completos'}`;
+      <td>${p.estado_cert ? estadoChip(p.estado_cert, { Aprobado: 'Autorizada', Condicionado: 'Pendiente', 'No aprobado': 'Rechazada' }[p.estado_cert]) : ''}</td></tr>`).join('')}</tbody></table></div>`;
+    $('#tot').textContent = f.length ? `${f.length} productores · ${f.reduce((t, p) => t + (ha[p.id] || 0), 0).toFixed(2)} ha · ${ninc ? ninc + ' con datos pendientes para sus certificaciones' : 'todos completos'}` : '';
   };
-  $('#bus').oninput = pintar; $('#fc').onchange = pintar; $('#soloInc').onchange = pintar; pintar();
+  alPestana(app(), k => { pest = k; pintar(); });
+  $('#bus').oninput = pintar; $('#fc').onchange = pintar; pintar();
   $('#csv').onclick = () => {
     const c = $('#fc').value, lista = filtrar();
     const req = (c ? reqDe([c]) : REQ_PADRON.filter((r, i, a) => a.findIndex(x => x[1] === r[1]) === i)).filter(r => r[3] !== 'col');
@@ -1525,11 +1545,27 @@ RUTAS.recibo = async function verRecibo(id) {
 RUTAS.acopios = async function verAcopios(mes) {
   mes = mes || hoy().slice(0, 7); await certs();
   const filas = await q(sb.from('acopio').select('*, productores(nombre)').eq('org_id', S.org.id).gte('fecha', mes + '-01').lt('fecha', sumarMeses(mes + '-01', 1)).order('fecha', { ascending: false }));
-  const s = k => filas.reduce((t, x) => t + num(x[k]), 0);
-  app().innerHTML = cabecera('Acopio') + `<div class="filtros"><input type="month" id="mes" value="${mes}"><a class="boton" href="#/acopio">+ Registrar entrega</a><a class="boton sec" href="#/carga/acopio">Subir entregas anteriores desde Excel</a></div>
-  <div class="tabla"><table><thead><tr><th>Número</th><th>Fecha</th><th>Productor</th><th>Producto</th><th class="n">Peso (lb)</th><th class="n">Humedad</th><th class="n">${mayus(secoTxt())} (lb)</th><th>Certificación</th><th class="n">Total</th><th class="n">Neto a pagar</th><th>Pago</th></tr></thead><tbody>
-  ${filas.map(x => `<tr><td><a href="#/recibo/${x.id}">${esc(x.numero)}</a> <a class="nota" href="#/recibo/${x.id}/imprimir" title="Imprimir recibo">🖨</a></td><td>${esc(x.fecha)}</td><td>${esc(x.productores?.nombre)}</td><td>${esc(x.estado_cafe)}</td><td class="n">${num(x.peso_lb).toLocaleString('es-HN')}</td><td class="n">${x.humedad ?? ''}</td><td class="n">${num(x.psec_lb).toLocaleString('es-HN')}</td><td>${esc((x.certificaciones?.length ? x.certificaciones : [x.certificacion]).filter(Boolean).map(nombreCert).join(', ') || 'Convencional')}${x.lote ? `<br><a class="nota" href="#/lote/${encodeURIComponent(x.lote)}">Lote ${esc(x.lote)}</a>` : ''}</td><td class="n">${x.total ? L(x.total) : ''}</td><td class="n">${x.neto_pagar != null ? L(x.neto_pagar) : ''}${num(x.retencion_credito) ? `<br><span class="nota">crédito ${L(x.retencion_credito)}</span>` : ''}</td><td>${esc(x.estado_pago || '')}</td></tr>`).join('') || '<tr><td colspan="11" class="nota">Sin entregas en este mes.</td></tr>'}
-  </tbody>${filas.length ? `<tfoot><tr><th colspan="6">Total del mes</th><th class="n">${s('psec_lb').toLocaleString('es-HN')} lb (${(s('psec_lb') / 100).toFixed(2)} qq)</th><th></th><th class="n">${L(s('total'))}</th><th class="n">${L(s('neto_pagar'))}</th><th></th></tr></tfoot>` : ''}</table></div>`;
+  const pagada = x => /pagad/i.test(x.estado_pago || '');
+  const s = (k, l = filas) => l.reduce((t, x) => t + num(x[k]), 0);
+  const pend = filas.filter(x => !pagada(x)), socios = new Set(filas.map(x => x.productor_id)).size;
+  let pest = 'todas';
+  app().innerHTML = moldeCab('Acopio', `${puede('acopio.registrar') ? '<a class="boton" href="#/acopio">+ Registrar entrega</a>' : ''}<a class="boton sec" href="#/carga/acopio">Subir desde Excel</a>`) + `
+  <div class="barraFiltros"><input type="month" id="mes" value="${mes}"><input id="bus" class="busca" type="search" placeholder="Buscar por productor, recibo o lote"></div>
+  ${kpis([kpi('verde', 'saco', 'Acopiado en el mes', (s('psec_lb') / 100).toLocaleString('es-HN', { maximumFractionDigits: 2 }) + ' qq', s('psec_lb').toLocaleString('es-HN') + ' lb ' + secoTxt()),
+    kpi('azul', 'dinero', 'Total comprado', L(s('total')), 'Neto a pagar ' + L(s('neto_pagar'))),
+    kpi(pend.length ? 'ambar' : 'gris', 'reloj', 'Por pagar', L(s('neto_pagar', pend)), pend.length + ' entrega' + (pend.length === 1 ? '' : 's') + ' sin pagar'),
+    kpi('gris', 'gente', 'Entregas', filas.length, socios + ' productor' + (socios === 1 ? '' : 'es'))])}
+  ${pestanas([['todas', 'Todas', filas.length], ['pend', 'Por pagar', pend.length], ['pag', 'Pagadas', filas.length - pend.length]], pest)}
+  <div id="lista"></div>`;
+  const pintar = () => {
+    const t = norm($('#bus').value);
+    const f = filas.filter(x => (pest === 'todas' || (pest === 'pend' ? !pagada(x) : pagada(x))) && (!t || norm((x.productores?.nombre || '') + x.numero + (x.lote || '')).includes(t)));
+    $('#lista').innerHTML = !f.length ? vacio(filas.length ? 'No hay entregas con ese filtro.' : 'Aún no hay entregas registradas en este mes.', puede('acopio.registrar') ? '<a class="boton" href="#/acopio">Registrar una entrega</a>' : '') : `<div class="tabla"><table><thead><tr><th>Número</th><th>Fecha</th><th>Productor</th><th>Producto</th><th class="n">Peso (lb)</th><th class="n">Humedad</th><th class="n">${mayus(secoTxt())} (lb)</th><th>Certificación</th><th class="n">Total</th><th class="n">Neto a pagar</th><th>Pago</th></tr></thead><tbody>
+  ${f.map(x => `<tr><td><a href="#/recibo/${x.id}">${esc(x.numero)}</a> <a class="nota" href="#/recibo/${x.id}/imprimir" title="Imprimir recibo">🖨</a></td><td>${esc(x.fecha)}</td><td>${esc(x.productores?.nombre)}</td><td>${esc(x.estado_cafe)}</td><td class="n">${num(x.peso_lb).toLocaleString('es-HN')}</td><td class="n">${x.humedad ?? ''}</td><td class="n">${num(x.psec_lb).toLocaleString('es-HN')}</td><td>${esc((x.certificaciones?.length ? x.certificaciones : [x.certificacion]).filter(Boolean).map(nombreCert).join(', ') || 'Convencional')}${x.lote ? `<br><a class="nota" href="#/lote/${encodeURIComponent(x.lote)}">Lote ${esc(x.lote)}</a>` : ''}</td><td class="n">${x.total ? L(x.total) : ''}</td><td class="n">${x.neto_pagar != null ? L(x.neto_pagar) : ''}${num(x.retencion_credito) ? `<br><span class="nota">crédito ${L(x.retencion_credito)}</span>` : ''}</td><td>${esc(x.estado_pago || '')}</td></tr>`).join('')}
+  </tbody><tfoot><tr><th colspan="6">Total</th><th class="n">${s('psec_lb', f).toLocaleString('es-HN')} lb (${(s('psec_lb', f) / 100).toFixed(2)} qq)</th><th></th><th class="n">${L(s('total', f))}</th><th class="n">${L(s('neto_pagar', f))}</th><th></th></tr></tfoot></table></div>`;
+  };
+  alPestana(app(), k => { pest = k; pintar(); });
+  $('#bus').oninput = pintar; pintar();
   $('#mes').onchange = e => location.hash = '#/acopios/' + e.target.value;
 };
 

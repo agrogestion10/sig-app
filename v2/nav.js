@@ -100,3 +100,23 @@ function pantallaSubirPlan(que, detalle) {
   envolver('kobo', 'kobo', 'Kobo (formularios de campo)', 'Con Kobo tus técnicos llenan inspecciones, padrón, asistencia y más en el celular, aunque no haya señal, y todo llega solo a AgroGestión.');
   envolver('eudrparc', 'satelite', 'Revisión EUDR por satélite', 'Revisa cada parcela con imágenes de satélite (Whisp de la FAO y Global Forest Watch) para comprobar que no hubo deforestación después de 2020, antes de comprar y de despachar.');
 })();
+
+// ---------- molde de pantalla (como Treinta): título con acciones, filtros, tarjetas de números, pestañas y vacío ----------
+const ICK = {
+  dinero: IC('<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9.5v5M18 9.5v5"/>', 24),
+  sube: IC('<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>', 24),
+  saco: IC('<path d="M8 4h8l-1 3c3 1.5 5 4.5 5 8 0 3-2.5 5-8 5s-8-2-8-5c0-3.5 2-6.5 5-8z"/><path d="M9 7h6"/>', 24),
+  gente: IC('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14.8c1.6.8 2.6 2.5 3 5.2"/>', 24),
+  alerta: IC('<path d="M12 3l9.5 16.5h-19z"/><path d="M12 10v4M12 17.5h.01"/>', 24),
+  reloj: IC('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', 24),
+  hoja: IC('<path d="M5 19c0-8 6-13 15-13-1 9-6 14-13 14"/><path d="M8 17c2.5-4 5.5-7 9-9"/>', 24),
+  mapa: IC('<path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/>', 24),
+  doc: IC('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>', 24),
+  vacio: '<svg width="88" height="88" viewBox="0 0 88 88" fill="none" aria-hidden="true"><rect x="10" y="18" width="56" height="46" rx="6" stroke="#9aa9a0" stroke-width="4"/><path d="M10 30h56" stroke="#9aa9a0" stroke-width="4"/><circle cx="64" cy="62" r="12" fill="#fff" stroke="#f59e0b" stroke-width="5"/></svg>'
+};
+const moldeCab = (titulo, acciones = '', volver) => `<div class="moldeCab"><div class="moldeTit">${cabecera(titulo, volver)}</div>${acciones ? `<div class="moldeAcc">${acciones}</div>` : ''}</div>`;
+const kpi = (tipo, icono, etiqueta, valor, sub = '') => `<div class="kpi kpi-${tipo}"><span class="kpiIc">${ICK[icono] || ''}</span><span class="kpiTx"><small>${esc(etiqueta)}</small><b>${valor}</b>${sub ? `<em>${sub}</em>` : ''}</span></div>`;
+const kpis = lista => `<div class="kpis">${lista.join('')}</div>`;
+const pestanas = (lista, act) => `<div class="pestanas" role="tablist">${lista.map(([k, t, n]) => `<button type="button" role="tab" data-pest="${k}" class="${k === act ? 'activa' : ''}" aria-selected="${k === act}">${esc(t)}${n != null ? ` <span class="pestN">${n}</span>` : ''}</button>`).join('')}</div>`;
+const vacio = (texto, boton = '') => `<div class="vacio">${ICK.vacio}<p>${texto}</p>${boton}</div>`;
+function alPestana(raiz, fn) { raiz.querySelectorAll('[data-pest]').forEach(b => b.onclick = () => { raiz.querySelectorAll('[data-pest]').forEach(x => { x.classList.toggle('activa', x === b); x.setAttribute('aria-selected', x === b); }); fn(b.dataset.pest); }); }
