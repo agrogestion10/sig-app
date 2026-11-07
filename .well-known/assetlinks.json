@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.agrogestionhn.app.twa",
+        "sha256_cert_fingerprints": ["FF:CD:38:EA:CC:F1:5B:5D:8C:32:2F:14:85:F4:AA:C3:9B:BF:99:84:05:3E:F9:B1:DD:BB:99:51:46:DE:26:E5"]
+      }
+    }]
