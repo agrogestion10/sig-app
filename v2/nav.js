@@ -36,7 +36,7 @@ const ICONOS = {
 };
 
 // Qué opción del menú se marca según la pantalla abierta
-const MARCA_DE = { padron: 'padron', prod: 'padron', prodf: 'padron', parcela: 'padron', acopio: 'acopio', acopios: 'acopio', recibo: 'acopio', procesos: 'procesos', inventario: 'procesos', reg: 'beneficio', basculas: 'basculas', despacho: 'ventas', eudr: 'ventas', balance: 'balance', lotes: 'traza', lote: 'traza', adm: 'adm', solicitudes: 'solic', solicitud: 'solic', compra: 'solic', fondo: 'solic', liquidacion: 'solic', vacacion: 'solic', laboral: 'solic', facturas: 'facturas', factura: 'facturas', fac: 'facturas', agregarfac: 'facturas', proveedores: 'proveedores', proveedor: 'proveedores', empleados: 'empleados', empleado: 'empleados', presupuesto: 'presupuesto', eudrparc: 'eudr', kobo: 'kobo', plan: 'plan', config: 'config', usuarios: 'config', roles: 'config', catalogo: 'catalogo', credito: 'creditos', creditos: 'creditos', cred: 'creditos', cartera: 'cartera', edocta: 'cartera', pago: 'cartera', recordatorios: 'recordatorios', reportescre: 'reportescre', fondos: 'fondos', condiciones: 'condiciones', inspeccion: 'inspecciones', insp: 'inspecciones', inspecciones: 'inspecciones', nc: 'nc', insumos: 'insumos', capacitaciones: 'capacitaciones', cap: 'capacitaciones', guias: 'guias', asistencia: 'asistencia', quejas: 'quejas', queja: 'quejas', prima: 'prima', actas: 'actas', bandeja: 'bandeja', paquete: 'cer', bitacora: 'config', orgs: 'config', guia: 'guia', ger: 'ger' };
+const MARCA_DE = { formularios: 'formularios', padron: 'padron', prod: 'padron', prodf: 'padron', parcela: 'padron', acopio: 'acopio', acopios: 'acopio', recibo: 'acopio', procesos: 'procesos', inventario: 'procesos', reg: 'beneficio', basculas: 'basculas', despacho: 'ventas', eudr: 'ventas', balance: 'balance', lotes: 'traza', lote: 'traza', adm: 'adm', solicitudes: 'solic', solicitud: 'solic', compra: 'solic', fondo: 'solic', liquidacion: 'solic', vacacion: 'solic', laboral: 'solic', facturas: 'facturas', factura: 'facturas', fac: 'facturas', agregarfac: 'facturas', proveedores: 'proveedores', proveedor: 'proveedores', empleados: 'empleados', empleado: 'empleados', presupuesto: 'presupuesto', eudrparc: 'eudr', kobo: 'kobo', plan: 'plan', config: 'config', usuarios: 'config', roles: 'config', catalogo: 'catalogo', credito: 'creditos', creditos: 'creditos', cred: 'creditos', cartera: 'cartera', edocta: 'cartera', pago: 'cartera', recordatorios: 'recordatorios', reportescre: 'reportescre', fondos: 'fondos', condiciones: 'condiciones', inspeccion: 'inspecciones', insp: 'inspecciones', inspecciones: 'inspecciones', nc: 'nc', insumos: 'insumos', capacitaciones: 'capacitaciones', cap: 'capacitaciones', guias: 'guias', asistencia: 'asistencia', quejas: 'quejas', queja: 'quejas', prima: 'prima', actas: 'actas', bandeja: 'bandeja', paquete: 'cer', bitacora: 'config', orgs: 'config', guia: 'guia', ger: 'ger' };
 
 function itemsNav() {
   if (!S.user || !S.org) return null;
@@ -45,6 +45,7 @@ function itemsNav() {
   return [
     ['Gestioná tu organización', [
       ['inicio', '#/', 'Inicio'],
+      ['formularios', '#/formularios', 'Formularios'],
       puedeSec('ger') && ['ger', '#/ger', 'Gerencia']]],
     puedeSec('adm') && ['Administración', [
       ['adm', '#/adm', 'Resumen'],
@@ -101,7 +102,7 @@ function pintarAvisosNav() {
     const b = document.createElement('span'); b.className = 'navAviso ' + (x.clase === 'rojo' ? 'rojo' : ''); b.textContent = x.n > 99 ? '99+' : x.n; b.title = x.txt; a.appendChild(b);
   });
 }
-const ICONO_DE = { creditos: 'cre', cartera: 'balance', recordatorios: 'reloj', reportescre: 'ger', fondos: 'cre', condiciones: 'config', inspecciones: 'solic', nc: 'alerta', insumos: 'beneficio', capacitaciones: 'empleados', guias: 'guia', asistencia: 'padron', quejas: 'charla', prima: 'cre', actas: 'facturas', bandeja: 'kobo', catalogo: 'cer' };
+const ICONO_DE = { formularios: 'solic', creditos: 'cre', cartera: 'balance', recordatorios: 'reloj', reportescre: 'ger', fondos: 'cre', condiciones: 'config', inspecciones: 'solic', nc: 'alerta', insumos: 'beneficio', capacitaciones: 'empleados', guias: 'guia', asistencia: 'padron', quejas: 'charla', prima: 'cre', actas: 'facturas', bandeja: 'kobo', catalogo: 'cer' };
 ICONOS.reloj = ICONOS.reloj || IC('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>');
 const navAbiertos = () => { try { return JSON.parse(localStorage.getItem('ag_nav_abiertos') || '[]'); } catch (_) { return []; } };
 function marcaActual() {
@@ -125,10 +126,10 @@ function pintarNav() {
   lat.innerHTML = html;
   lat.querySelectorAll('[data-g]').forEach(b => b.onclick = () => { const s = b.parentElement, ab = !s.classList.contains('abierta'); s.classList.toggle('abierta', ab); b.setAttribute('aria-expanded', ab); const l = navAbiertos().filter(x => x !== b.dataset.g); if (ab) l.push(b.dataset.g); try { localStorage.setItem('ag_nav_abiertos', JSON.stringify(l)); } catch (_) {} });
   // Teléfono: barra de abajo con lo principal y «Más» con todo el menú
-  const todos = grupos.flatMap(([, l]) => l), princ = todos.filter(x => ['inicio', 'adm', 'cre', 'cer', 'ger'].includes(x[0])).slice(0, 4);
+  const todos = grupos.flatMap(([, l]) => l), princ = todos.filter(x => ['inicio', 'formularios', 'adm', 'cre', 'cer', 'ger'].includes(x[0])).slice(0, 4);
   if (!baja) { baja = document.createElement('nav'); baja.id = 'navBaja'; baja.className = 'navBaja'; baja.setAttribute('aria-label', 'Menú'); document.body.append(baja); }
-  const corto = { inicio: 'Inicio', ger: 'Gerencia', adm: 'Administ.', cre: 'Crédito', cer: 'Certific.' };
-  baja.innerHTML = princ.map(([k, h]) => `<a href="${h}" data-k="${k}" class="${k === act ? 'activo' : ''}">${ICONOS[k]}<span>${corto[k]}</span></a>`).join('')
+  const corto = { formularios: 'Formularios', inicio: 'Inicio', ger: 'Gerencia', adm: 'Administ.', cre: 'Crédito', cer: 'Certific.' };
+  baja.innerHTML = princ.map(([k, h]) => `<a href="${h}" data-k="${k}" class="${k === act ? 'activo' : ''}">${ICONOS[k] || ICONOS[ICONO_DE[k]] || ''}<span>${corto[k]}</span></a>`).join('')
     + `<button type="button" id="navMas" class="${princ.some(x => x[0] === act) ? '' : 'activo'}">${ICONOS.mas}<span>Más</span></button>`;
   $('#navMas').onclick = () => document.body.classList.toggle('navAbierto');
   pintarAvisosNav();

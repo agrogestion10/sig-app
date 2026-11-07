@@ -1571,13 +1571,13 @@ RUTAS.acopios = async function verAcopios(mes) {
 };
 
 RUTAS.bandeja = async function verBandeja() {
-  const c = OFF.cola(), tipo = { acopio: 'Entrega de acopio', inspecciones: 'Inspección interna', no_conformidades: 'No conformidad', insumos_aplicados: 'Insumo aplicado', parcelas: 'Historial de parcela', productores: 'Resultado de inspección' };
+  const c = OFF.cola(), tipo = { acopio: 'Entrega de acopio', inspecciones: 'Inspección interna', no_conformidades: 'No conformidad', insumos_aplicados: 'Insumo aplicado', parcelas: 'Parcela', productores: 'Productor', capacitaciones: 'Ayuda memoria', capacitacion_asistentes: 'Asistente a capacitación', quejas: 'Queja', beneficiado: 'Beneficio y secado', solicitudes: 'Solicitud', creditos: 'Solicitud de crédito', proveedores: 'Proveedor', adjuntos: 'Respaldo', solicitud_adjuntos: 'Respaldo de solicitud' };
   const ps = await prods().catch(() => []), quien = id => ps.find(p => p.id === id)?.nombre || '';
   app().innerHTML = cabecera('Trabajo sin señal', '#/') + `<div class="caja"><p><b>${navigator.onLine && !S.sinSenal ? 'Hay señal.' : 'Sin señal.'}</b> ${c.length ? `Hay ${c.length} registro${c.length > 1 ? 's' : ''} guardado${c.length > 1 ? 's' : ''} en este teléfono.` : 'No hay nada pendiente de mandar.'}</p>
-    <p class="nota">Sin señal se puede registrar la inspección interna, el acopio (con su recibo) y los insumos aplicados. Se guardan en el teléfono y se mandan solos cuando vuelve la señal. Antes de salir al campo, con señal, tocá «Preparar para el campo» para guardar productores, parcelas, básculas y configuración.</p>
-    <div class="acciones"><button id="prep">Preparar para el campo</button>${c.length ? '<button class="sec" id="mandar">Mandar ahora</button>' : ''}${pedirInstalar ? '<button class="sec" id="instalar">Instalar la aplicación</button>' : ''}</div><p class="nota" id="prepN"></p></div>
+    <p class="nota">Sin señal se pueden llenar todos los formularios de la sección <a href="#/formularios">Formularios</a>, con sus fotos y archivos. Se guardan en el teléfono y se mandan solos cuando vuelve la señal. Antes de salir al campo, con señal, tocá «Preparar para el campo» para guardar productores, parcelas, básculas y configuración.</p>
+    <div class="acciones"><button id="prep">Preparar para el campo</button>${c.length ? '<button class="sec" id="mandar">Subir lo pendiente</button>' : ''}${pedirInstalar ? '<button class="sec" id="instalar">Instalar la aplicación</button>' : ''}</div><p class="nota" id="prepN"></p></div>
   ${c.length ? `<div class="tabla"><table><thead><tr><th>Registrado</th><th>Qué es</th><th>Productor</th><th>Estado</th><th></th></tr></thead><tbody>
-  ${c.map((x, i) => { const cu = [].concat(x.cuerpo)[0] || {}; return `<tr><td>${fechaHora(x.cuando)}</td><td>${esc(tipo[x.tabla] || x.tabla)}${[].concat(x.cuerpo).length > 1 ? ' (' + [].concat(x.cuerpo).length + ')' : ''}${x.tabla === 'acopio' ? ` · <a href="#/recibo/${cu.id}">recibo</a>` : ''}</td><td>${esc(quien(cu.productor_id))}</td><td>${x.error ? `<span class="error">${esc(x.error)}</span>` : i === 0 && enviando ? 'Enviando…' : 'Por enviar'}</td><td>${x.error ? `<button class="sec" data-quitar="${esc(x.n)}">Quitar</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>
+  ${c.map((x, i) => { const cu = [].concat(x.cuerpo)[0] || {}; return `<tr><td>${fechaHora(x.cuando)}</td><td>${esc(tipo[x.tabla] || x.tabla)}${[].concat(x.cuerpo).length > 1 ? ' (' + [].concat(x.cuerpo).length + ')' : ''}${x.tabla === 'acopio' && x.tipo !== 'archivo' ? ` · <a href="#/recibo/${cu.id}">recibo</a>` : ''}${x.tipo === 'archivo' ? ' · ' + esc(x.nombre || '') : ''}</td><td>${esc(quien(cu.productor_id))}</td><td>${x.error ? `<span class="error">${esc(x.error)}</span>` : i === 0 && enviando ? 'Enviando…' : 'Por enviar'}</td><td>${x.error ? `<button class="sec" data-quitar="${esc(x.n)}">Quitar</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>
   <p class="nota">Se mandan en orden. Si uno tiene problema, los demás esperan: revisá el motivo y, si no se puede arreglar, quitalo (se pierde lo que tenía) y registralo de nuevo con señal.</p>` : ''}`;
   $('#prep').onclick = async () => {
     const n = $('#prepN'); n.textContent = 'Guardando…';
@@ -2756,11 +2756,13 @@ RUTAS.capacitacion = async function formAyudaMemoria(codigo) {
     const mal = [...malos, ...revisarArchivos(adj.filter(a => !/^image\//.test(a.archivo.type || '')))]; if (mal.length) return aviso(mal.join(' '), true);
     ocupado(f, true);
     try {
+      const t0 = Date.now();
       await q(sb.from('capacitaciones').insert(reg));
       if (adj.length) aviso(`Subiendo ${adj.length} archivo${adj.length > 1 ? 's' : ''}…`);
       const fallos = adj.length ? await subirAdjReg('capacitaciones', reg.id, adj) : [];
       avisar('revision', reg.id, { tabla: 'capacitaciones' }); archivarLuego(true);
       const conLista = adj.some(a => a.clase === 'Lista de asistencia');
+      if (S.guardadoLocal >= t0) { aviso('Sin señal: la ayuda memoria quedó guardada en el teléfono' + (adj.length ? ` con ${adj.length} archivo${adj.length > 1 ? 's' : ''}` : '') + '. Se sube sola al volver la señal, o con «Subir lo pendiente».'); location.hash = '#/formularios'; return; }
       aviso(fallos.length ? 'Ayuda memoria guardada, pero no se subió: ' + fallos.join('; ') + '. Subilo desde la ayuda memoria.' : conLista ? 'Ayuda memoria guardada con sus fotos y anexos.' : 'Ayuda memoria guardada. Ahora agregá la lista de asistencia.', !!fallos.length);
       location.hash = (conLista || fallos.length ? '#/cap/' : '#/asistencia/') + reg.id;
     }
@@ -2768,3 +2770,76 @@ RUTAS.capacitacion = async function formAyudaMemoria(codigo) {
   };
 };
 ['capacitacion', 'capacitaciones', 'cap', 'guias'].forEach(r => SECCION_DE[r] = 'cer');
+
+// =====================================================================
+// FORMULARIOS: todos los formularios de la organización en un solo lugar.
+// Se llenan con o sin señal: sin señal quedan en el teléfono (con sus fotos y archivos) y se suben después.
+// =====================================================================
+function listaFormularios() {
+  const adm = puedeSec('adm'), cre = puedeSec('cre'), cer = puedeSec('cer'), cacao = typeof cultivos === 'function' && cultivos().length === 1 && cultivos()[0] === 'Cacao';
+  return [
+    adm && ['Administración', [
+      ['compra', '#/compra', 'Solicitud de compra', 'Cotizaciones y lo que se necesita comprar'],
+      ['fondo', '#/fondo', 'Solicitud de fondos', 'Dinero para una actividad'],
+      ['liquidacion', '#/liquidacion', 'Liquidación de fondos', 'Rendir cuentas de un fondo con sus facturas'],
+      ['vacacion', '#/vacacion', 'Vacaciones', 'Pedir días de vacaciones'],
+      esJefe() && ['laboral', '#/laboral', 'Liquidación laboral', 'Cálculo al terminar una relación laboral'],
+      puede('facturas.registrar') && ['agregarfac', '#/agregarfac', 'Factura de compra', 'Registrar facturas en el libro de compras', true],
+      ['proveedor', '#/proveedor', 'Proveedor nuevo', 'Datos y RTN del proveedor']]],
+    cre && ['Crédito interno', [
+      puede('credito.solicitar') && ['credito', '#/credito', 'Solicitud de crédito', 'Para un productor del padrón']]],
+    cer && ['Productores y fincas', [
+      puede('padron.crear') && ['prodf', '#/prodf', 'Productor nuevo', 'Datos del productor; después se agregan sus parcelas']]],
+    cer && ['Certificaciones', [
+      puede('inspeccion.registrar') && ['inspeccion', '#/inspeccion', 'Inspección interna', 'Lista de chequeo por certificación'],
+      puede('insumos.registrar') && ['insumos', '#/insumos', 'Insumo aplicado', 'Lo que se aplicó en una parcela'],
+      ['capacitacion', '#/capacitacion', 'Ayuda memoria de capacitación', 'Con fotos, lista de asistencia y anexos'],
+      ['queja', '#/queja', 'Queja o reclamo', 'Se puede registrar sin nombre']]],
+    cer && ['Del acopio a la exportación', [
+      puede('acopio.registrar') && ['acopio', '#/acopio', 'Recibo de acopio', 'Entrega de un productor, con su recibo'],
+      ['benef', '#/reg/beneficiado', cacao ? 'Fermentación y secado' : 'Beneficio y secado', 'Entrada, salida y humedad del lote']]]
+  ].filter(Boolean).map(([t, l]) => [t, l.filter(Boolean)]).filter(([, l]) => l.length);
+}
+RUTAS.formularios = async function verFormularios() {
+  const grupos = listaFormularios(), c = OFF.cola(), sin = navigator.onLine === false || S.sinSenal;
+  const archivos = c.filter(x => x.tipo === 'archivo').length, conError = c.find(x => x.error);
+  const listo = localStorage.getItem('ag_prep_' + (S.org?.id || ''));
+  app().innerHTML = moldeCab('Formularios', '', '#/') + `
+  <div class="caja formSubir ${c.length ? 'hay' : ''}">
+    <div><b>${sin ? 'Sin señal' : 'Con señal'}</b> · ${c.length ? `Hay <b>${c.length}</b> ${c.length > 1 ? 'cosas' : 'cosa'} guardada${c.length > 1 ? 's' : ''} en este teléfono sin subir${archivos ? ` (${archivos} foto${archivos > 1 ? 's o archivos' : ' o archivo'})` : ''}.` : 'No hay nada pendiente de subir.'}
+    ${conError ? `<p class="nota error" style="margin:6px 0 0">Uno tiene problema: ${esc(conError.error)} <a href="#/bandeja">Revisar</a></p>` : ''}</div>
+    <div class="acciones" style="margin:10px 0 0"><button id="subirPend" ${c.length ? '' : 'disabled'}>Subir lo pendiente${c.length ? ' (' + c.length + ')' : ''}</button><a class="boton sec" href="#/bandeja">Ver lo pendiente</a><button class="sec" id="prepForm">Preparar para trabajar sin señal</button></div>
+    <p class="nota" id="prepN" style="margin:6px 0 0">${listo ? 'Preparado el ' + esc(fechaHora(listo)) + '. ' : ''}Antes de salir al campo, con señal, tocá «Preparar»: se guardan en el teléfono los productores, parcelas, guías y listas que usan los formularios.</p>
+  </div>
+  ${grupos.map(([t, l]) => `<h2>${esc(t)}</h2><div class="formRejilla">${l.map(([k, h, tit, desc, conSenal]) => `<a class="caja formTarjeta" href="${h}"><b>${esc(tit)}</b><span class="nota">${esc(desc)}</span><span class="formEst ${conSenal ? 'senal' : ''}">${conSenal ? 'Necesita señal' : 'Sirve sin señal'}</span></a>`).join('')}</div>`).join('') || vacio('No tenés formularios habilitados. Pedile al administrador que te dé acceso.')}`;
+  $('#subirPend').onclick = async () => {
+    if (navigator.onLine === false) return aviso('Todavía no hay señal. Se sube solo apenas vuelva.', true);
+    const b = $('#subirPend'); b.disabled = true; b.textContent = 'Subiendo…';
+    await enviarCola(true); RUTAS.formularios();
+  };
+  $('#prepForm').onclick = () => prepararFormularios(grupos);
+};
+// Abre cada formulario sin mostrarlo, para que sus listas queden guardadas en el teléfono
+async function prepararFormularios(grupos) {
+  const n = $('#prepN'), b = $('#prepForm');
+  if (navigator.onLine === false) return aviso('Para preparar se necesita señal.', true);
+  b.disabled = true; n.textContent = 'Guardando productores y parcelas…';
+  try {
+    const [p2] = await Promise.all([prods(true), certs(), parcelasOrg(true), basculasActivas(), guiasCap().catch(() => []), q(sb.from('condiciones_credito').select('*').eq('org_id', S.org.id).eq('activa', true).order('orden')).catch(() => [])]);
+    const real = $('#app'), oculto = document.createElement('div');
+    const formas = grupos.flatMap(([, l]) => l).filter(x => !x[4]);
+    let hechos = 0;
+    for (const [k, h, tit] of formas) {
+      n.textContent = `Guardando «${tit}» (${hechos + 1} de ${formas.length})…`;
+      const [r, ...resto] = h.replace(/^#\/?/, '').split('/');
+      real.id = 'appReal'; oculto.id = 'app'; oculto.hidden = true; document.body.appendChild(oculto);
+      try { await RUTAS[r]?.(resto[0] || null, resto[1] || null); hechos++; } catch (_) { }
+      finally { oculto.remove(); oculto.innerHTML = ''; real.id = 'app'; }
+    }
+    guardarSesionLocal();
+    const ya = new Date().toISOString(); localStorage.setItem('ag_prep_' + S.org.id, ya);
+    n.textContent = `Listo: ${p2.length} productores, ${(S._parcs?.lista || []).length} parcelas y ${hechos} formularios quedaron en el teléfono. Ya se pueden llenar sin señal.`;
+  } catch (e) { n.textContent = 'No se pudo preparar: ' + falla(e); }
+  finally { b.disabled = false; }
+}
+SECCION_DE.formularios = '';

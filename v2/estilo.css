@@ -408,3 +408,12 @@ a.kpiLink:hover{border-color:#FECB18;transform:translateY(-1px)}
   .impFirmas div small{display:block;color:#5C7389;font-size:8pt}
   .impPie{display:block!important;margin-top:8mm;font-size:7.5pt;color:#94A3B8;text-align:center}
 }
+/* Formularios */
+.formSubir{border-left:4px solid var(--verde,#0b7a4a)}
+.formSubir.hay{border-left-color:#FECB18;background:#FFFBEA}
+.formRejilla{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.formTarjeta{display:flex;flex-direction:column;gap:4px;margin:0;text-decoration:none;color:inherit;transition:border-color .15s,box-shadow .15s}
+.formTarjeta:hover{border-color:#1D2C35;box-shadow:0 2px 8px rgba(29,44,53,.08)}
+.formTarjeta b{color:#1D2C35}
+.formEst{align-self:flex-start;margin-top:4px;font-size:12px;padding:2px 8px;border-radius:999px;background:#E6F4EC;color:#0b5e39}
+.formEst.senal{background:#EEF1F4;color:#5C7389}

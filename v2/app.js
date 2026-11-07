@@ -50,16 +50,20 @@ function falla(e) {
 }
 // ---------- sin señal: copia local de lo consultado y bandeja de salida ----------
 // Toda consulta que pasa por q() guarda su resultado; sin señal se usa esa copia.
-// Lo que se registra sin señal (inspección, acopio, insumos) queda en la bandeja y se manda solo al volver la señal.
+// Lo que se registra sin señal (todos los formularios de la sección Formularios) queda en la bandeja y se manda solo al volver la señal.
+// Los archivos (fotos, PDF) se guardan en el teléfono y se suben después del registro al que pertenecen.
 const sinRed = e => !navigator.onLine || /Failed to fetch|NetworkError|Load failed|network|fetch failed|ERR_INTERNET|TypeError: Failed/i.test(e?.message || String(e || ''));
 const OFF = {
   db: null,
   abrir() { return this.db ||= new Promise((ok, mal) => { const r = indexedDB.open('sig', 1); r.onupgradeneeded = () => r.result.createObjectStore('cache'); r.onsuccess = () => ok(r.result); r.onerror = () => mal(r.error); }); },
   async leer(k) { try { const db = await this.abrir(); return await new Promise(ok => { const r = db.transaction('cache').objectStore('cache').get(k); r.onsuccess = () => ok(r.result); r.onerror = () => ok(undefined); }); } catch (_) { return undefined; } },
   async guardar(k, v) { try { const db = await this.abrir(); db.transaction('cache', 'readwrite').objectStore('cache').put(v, k); } catch (_) { } },
+  async guardarYa(k, v) { const db = await this.abrir(); await new Promise((ok, mal) => { const t = db.transaction('cache', 'readwrite'); t.objectStore('cache').put(v, k); t.oncomplete = ok; t.onerror = () => mal(t.error); }); },
+  async borrar(k) { try { const db = await this.abrir(); db.transaction('cache', 'readwrite').objectStore('cache').delete(k); } catch (_) { } },
   cola() { try { return JSON.parse(localStorage.getItem('sig_cola') || '[]'); } catch (_) { return []; } },
   ponerCola(c) { localStorage.setItem('sig_cola', JSON.stringify(c)); pintarSenal(); },
-  TABLAS: ['acopio', 'inspecciones', 'no_conformidades', 'insumos_aplicados', 'parcelas', 'productores']
+  TABLAS: ['acopio', 'inspecciones', 'no_conformidades', 'insumos_aplicados', 'parcelas', 'productores', 'capacitaciones', 'capacitacion_asistentes', 'quejas', 'beneficiado',
+    'solicitudes', 'creditos', 'proveedores', 'adjuntos', 'solicitud_adjuntos']
 };
 function infoConsulta(p) {
   if (!p || !p.url || !p.method) return null;
@@ -84,7 +88,10 @@ async function sinSenal(info, e) {
     if (v !== undefined) return v;
     throw new Error('Sin señal, y esto todavía no se ha abierto con señal en este teléfono. Abrilo una vez con internet (o usá «Preparar para el campo» en la bandeja).');
   }
-  if (!OFF.TABLAS.includes(info.tabla) || !['POST', 'PATCH'].includes(info.metodo) || (info.metodo === 'POST' && ![].concat(info.cuerpo || []).every(x => x && x.id))) throw new Error('Sin señal: esto necesita internet. Sin señal se puede registrar inspección, acopio e insumos.');
+  // Lo nuevo lleva su número de registro desde el teléfono, para que no se duplique al mandarlo
+  if (OFF.TABLAS.includes(info.tabla) && info.metodo === 'POST') [].concat(info.cuerpo || []).forEach(x => { if (x && typeof x === 'object' && !x.id) x.id = crypto.randomUUID(); });
+  if (!OFF.TABLAS.includes(info.tabla) || !['POST', 'PATCH'].includes(info.metodo) || (info.metodo === 'POST' && ![].concat(info.cuerpo || []).every(x => x && x.id))) throw new Error('Sin señal: esto necesita internet. Sin señal se pueden llenar los formularios de la sección «Formularios».');
+  S.guardadoLocal = Date.now();
   const c = OFF.cola();
   c.push({ n: Date.now() + '-' + Math.random().toString(36).slice(2, 6), cuando: new Date().toISOString(), metodo: info.metodo, url: info.url, cuerpo: info.cuerpo, tabla: info.tabla, org: S.org?.id, quien: S.user?.id });
   OFF.ponerCola(c);
@@ -98,24 +105,56 @@ async function enviarCola(manual) {
   if (enviando || !navigator.onLine) return;
   let c = OFF.cola(); if (!c.length) return;
   enviando = true; pintarSenal();
-  let mandados = 0;
+  let mandados = 0; const avisos = [];
   try {
     const { data } = await sb.auth.getSession(); const tk = data.session?.access_token;
     if (!tk) { if (manual) aviso('Entrá con tu usuario para mandar la bandeja.', true); return; }
     while (c.length) {
       const x = c[0];
       if (x.quien && x.quien !== S.user?.id) { x.error = 'Lo registró otro usuario en este teléfono: tiene que entrar esa persona para mandarlo.'; break; }
+      if (x.tipo === 'archivo') {
+        const r2 = await subirArchivoCola(x, tk).catch(e => sinRed(e) ? null : (falla(e) || 'No se pudo subir el archivo.'));
+        if (r2 === null) break;
+        if (r2 === true) { c.shift(); mandados++; OFF.ponerCola(c); OFF.borrar(x.clave); continue; }
+        x.error = r2; OFF.ponerCola(c); break;
+      }
       const url = x.url.replace(/([?&])(select|columns)=[^&]*/g, '$1').replace(/[?&]+$/, '');
       let r;
       try { r = await fetch(url, { method: x.metodo, headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + tk, 'Content-Type': 'application/json', Prefer: 'return=minimal' + (x.metodo === 'POST' ? ',resolution=ignore-duplicates' : '') }, body: JSON.stringify(x.cuerpo) }); }
       catch (e) { break; }
       const t2 = r.ok ? '' : await r.text().catch(() => '');
-      if (r.ok || (r.status === 409 && /23505/.test(t2))) { c.shift(); mandados++; OFF.ponerCola(c); continue; } x.error = (() => { try { const j = JSON.parse(t2); return falla(j); } catch (_) { return t2.slice(0, 200) || 'Error ' + r.status; } })();
+      if (r.ok || (r.status === 409 && /23505/.test(t2))) {
+        if (x.metodo === 'POST') [].concat(x.cuerpo || []).forEach(o => { if (x.tabla === 'solicitudes') avisos.push(['solicitud', o.id, {}]); else if (OFF.REVISION.includes(x.tabla)) avisos.push(['revision', o.id, { tabla: x.tabla }]); });
+        c.shift(); mandados++; OFF.ponerCola(c); continue;
+      } x.error = (() => { try { const j = JSON.parse(t2); return falla(j); } catch (_) { return t2.slice(0, 200) || 'Error ' + r.status; } })();
       OFF.ponerCola(c); break;
     }
   } finally { enviando = false; pintarSenal(); }
-  if (mandados) { aviso(`Se mandaron ${mandados} registro${mandados > 1 ? 's' : ''} que estaban en el teléfono.`); try { archivarLuego(true); } catch (_) { } }
+  if (mandados) {
+    aviso(`Se subieron ${mandados} registro${mandados > 1 ? 's' : ''} o archivo${mandados > 1 ? 's' : ''} que estaban en el teléfono.`); try { archivarLuego(true); } catch (_) { }
+    avisos.forEach(([t, id, ex]) => sb.functions.invoke('avisos', { body: { tipo: t, id, ...ex } }).catch(() => {}));
+  }
   else if (manual && OFF.cola()[0]?.error) aviso('Hay un registro con problema en la bandeja.', true);
+}
+// Archivo guardado en el teléfono: se sube al almacenamiento y después se registra su fila (adjuntos o solicitud_adjuntos)
+OFF.REVISION = ['capacitaciones', 'inspecciones', 'acopio', 'quejas', 'beneficiado', 'insumos_aplicados', 'no_conformidades', 'productores'];
+async function encolarArchivo(bucket, ruta, archivo, tabla, fila) {
+  const n = Date.now() + '-' + Math.random().toString(36).slice(2, 6), clave = 'archivo:' + n;
+  await OFF.guardarYa(clave, archivo);
+  const c = OFF.cola();
+  c.push({ n, tipo: 'archivo', cuando: new Date().toISOString(), clave, bucket, ruta, nombre: archivo.name, mime: archivo.type || 'application/octet-stream', tamano: archivo.size, tabla, cuerpo: { id: crypto.randomUUID(), ...fila }, org: S.org?.id, quien: S.user?.id });
+  OFF.ponerCola(c); S.guardadoLocal = Date.now();
+}
+async function subirArchivoCola(x, tk) {
+  const blob = await OFF.leer(x.clave);
+  if (!blob) return 'El archivo ya no está en el teléfono. Quitalo de la lista y subilo otra vez desde el registro.';
+  const ruta = x.ruta.split('/').map(encodeURIComponent).join('/');
+  const r = await fetch(`${SUPA_URL}/storage/v1/object/${x.bucket}/${ruta}`, { method: 'POST', headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + tk, 'Content-Type': x.mime, 'x-upsert': 'false' }, body: blob });
+  if (!r.ok) { const t = await r.text().catch(() => ''); if (!/already exists|Duplicate/i.test(t)) return 'No se pudo subir «' + x.nombre + '»: ' + (t.slice(0, 160) || 'error ' + r.status); }
+  const r2 = await fetch(`${SUPA_URL}/rest/v1/${x.tabla}`, { method: 'POST', headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + tk, 'Content-Type': 'application/json', Prefer: 'return=minimal,resolution=ignore-duplicates' }, body: JSON.stringify(x.cuerpo) });
+  if (r2.ok) return true;
+  const t2 = await r2.text().catch(() => ''); if (r2.status === 409 && /23505/.test(t2)) return true;
+  try { return falla(JSON.parse(t2)); } catch (_) { return t2.slice(0, 200) || 'Error ' + r2.status; }
 }
 function pintarSenal() {
   let b = document.getElementById('senal');
@@ -306,7 +345,13 @@ async function ruta() {
   }
   app().innerHTML = '<div class="cargando">Cargando…</div>';
   try { await f(resto[0] || null, resto[1] || null); window.scrollTo(0, 0); }
-  catch (e) { app().innerHTML = `<div class="caja error">No se pudo abrir esta pantalla: ${esc(falla(e))}</div>`; }
+  catch (e) {
+    if (S.guardadoLocal && Date.now() - S.guardadoLocal < 30000 && sinRed(e) || S.guardadoLocal && Date.now() - S.guardadoLocal < 30000 && /Sin señal/.test(falla(e))) {
+      app().innerHTML = cabecera('Guardado en el teléfono', '#/formularios') + `<div class="caja"><p><b>Lo que llenaste quedó guardado en este teléfono.</b> Se sube solo cuando vuelva la señal, o con el botón «Subir lo pendiente» en Formularios.</p><div class="acciones"><a class="boton" href="#/formularios">Ir a Formularios</a><a class="boton sec" href="#/bandeja">Ver lo pendiente</a></div></div>`;
+      return;
+    }
+    app().innerHTML = `<div class="caja error">No se pudo abrir esta pantalla: ${esc(falla(e))}</div>`;
+  }
 }
 
 // ---------- acceso ----------
@@ -382,6 +427,7 @@ async function guardarSolicitud(reg, adjuntos = []) {
   reg.org_id = S.org.id;
   const fila = await q(sb.from('solicitudes').insert(reg).select('id,numero').single());
   const fallos = adjuntos.length ? await subirAdjuntos(fila.id, adjuntos) : [];
+  if (fila._local) { aviso('Sin señal: la solicitud quedó guardada en el teléfono' + (adjuntos.length ? ' con sus respaldos' : '') + '. Se sube sola al volver la señal, o con «Subir lo pendiente» en Formularios.'); location.hash = '#/formularios'; return; }
   avisar('solicitud', fila.id);
   aviso(fallos.length ? `Quedó registrada como ${fila.numero}, pero no se subió: ${fallos.join('; ')}. Subilo desde la solicitud.` : 'Listo. Quedó registrada como ' + fila.numero + (adjuntos.length ? ` con ${adjuntos.length} respaldo${adjuntos.length > 1 ? 's' : ''}` : ''), !!fallos.length);
   location.hash = '#/solicitud/' + fila.id;
@@ -396,8 +442,12 @@ async function subirAdjuntos(solId, lista) {
   const fallos = [];
   for (const a of lista) {
     try {
+      a.archivo = await achicarFoto(a.archivo);
       const ruta = `${S.org.id}/solicitudes/${solId}/${Date.now()}-${a.archivo.name.replace(/[^\w.\-]+/g, '_')}`;
+      const fila = { org_id: S.org.id, solicitud_id: solId, clase: a.clase || 'Otro', nombre: a.archivo.name, ruta, tipo_mime: a.archivo.type || null, tamano: a.archivo.size, nota: a.nota || null };
+      if (navigator.onLine === false || S.sinSenal) { await encolarArchivo('documentos', ruta, a.archivo, 'solicitud_adjuntos', fila); continue; }
       const { error } = await sb.storage.from('documentos').upload(ruta, a.archivo, { contentType: a.archivo.type || undefined });
+      if (error && sinRed(error)) { await encolarArchivo('documentos', ruta, a.archivo, 'solicitud_adjuntos', fila); continue; }
       if (error) throw error;
       await q(sb.from('solicitud_adjuntos').insert({ org_id: S.org.id, solicitud_id: solId, clase: a.clase || 'Otro', nombre: a.archivo.name, ruta, tipo_mime: a.archivo.type || null, tamano: a.archivo.size, nota: a.nota || null }));
     } catch (e) { fallos.push(a.archivo.name + ' (' + falla(e) + ')'); }
@@ -478,9 +528,12 @@ async function subirAdjReg(tabla, id, lista) {
     try {
       a.archivo = await achicarFoto(a.archivo);
       const ruta = `${S.org.id}/adjuntos/${tabla}/${id}/${Date.now()}-${a.archivo.name.replace(/[^\w.\-]+/g, '_')}`;
+      const fila = { org_id: S.org.id, tabla, registro_id: id, clase: a.clase || 'Otro', nombre: a.archivo.name, ruta, tipo_mime: a.archivo.type || null, tamano: a.archivo.size, nota: a.nota || null };
+      if (navigator.onLine === false || S.sinSenal) { await encolarArchivo('documentos', ruta, a.archivo, 'adjuntos', fila); continue; }
       const { error } = await sb.storage.from('documentos').upload(ruta, a.archivo, { contentType: a.archivo.type || undefined });
+      if (error && sinRed(error)) { await encolarArchivo('documentos', ruta, a.archivo, 'adjuntos', fila); continue; }
       if (error) throw error;
-      await q(sb.from('adjuntos').insert({ org_id: S.org.id, tabla, registro_id: id, clase: a.clase || 'Otro', nombre: a.archivo.name, ruta, tipo_mime: a.archivo.type || null, tamano: a.archivo.size, nota: a.nota || null }));
+      await q(sb.from('adjuntos').insert(fila));
     } catch (e) { fallos.push(a.archivo.name + ' (' + falla(e) + ')'); }
   }
   return fallos;
