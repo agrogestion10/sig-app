@@ -345,3 +345,66 @@ a.kpiLink:hover{border-color:#FECB18;transform:translateY(-1px)}
 .logoAG{background:var(--amarillo,#FECB18);color:#1D2C35;border-radius:12px;width:48px;height:48px;display:inline-flex;align-items:center;justify-content:center;font-size:19px;letter-spacing:.5px}
 /* Lo que está oculto queda oculto aunque tenga su propio estilo (por ejemplo la barra de arriba en la pantalla de entrada) */
 [hidden]{display:none!important}
+
+/* =====================================================================
+   Impresión: un solo diseño para todo lo que se imprime o se guarda en PDF
+   (membrete, datos en dos columnas, tablas limpias, firmas y número de página)
+   ===================================================================== */
+.impCab,.impFirmas,.impPie{display:none}
+@page{size:letter;margin:16mm 14mm 16mm 14mm;
+  @top-left{content:var(--ag-org,"");font:600 8pt system-ui,sans-serif;color:#5C7389}
+  @top-right{content:var(--ag-impreso,"");font:8pt system-ui,sans-serif;color:#5C7389}
+  @bottom-left{content:"AgroGestión · app.agrogestionhn.com";font:8pt system-ui,sans-serif;color:#94A3B8}
+  @bottom-right{content:"Página " counter(page) " de " counter(pages);font:8pt system-ui,sans-serif;color:#5C7389}}
+@page:first{@top-left{content:none}@top-right{content:none}}
+@media print{
+  html,body{background:#fff!important}
+  body{font-size:10.5pt;line-height:1.4;color:#1D2C35;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  main,#app{max-width:none!important;margin:0!important;padding:0!important}
+  /* lo que no se imprime */
+  #barra,header,.navLat,.navBaja,.waBtn,#waCaja,.volver,.ayudaSec,.acciones,.moldeAcc,.barraFiltros,.btnExcel,.barraExcel,.menuBoton,.pieEstado,#pieE,
+  button,input,select,textarea,label,.lsel,.aviso,#aviso,.avisoPlan,.noImprimir,.waAviso,dialog,#verAviso,.versionAviso{display:none!important}
+  .pestanas button:not(.activa){display:none!important}
+  .pestanas{border:0;margin:0 0 4mm}.pestanas button.activa{display:inline-block!important;background:none!important;padding:0;font-weight:700;color:#5C7389;font-size:9pt;text-transform:uppercase;letter-spacing:.06em}
+  a{color:inherit!important;text-decoration:none!important}
+  /* membrete */
+  .impCab{display:flex!important;align-items:center;justify-content:space-between;gap:10mm;border-bottom:2.5pt solid #FECB18;padding-bottom:4mm;margin-bottom:6mm}
+  .impCab .impMarca{display:flex;align-items:center;gap:3mm}
+  .impCab .impLogo{background:#FECB18;color:#1D2C35;border-radius:2.5mm;width:11mm;height:11mm;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11pt}
+  .impCab .impOrg{font-weight:800;font-size:13pt;line-height:1.15}
+  .impCab .impOrg small{display:block;font-weight:500;font-size:8.5pt;color:#5C7389}
+  .impCab .impDatos{text-align:right;font-size:8.5pt;color:#5C7389;line-height:1.5}
+  .impCab .impDatos b{color:#1D2C35}
+  /* título */
+  h1{font-size:17pt;margin:0 0 4mm;letter-spacing:-.2px}
+  .moldeCab{display:block;margin:0 0 3mm}.moldeTit h1{margin-bottom:3mm}
+  h2{font-size:12pt;margin:6mm 0 2.5mm;padding-bottom:1.5mm;border-bottom:.75pt solid #E3E8EE;break-after:avoid}
+  h3{font-size:11pt;margin:4mm 0 2mm;break-after:avoid}
+  .nota{color:#5C7389;font-size:9pt}
+  /* cajas y datos */
+  .caja{border:.75pt solid #E3E8EE!important;border-radius:3mm;padding:4mm 5mm!important;box-shadow:none!important;break-inside:avoid;margin-bottom:4mm;background:#fff!important}
+  .detalle{display:grid;grid-template-columns:38mm 1fr;column-gap:5mm;row-gap:1.6mm;margin:2mm 0}
+  .detalle dt{margin:0;font-size:8.5pt;color:#5C7389;font-weight:600;padding-top:.6mm}
+  .detalle dd{margin:0;font-size:10pt}
+  .estado,.chipCert,.chipEt{background:none!important;border:.75pt solid currentColor;padding:.3mm 2mm;font-size:8pt}
+  /* tablas */
+  .tabla{border:0!important;overflow:visible!important;box-shadow:none!important}
+  table{width:100%;border-collapse:collapse;font-size:9pt}
+  thead{display:table-header-group}
+  th{background:#F6F8FA!important;color:#394C60;font-size:7.5pt;text-transform:uppercase;letter-spacing:.04em;border-bottom:1pt solid #CBD5E1!important;padding:1.8mm 2mm!important}
+  td{border-bottom:.5pt solid #E3E8EE!important;padding:1.6mm 2mm!important;vertical-align:top}
+  tfoot th,tfoot td{background:none!important;border-top:1pt solid #1D2C35!important;font-weight:700}
+  tr{break-inside:avoid}
+  /* tarjetas de números */
+  .kpis{display:grid!important;grid-template-columns:repeat(4,1fr)!important;gap:3mm!important;margin:0 0 4mm}
+  .kpi{border:.75pt solid #E3E8EE!important;border-radius:3mm;padding:3mm!important;box-shadow:none!important;break-inside:avoid;transform:none!important}
+  .kpiIc{display:none!important}.kpiTx b{font-size:13pt!important}.kpiTx small,.kpiTx em{font-size:8pt}
+  .tarjetas{grid-template-columns:repeat(3,1fr)!important}.tarjeta{border:.75pt solid #E3E8EE!important;box-shadow:none!important;break-inside:avoid}
+  .tablero{display:grid!important;grid-auto-flow:row!important;grid-template-columns:repeat(3,1fr)!important}
+  .vacio svg{display:none}
+  /* firmas */
+  .impFirmas{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(45mm,1fr));gap:10mm;margin-top:16mm;break-inside:avoid}
+  .impFirmas div{border-top:.75pt solid #1D2C35;padding-top:1.5mm;text-align:center;font-size:9pt}
+  .impFirmas div small{display:block;color:#5C7389;font-size:8pt}
+  .impPie{display:block!important;margin-top:8mm;font-size:7.5pt;color:#94A3B8;text-align:center}
+}

@@ -262,3 +262,26 @@ document.addEventListener('change', ev => {
   const esta = (location.hash.match(/(COM|FON|LIQ|VAC|LAB)-\d{4}-\d{3,}/i) || [])[0];
   if (!confirm(`«${raras[0].name}» parece el PDF de otro registro de AgroGestión, no un documento de respaldo (cotización, factura, comprobante).\n\n¿Seguro que es el archivo correcto?`)) { i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); }
 }, true);
+
+// ---------- Al imprimir: membrete de la organización, firmas y pie (el diseño está en estilo.css) ----------
+const FIRMAS_DE = s => ({ solicitud: ['Solicitó', 'Autorizó', 'Administración'], cred: ['Productor', 'Oficial de crédito', 'Gerencia'], insp: ['Productor', 'Inspector interno'], cap: ['Facilitador', 'Coordinación'], lote: ['Encargado de acopio', 'Gerencia'], eudr: ['Elaboró', 'Revisó'] })[s];
+function prepararImpresion() {
+  if (document.body.classList.contains('impRecibo')) return;
+  const raiz = app(); if (!raiz || !S.org) return;
+  quitarImpresion();
+  const ahora = new Date().toLocaleString('es-HN', { timeZone: 'America/Tegucigalpa', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const quien = S.maestro ? 'Usuario maestro' : (S.perfil?.nombre || '');
+  const titulo = (raiz.querySelector('h1')?.textContent || '').trim();
+  const ruta = location.hash.replace(/^#\/?/, '').split('/')[0];
+  document.documentElement.style.setProperty('--ag-org', JSON.stringify(S.org.nombre || ''));
+  document.documentElement.style.setProperty('--ag-impreso', JSON.stringify('Impreso el ' + ahora));
+  const cab = document.createElement('div'); cab.className = 'impCab';
+  cab.innerHTML = `<div class="impMarca"><span class="impLogo">AG</span><div class="impOrg">${esc(S.org.nombre || '')}<small>${esc(titulo)}</small></div></div><div class="impDatos">Impreso el <b>${esc(ahora)}</b><br>por ${esc(quien)}</div>`;
+  raiz.prepend(cab);
+  const firmas = FIRMAS_DE(ruta);
+  if (firmas) { const f = document.createElement('div'); f.className = 'impFirmas'; f.innerHTML = firmas.map(t => `<div>${esc(t)}<small>Nombre, firma y fecha</small></div>`).join(''); raiz.append(f); }
+  const pie = document.createElement('div'); pie.className = 'impPie'; pie.textContent = 'Documento generado con AgroGestión. Los registros originales quedan guardados en el sistema con su bitácora.'; raiz.append(pie);
+}
+function quitarImpresion() { document.querySelectorAll('.impCab,.impFirmas,.impPie').forEach(e => e.remove()); }
+window.addEventListener('beforeprint', prepararImpresion);
+window.addEventListener('afterprint', quitarImpresion);
