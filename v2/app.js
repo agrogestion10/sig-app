@@ -341,7 +341,7 @@ async function inicio() {
     verFac ? q(sb.from('facturas').select('total,isv').eq('org_id', S.org.id).eq('mes_fiscal', mes)).catch(() => []) : [],
     q(sb.from('ejecucion_presupuesto').select('aprobado,ejecutado,comprometido').eq('org_id', S.org.id).eq('anio', anio)).catch(() => []),
     puede('empleados.gestionar') ? q(sb.from('empleados').select('id,activo').eq('org_id', S.org.id)).catch(() => []) : []]);
-  const pend = sol.filter(x => x.estado === 'Pendiente'), delMes = sol.filter(x => String(x.creado).startsWith(mes)), autMes = delMes.filter(x => ['Autorizada', 'Atendida'].includes(x.estado));
+  const pend = sol.filter(x => x.estado === 'Pendiente'), delMes = sol.filter(x => String(x.creado).startsWith(mes)), autMes = delMes.filter(x => ['Autorizada', 'Pago cargado', 'Pagada', 'Atendida'].includes(x.estado));
   const porAtender = sol.filter(x => x.estado === 'Autorizada' && ['compra', 'fondo'].includes(x.tipo));
   const sp = k => pres.reduce((t, x) => t + num(x[k]), 0), apro = sp('aprobado'), uso = sp('ejecutado') + sp('comprometido'), pct = apro ? uso / apro * 100 : 0, alerta = num(S.cfg.PRESUPUESTO_AVISO_PCT || 85);
   const acciones = ['<a class="boton" href="#/compra">+ Solicitud de compra</a>', '<a class="boton sec" href="#/fondo">Pedir fondos</a>', '<a class="boton sec" href="#/liquidacion">Liquidar fondos</a>',
@@ -354,6 +354,7 @@ async function inicio() {
     verFac ? kpi('azul', 'doc', 'Facturas del mes', fac.length, 'Total ' + L(fac.reduce((t, x) => t + num(x.total), 0)) + ' · <a href="#/facturas">Libro de compras</a>') : '',
     apro ? kpi(pct > 100 ? 'rojo' : pct >= alerta ? 'ambar' : 'verde', 'sube', 'Presupuesto usado ' + anio, pct.toFixed(0) + ' %', L(uso) + ' de ' + L(apro) + ' · <a href="#/presupuesto">Ver</a>') : kpi('gris', 'sube', 'Presupuesto ' + anio, 'Sin cargar', esJefe() ? '<a href="#/presupuesto">Cargarlo</a>' : ''),
     emp.length ? kpi('gris', 'gente', 'Empleados activos', emp.filter(e => e.activo).length, '<a href="#/empleados">Ver personal</a>') : ''].filter(Boolean)) +
+  (sol.filter(x => x.estado === 'Pago cargado').length && puede('pagos.banca') ? `<div class="caja" style="border-color:#93C5FD;background:#EFF6FF"><b>${sol.filter(x => x.estado === 'Pago cargado').length} pago${sol.filter(x => x.estado === 'Pago cargado').length > 1 ? 's' : ''} cargado${sol.filter(x => x.estado === 'Pago cargado').length > 1 ? 's' : ''} en la banca en línea, esperando tu aprobación.</b> <a href="#/solicitudes">Revisar</a></div>` : '') +
   (porAtender.length && puede('solicitudes.gestionar') ? `<div class="caja" style="border-color:#FECB18;background:#FFFBEB"><b>${porAtender.length} compra${porAtender.length > 1 ? 's' : ''} o fondo${porAtender.length > 1 ? 's' : ''} autorizado${porAtender.length > 1 ? 's' : ''} por atender.</b> <a href="#/solicitudes">Atender</a></div>` : '') +
   `<div class="filaT"><h2>Últimas solicitudes</h2><a href="#/solicitudes">Ver todas</a></div>` +
   (sol.length ? `<div class="tabla"><table><thead><tr><th>Número</th><th>Tipo</th><th>Fecha</th><th>Quién pide</th><th>Qué</th><th class="n">Monto</th><th>Estado</th></tr></thead><tbody>
@@ -637,7 +638,7 @@ function tablaFacturas(raiz, op = {}) {
 async function facturasUsadas() {
   const [fac, liq] = await Promise.all([
     q(sb.from('facturas').select('numero,emisor,mes_fiscal').eq('org_id', S.org.id).not('numero', 'is', null).limit(5000)).catch(() => []),
-    q(sb.from('solicitudes').select('numero,datos').eq('org_id', S.org.id).eq('tipo', 'liquidacion').in('estado', ['Pendiente', 'Autorizada', 'Atendida'])).catch(() => [])]);
+    q(sb.from('solicitudes').select('numero,datos').eq('org_id', S.org.id).eq('tipo', 'liquidacion').in('estado', ['Pendiente', 'Autorizada', 'Pago cargado', 'Pagada', 'Atendida'])).catch(() => [])]);
   const m = new Map();
   fac.forEach(x => m.set(claveFac({ proveedor: x.emisor, numero: x.numero }), 'libro de compras' + (x.mes_fiscal ? ' ' + x.mes_fiscal : '')));
   liq.forEach(l => (l.datos?.facturas || []).forEach(x => m.set(claveFac(x), 'liquidación ' + l.numero)));
@@ -654,10 +655,10 @@ async function facturasAlLibro(lista, { solicitud_id = null, fecha = hoy(), orig
 }
 
 async function formLiquidacion(refId) {
-  let qy = sb.from('solicitudes').select('id,numero,monto,descripcion,solicitante,proyecto,linea,creado_por').eq('org_id', S.org.id).eq('tipo', 'fondo').in('estado', ['Autorizada', 'Atendida']).order('creado', { ascending: false });
+  let qy = sb.from('solicitudes').select('id,numero,monto,descripcion,solicitante,proyecto,linea,creado_por').eq('org_id', S.org.id).eq('tipo', 'fondo').in('estado', ['Autorizada', 'Pago cargado', 'Pagada', 'Atendida']).order('creado', { ascending: false });
   if (!esJefe()) qy = qy.eq('creado_por', S.user.id);
   const [fondos, liq, provs, us] = await Promise.all([q(qy),
-    q(sb.from('solicitudes').select('referencia').eq('org_id', S.org.id).eq('tipo', 'liquidacion').in('estado', ['Pendiente', 'Autorizada', 'Atendida'])), provsActivos(), facturasUsadas()]);
+    q(sb.from('solicitudes').select('referencia').eq('org_id', S.org.id).eq('tipo', 'liquidacion').in('estado', ['Pendiente', 'Autorizada', 'Pago cargado', 'Pagada', 'Atendida'])), provsActivos(), facturasUsadas()]);
   const hechas = new Set(liq.map(x => x.referencia));
   const libres = fondos.filter(x => !hechas.has(x.id));
   if (!libres.length) { app().innerHTML = cabecera('Liquidar fondos') + '<div class="caja">No hay fondos autorizados pendientes de liquidar.</div>'; return; }
@@ -785,7 +786,7 @@ function revisarFactura(d) {
   return { errs, avisos, tipo_retencion, retencion: Math.round(retencion * 100) / 100 };
 }
 async function formFactura() {
-  const sol = await q(sb.from('solicitudes').select('id,numero,descripcion').eq('org_id', S.org.id).in('tipo', ['compra', 'fondo']).in('estado', ['Autorizada', 'Atendida']).order('creado', { ascending: false }).limit(100));
+  const sol = await q(sb.from('solicitudes').select('id,numero,descripcion').eq('org_id', S.org.id).in('tipo', ['compra', 'fondo']).in('estado', ['Autorizada', 'Pago cargado', 'Pagada', 'Atendida']).order('creado', { ascending: false }).limit(100));
   app().innerHTML = cabecera('Registrar factura') + `
   <form class="caja" id="f"><div class="rejilla">
     <div><label>Tipo de documento</label><select name="tipo_documento">${opciones(['Factura', 'Recibo por honorarios', 'Nota de débito', 'Nota de crédito', 'Recibo sin CAI'])}</select></div>
@@ -870,17 +871,17 @@ async function verFacturas(mes) {
 async function verSolicitudes() {
   const aut = puede('solicitudes.autorizar'), mes = new Date().toISOString().slice(0, 7);
   const filas = await q(sb.from('solicitudes').select('id,numero,tipo,creado,solicitante,estado,monto,descripcion').eq('org_id', S.org.id).order('creado', { ascending: false }).limit(300));
-  const GRUPO = { pend: ['Pendiente'], aut: ['Autorizada'], aten: ['Atendida'], rech: ['Rechazada', 'Anulada'], todas: null };
+  const GRUPO = { pend: ['Pendiente'], aut: ['Autorizada', 'Pago cargado'], aten: ['Pagada', 'Atendida'], rech: ['Rechazada', 'Anulada'], todas: null };
   let pest = sessionStorage.getItem('sig_sol_pest') || (esJefe() ? 'pend' : 'todas');
   const cuantas = k => GRUPO[k] ? filas.filter(x => GRUPO[k].includes(x.estado)).length : filas.length;
-  const delMes = filas.filter(x => String(x.creado).startsWith(mes)), autMes = delMes.filter(x => ['Autorizada', 'Atendida'].includes(x.estado));
+  const delMes = filas.filter(x => String(x.creado).startsWith(mes)), autMes = delMes.filter(x => ['Autorizada', 'Pago cargado', 'Pagada', 'Atendida'].includes(x.estado));
   app().innerHTML = moldeCab(aut ? 'Autorizaciones' : 'Mis solicitudes', `<a class="boton" href="#/compra">+ Solicitud de compra</a><a class="boton sec" href="#/fondo">Pedir fondos</a>`) + `
   <div class="barraFiltros"><select id="ft"><option value="">Todos los tipos</option>${Object.entries(TIPOS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
     <input id="bus" class="busca" type="search" placeholder="Buscar por número, solicitante o descripción"></div>
   ${kpis([kpi(cuantas('pend') ? 'ambar' : 'gris', 'reloj', 'Por resolver', cuantas('pend'), 'Esperando autorización'),
     kpi('verde', 'dinero', 'Autorizado este mes', L(autMes.reduce((t, x) => t + num(x.monto), 0)), autMes.length + ' solicitudes'),
     kpi('azul', 'doc', 'Solicitudes del mes', delMes.length, 'Compras, fondos, vacaciones…')])}
-  ${pestanas([['pend', 'Pendientes', cuantas('pend')], ['aut', 'Autorizadas', cuantas('aut')], ['aten', 'Atendidas', cuantas('aten')], ['rech', 'Rechazadas', cuantas('rech')], ['todas', 'Todas', cuantas('todas')]], pest)}
+  ${pestanas([['pend', 'Pendientes', cuantas('pend')], ['aut', 'Autorizadas y en pago', cuantas('aut')], ['aten', 'Pagadas o atendidas', cuantas('aten')], ['rech', 'Rechazadas', cuantas('rech')], ['todas', 'Todas', cuantas('todas')]], pest)}
   <div id="lista"></div>`;
   const pintar = () => {
     const t = norm($('#bus').value), tipo = $('#ft').value;
@@ -897,11 +898,11 @@ async function verSolicitud(id) {
   const d = s.datos || {};
   let extra = '';
   if (s.tipo === 'compra' && d.cotizaciones) extra = `<h2>Cotizaciones</h2><div class="tabla"><table><thead><tr><th>#</th><th>Proveedor</th><th class="n">Monto</th><th>Condiciones</th></tr></thead><tbody>${d.cotizaciones.map(c => `<tr><td>${c.n}${c.n === d.elegida ? ' ✔' : ''}</td><td>${esc(c.proveedor)}</td><td class="n">${L(c.monto)}</td><td>${esc(c.condiciones)}</td></tr>`).join('')}</tbody></table></div>${d.justificacion ? `<p><b>Justificación:</b> ${esc(d.justificacion)}</p>` : ''}`;
-  if (s.tipo === 'fondo') extra = `<dl class="detalle"><dt>Actividad</dt><dd>${esc(d.fecha_actividad)}</dd><dt>Liquidará el</dt><dd>${esc(d.fecha_liquidar || '—')}</dd><dt>Detalle</dt><dd>${esc(d.detalle || '—')}</dd></dl>${['Autorizada', 'Atendida'].includes(s.estado) ? `<div class="acciones"><a class="boton sec" href="#/liquidacion/${s.id}">Liquidar este fondo</a></div>` : ''}`;
+  if (s.tipo === 'fondo') extra = `<dl class="detalle"><dt>Actividad</dt><dd>${esc(d.fecha_actividad)}</dd><dt>Liquidará el</dt><dd>${esc(d.fecha_liquidar || '—')}</dd><dt>Detalle</dt><dd>${esc(d.detalle || '—')}</dd></dl>${['Autorizada', 'Pago cargado', 'Pagada', 'Atendida'].includes(s.estado) ? `<div class="acciones"><a class="boton sec" href="#/liquidacion/${s.id}">Liquidar este fondo</a></div>` : ''}`;
   if (s.tipo === 'liquidacion') extra = `<dl class="detalle"><dt>Fondo</dt><dd>${esc(d.fondo)} · ${L(d.monto_fondo)}</dd><dt>Gastado</dt><dd>${L(d.total_gastos)}</dd><dt>Resultado</dt><dd>${d.diferencia > 0 ? 'Devuelve ' + L(d.diferencia) : d.diferencia < 0 ? 'Se le reintegra ' + L(-d.diferencia) : 'Cuadra exacto'}</dd></dl>`;
   if (s.tipo === 'liquidacion' && d.facturas?.length) extra += `<h2>Facturas (${d.facturas.length})</h2><div class="tabla"><table><thead><tr><th>#</th><th>Número</th><th>Proveedor</th><th>Descripción</th><th class="n">Total</th></tr></thead><tbody>${d.facturas.map(x => `<tr><td>${x.n}</td><td>${esc(x.numero)}</td><td>${esc(x.proveedor || '')}</td><td>${esc(x.descripcion)}</td><td class="n">${L(x.total)}</td></tr>`).join('')}</tbody><tfoot><tr><th colspan="4">Total gastado</th><th class="n">${L(d.total_gastos)}</th></tr></tfoot></table></div>
   <div class="acciones" style="justify-content:flex-start"><button type="button" class="sec" onclick="abrirValidadorSar()">¿Dudas con una factura? Validala en el SAR ↗</button></div>
-  <p class="nota">${['Autorizada', 'Atendida'].includes(s.estado) ? 'Estas facturas ya están en el <a href="#/facturas">libro de compras</a>, amarradas a esta liquidación.' : 'Al autorizarse, estas facturas entran solas al libro de compras.'}</p>`;
+  <p class="nota">${['Autorizada', 'Pago cargado', 'Pagada', 'Atendida'].includes(s.estado) ? 'Estas facturas ya están en el <a href="#/facturas">libro de compras</a>, amarradas a esta liquidación.' : 'Al autorizarse, estas facturas entran solas al libro de compras.'}</p>`;
   if (s.tipo === 'vacacion') extra = `<dl class="detalle"><dt>Fechas</dt><dd>${esc(d.desde)} al ${esc(d.hasta)}</dd><dt>Días hábiles</dt><dd>${esc(d.dias)}</dd></dl>`;
   if (s.tipo === 'laboral' && d.rubros) extra = `<dl class="detalle"><dt>Motivo</dt><dd>${esc(d.motivo)}</dd><dt>Período</dt><dd>${esc(d.ingreso)} al ${esc(d.salida)} (${esc(d.antiguedad)})</dd><dt>Salario mensual</dt><dd>${L(d.salario)}</dd></dl>
     <div class="tabla" style="margin-top:10px"><table><thead><tr><th>Rubro</th><th>Base</th><th class="n">Monto</th></tr></thead><tbody>${d.rubros.map(x => `<tr><td>${esc(x.rubro)}</td><td>${esc(x.base)}</td><td class="n">${L(x.monto)}</td></tr>`).join('')}</tbody><tfoot><tr><th colspan="2">Total a pagar</th><th class="n">${L(s.monto)}</th></tr></tfoot></table></div>`;
@@ -917,22 +918,33 @@ async function verSolicitud(id) {
   ${s.monto ? `<dt>Monto</dt><dd><b>${L(s.monto)}</b></dd>` : ''}${s.linea ? `<dt>Presupuesto</dt><dd>${esc(s.proyecto)} · ${esc(s.linea)}</dd>` : ''}
   ${d.proveedor ? `<dt>Proveedor</dt><dd>${esc(d.proveedor)}</dd>` : ''}<dt>Descripción</dt><dd>${esc(s.descripcion)}</dd>
   ${s.resuelto ? `<dt>${s.estado === 'Anulada' ? 'Anuló' : 'Resolvió'}</dt><dd>${esc(s.resuelto_nombre)} · ${fechaHora(s.resuelto)}${s.comentario ? ' · ' + esc(s.comentario) : ''}</dd>` : ''}
-  ${s.atendido ? `<dt>Atendió</dt><dd>${esc(s.atendido_nombre)} · ${fechaHora(s.atendido)}<br>${esc(s.atencion || '')}</dd>` : ''}</dl>
+  ${s.atendido ? `<dt>Atendió</dt><dd>${esc(s.atendido_nombre)} · ${fechaHora(s.atendido)}<br>${esc(s.atencion || '')}</dd>` : ''}
+  ${s.pago_cargado ? `<dt>Cargó el pago</dt><dd>${esc(s.pago_cargado_nombre)} · ${fechaHora(s.pago_cargado)}<br>${esc(s.pago_detalle || '')}</dd>` : ''}
+  ${s.pagado ? `<dt>Aprobó en el banco</dt><dd>${esc(s.pagado_nombre)} · ${fechaHora(s.pagado)} · Referencia ${esc(s.pago_referencia || '')}</dd>` : ''}</dl>
   <p class="nota">${pasoSolicitud(s)}</p>
   ${extra}
   <h2>Respaldos</h2><div id="adjs"><p class="nota">Cargando…</p></div>
   ${puedeAut && s.estado === 'Pendiente' ? `<label style="margin-top:14px">Comentario (opcional)</label><input id="com"><div class="acciones"><button id="aut">Autorizar</button><button class="rojo" id="rec">Rechazar</button></div>` : ''}
   ${propio && s.estado === 'Pendiente' ? `<p class="nota" style="margin-top:14px">La hiciste vos, así que la tiene que autorizar otra persona con permiso. Mientras siga pendiente la podés retirar.</p><div class="acciones"><button class="sec" id="ret">Retirar mi solicitud</button></div>` : ''}
-  ${puede('solicitudes.gestionar') && s.estado === 'Autorizada' && ['compra', 'fondo'].includes(s.tipo) ? `<h2>Atender</h2><label>Qué se hizo (se le manda a quien la pidió)</label><textarea id="aten" rows="2" placeholder="${s.tipo === 'compra' ? 'Ej.: Compra hecha a Ferretería X, factura 001-001-01-00001234, se entrega el lunes' : 'Ej.: Transferencia del 6 de noviembre, cheque 1234'}"></textarea>${s.tipo === 'compra' ? `<h3 style="margin-top:12px">Facturas de la compra</h3><div class="rejilla"><div><label>Fecha de las facturas</label><input type="date" id="fecAten" value="${hoy()}" max="${hoy()}"></div></div><div id="facAten"></div><p class="nota">Al marcarla como atendida, estas facturas entran al libro de compras amarradas a esta solicitud.</p>` : ''}<div class="acciones"><button id="atn">Marcar como atendida</button></div>` : ''}
-  ${puede('solicitudes.anular') && ['Autorizada', 'Atendida'].includes(s.estado) ? `<div class="acciones"><button class="sec" id="anu">Anular</button></div>` : ''}
+  ${puede('solicitudes.gestionar') && s.estado === 'Autorizada' && ['compra', 'fondo'].includes(s.tipo) ? `<h2>Cargar el pago en la banca en línea</h2><p class="nota">Cuando ya lo dejaste cargado en el banco, anotalo aquí: le toca a quien aprueba en la banca en línea.</p><label>Datos del pago cargado</label><textarea id="pagoDet" rows="2" placeholder="Ej.: Transferencia a Ferretería X, Banco Atlántida cuenta 123456, L 26,762.00">${esc(d.proveedor ? 'Transferencia a ' + d.proveedor + ', ' : '')}${s.monto ? esc(L(s.monto)) : ''}</textarea><div class="acciones"><button id="pagoCar">Pago cargado: que lo aprueben en el banco</button></div>
+  <p class="nota" style="margin-top:16px">¿Se pagó en efectivo, con cheque o la compra ya está hecha? Usá «Atendida sin banca en línea».</p>` : ''}
+  ${s.estado === 'Pago cargado' && puede('pagos.banca') && s.pago_cargado_por !== S.user?.id && !propio ? `<h2>Aprobar en la banca en línea</h2><p class="nota">Aprobalo primero en el banco y después anotá aquí la referencia. Con eso la solicitud queda cerrada y se les avisa a todos.</p><label>Número de referencia o comprobante del banco</label><input id="pagoRef"><div class="acciones"><button id="pagoAp">Ya lo aprobé en el banco</button></div>` : ''}
+  ${s.estado === 'Pago cargado' && puede('pagos.banca') && s.pago_cargado_por === S.user?.id ? '<p class="nota">Vos cargaste el pago, así que lo aprueba otra persona con el permiso de la banca en línea.</p>' : ''}
+  ${puede('solicitudes.gestionar') && s.estado === 'Autorizada' && ['compra', 'fondo'].includes(s.tipo) ? `<h2>Atender</h2><label>Qué se hizo (se le manda a quien la pidió)</label><textarea id="aten" rows="2" placeholder="${s.tipo === 'compra' ? 'Ej.: Compra hecha a Ferretería X, factura 001-001-01-00001234, se entrega el lunes' : 'Ej.: Transferencia del 6 de noviembre, cheque 1234'}"></textarea>${s.tipo === 'compra' ? `<h3 style="margin-top:12px">Facturas de la compra</h3><div class="rejilla"><div><label>Fecha de las facturas</label><input type="date" id="fecAten" value="${hoy()}" max="${hoy()}"></div></div><div id="facAten"></div><p class="nota">Al marcarla como atendida, estas facturas entran al libro de compras amarradas a esta solicitud.</p>` : ''}<div class="acciones"><button class="sec" id="atn">Atendida sin banca en línea</button></div>` : ''}
+  ${puede('solicitudes.anular') && ['Autorizada', 'Pago cargado', 'Pagada', 'Atendida'].includes(s.estado) ? `<div class="acciones"><button class="sec" id="anu">Anular</button></div>` : ''}
+  <div id="waCaja"></div>
   <div class="acciones"><button class="sec" onclick="print()">Imprimir</button></div></div>`;
   pintarAdjuntos(s);
+  pintarAvisoWhatsapp(s);
   const resolver = async (estado, pedir) => {
     const comentario = pedir ? prompt(pedir === 'ret' ? '¿Por qué la retirás?' : '¿Por qué se ' + (estado === 'Anulada' ? 'anula' : 'rechaza') + '?') : $('#com')?.value;
     if (pedir && !comentario) return;
-    try { await q(sb.from('solicitudes').update({ estado, comentario: comentario || null }).eq('id', s.id)); avisar('solicitud', s.id); aviso('Solicitud ' + estado.toLowerCase() + '.'); verSolicitud(s.id); }
+    try { await q(sb.from('solicitudes').update({ estado, comentario: comentario || null }).eq('id', s.id)); avisar('solicitud', s.id); aviso('Solicitud ' + estado.toLowerCase() + '.'); sessionStorage.setItem('sig_wa_abrir', s.id); verSolicitud(s.id); }
     catch (e) { aviso(falla(e), true); }
   };
+  const paso = async (cambio, msj) => { try { await q(sb.from('solicitudes').update(cambio).eq('id', s.id)); avisar('solicitud', s.id); aviso(msj); sessionStorage.setItem('sig_wa_abrir', s.id); verSolicitud(s.id); } catch (e) { aviso(falla(e), true); } };
+  if ($('#pagoCar')) $('#pagoCar').onclick = () => { const v = $('#pagoDet').value.trim(); if (!v) return aviso('Escribí los datos del pago cargado.', true); paso({ estado: 'Pago cargado', pago_detalle: v }, 'Pago cargado. Avisale a quien aprueba en el banco.'); };
+  if ($('#pagoAp')) $('#pagoAp').onclick = () => { const v = $('#pagoRef').value.trim(); if (!v) return aviso('Escribí la referencia del banco.', true); paso({ estado: 'Pagada', pago_referencia: v }, 'Listo: pago aprobado y solicitud cerrada.'); };
   if ($('#aut')) $('#aut').onclick = () => resolver('Autorizada');
   if ($('#rec')) $('#rec').onclick = () => resolver('Rechazada', !$('#com').value);
   if ($('#anu')) $('#anu').onclick = () => resolver('Anulada', true);
@@ -954,24 +966,54 @@ async function verSolicitud(id) {
       await q(sb.from('solicitudes').update({ estado: 'Atendida', atencion }).eq('id', s.id));
       let nota = '';
       if (facs.length) { try { await facturasAlLibro(facs, { solicitud_id: s.id, fecha: $('#fecAten').value || hoy(), origen: 'Compra ' + s.numero }); nota = ` y ${facs.length} factura${facs.length > 1 ? 's' : ''} al libro de compras`; } catch (e) { nota = '. Las facturas no entraron al libro: ' + falla(e); } }
-      avisar('solicitud', s.id); aviso('Listo. Se le avisa a quien la pidió' + nota + '.', nota.startsWith('.')); verSolicitud(s.id);
+      avisar('solicitud', s.id); aviso('Listo. Se le avisa a quien la pidió' + nota + '.', nota.startsWith('.')); sessionStorage.setItem('sig_wa_abrir', s.id); verSolicitud(s.id);
     } catch (e) { aviso(falla(e), true); }
   };
 }
 // Dónde va la solicitud en la cadena: pide → autoriza → administración atiende → resolución a quien pidió
 function pasoSolicitud(s) {
   const gestion = ['compra', 'fondo'].includes(s.tipo);
-  return ({ Pendiente: 'Paso 1 de ' + (gestion ? 3 : 2) + ': esperando que la autorice quien tiene el permiso.',
-    Autorizada: gestion ? 'Paso 2 de 3: autorizada. Administración la está gestionando; cuando la marque como atendida le llega la resolución a quien la pidió.' : 'Resuelta: autorizada.',
+  return ({ Pendiente: 'Paso 1 de ' + (gestion ? 4 : 2) + ': esperando que la autorice quien tiene el permiso.',
+    Autorizada: gestion ? 'Paso 2 de 4: autorizada. Administración carga el pago en la banca en línea (o la marca atendida si se pagó de otra forma).' : 'Resuelta: autorizada.',
+    'Pago cargado': 'Paso 3 de 4: el pago ya está cargado en la banca en línea. Falta que lo apruebe quien tiene el permiso en el banco.',
+    Pagada: 'Cerrada: el pago se aprobó en la banca en línea y el dinero ya fue depositado.',
     Atendida: 'Resuelta: administración la atendió y se le avisó a quien la pidió.',
     Rechazada: 'Cerrada: rechazada.', Anulada: 'Cerrada: anulada.' })[s.estado] || '';
+}
+// ---------- Avisar por WhatsApp a quien le toca el siguiente paso ----------
+const telWa = t => { const n = String(t || '').replace(/\D/g, ''); return n.length === 8 ? '504' + n : n; };
+function textoWhatsapp(s, nombre) {
+  const enlace = location.origin + '/#/solicitud/' + s.id, t = (TIPOS[s.tipo] || 'Solicitud').toLowerCase(), m = s.monto ? ' por ' + L(s.monto) : '';
+  const hola = 'Hola' + (nombre ? ' ' + nombre.split(/\s+/)[0] : '') + '. ';
+  return hola + ({
+    Pendiente: `Hay una ${t} por autorizar en AgroGestión: ${s.numero}, de ${s.solicitante}${m}. ${s.descripcion || ''}. Revisala y autorizala aquí: ${enlace}`,
+    Autorizada: `La ${t} ${s.numero}${m} ya fue autorizada por ${s.resuelto_nombre || ''}. Por favor cargá el pago en la banca en línea y anotalo aquí: ${enlace}`,
+    'Pago cargado': `El pago de la ${t} ${s.numero}${m} ya está cargado en la banca en línea (${s.pago_detalle || ''}). Ya podés aprobarlo en el banco y anotar la referencia aquí: ${enlace}`,
+    Pagada: `La ${t} ${s.numero}${m} quedó cerrada: el pago se aprobó en la banca en línea (referencia ${s.pago_referencia || ''}) y el dinero ya fue depositado. El detalle para imprimir está aquí: ${enlace}`,
+    Atendida: `La ${t} ${s.numero}${m} ya fue atendida por administración: ${s.atencion || ''}. Detalle: ${enlace}`,
+    Rechazada: `La ${t} ${s.numero}${m} fue rechazada${s.comentario ? ': ' + s.comentario : ''}. Detalle: ${enlace}`,
+    Anulada: `La ${t} ${s.numero}${m} fue anulada${s.comentario ? ': ' + s.comentario : ''}. Detalle: ${enlace}`
+  })[s.estado];
+}
+async function pintarAvisoWhatsapp(s) {
+  const caja = $('#waCaja'); if (!caja) return;
+  const { data } = await sb.rpc('solicitud_avisar_a', { p_id: s.id });
+  const lista = data || [];
+  const abrir = sessionStorage.getItem('sig_wa_abrir') === s.id; sessionStorage.removeItem('sig_wa_abrir');
+  const titulo = { Pendiente: 'Avisar a quien autoriza', Autorizada: 'Avisar a administración para que cargue el pago', 'Pago cargado': 'Avisar a quien aprueba en la banca en línea' }[s.estado] || 'Avisar a todos que quedó cerrada';
+  if (!lista.length || !textoWhatsapp(s, '')) { caja.innerHTML = ''; return; }
+  caja.innerHTML = `<div class="caja waAviso${abrir ? ' resaltar' : ''}"><h3>${ICONOS?.whatsapp ? '<span class="waIco">' + ICONOS.whatsapp + '</span>' : ''}${esc(titulo)} por WhatsApp</h3>
+    <p class="nota">Toca el nombre: se abre WhatsApp con el mensaje ya escrito y el enlace a esta solicitud. Solo falta enviarlo.</p>
+    <div class="waLista">${lista.map(p => telWa(p.telefono) ? `<a class="boton sec" target="_blank" rel="noopener" href="https://wa.me/${telWa(p.telefono)}?text=${encodeURIComponent(textoWhatsapp(s, p.nombre))}">${esc(p.nombre)} <span class="nota">· ${esc(p.papel)}</span></a>` : `<span class="boton sec" style="opacity:.5" title="Falta su número de WhatsApp en Usuarios">${esc(p.nombre)} <span class="nota">· sin número</span></span>`).join('')}</div>
+    ${lista.some(p => !telWa(p.telefono)) ? '<p class="nota">A quien dice «sin número» le falta su WhatsApp: lo pone el administrador en Usuarios, o cada uno en «Mi cuenta».</p>' : ''}</div>`;
+  if (abrir) caja.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 async function pintarAdjuntos(s) {
   const caja = $('#adjs'); if (!caja) return;
   let lista;
   try { lista = await q(sb.from('solicitud_adjuntos').select('*').eq('solicitud_id', s.id).order('creado')); }
   catch (e) { caja.innerHTML = '<p class="nota">Los respaldos todavía no están instalados en la base de datos (falta el paso 20).</p>'; return; }
-  const propio = esPropia(s), abierta = ['Pendiente', 'Autorizada', 'Atendida'].includes(s.estado);
+  const propio = esPropia(s), abierta = ['Pendiente', 'Autorizada', 'Pago cargado', 'Pagada', 'Atendida'].includes(s.estado);
   const sube = abierta && (propio || puede('solicitudes.ver') || puede('solicitudes.autorizar') || puede('solicitudes.gestionar'));
   const quita = a => !a.anulado && (s.estado === 'Pendiente' ? (a.creado_por === S.user?.id || puede('solicitudes.anular')) : puede('solicitudes.anular'));
   const kb = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
@@ -1233,7 +1275,7 @@ async function verUsuarios() {
   app().innerHTML = cabecera('Usuarios de ' + S.org.nombre, '#/') + `
   <p class="nota">El rol va según el puesto (técnico, encargado de acopio, contabilidad, junta…) y dice a qué secciones entra y qué puede hacer; la base de datos lo revisa en cada registro. Los roles y sus permisos se ven y se cambian en <a href="#/roles">Roles y permisos</a>. A una persona se le pueden dar secciones o permisos extra sin cambiarle el rol. «Ve el panel de» dice quién entra al panel de control de cada sección (además necesita la clave del panel). «Comité de crédito» marca a quienes votan los créditos. «Aprueba» dice qué tipos de registro revisa y aprueba esa persona.</p>
   <div class="tabla"><table><thead><tr><th>Persona</th><th>Usuario</th><th>Rol</th><th>Secciones</th><th>Aprueba</th><th>Último acceso</th><th>Estado</th><th></th></tr></thead><tbody>
-  ${filas.map(u => `<tr><td><b>${esc(u.nombre)}</b>${u.cargo ? '<br><span class="nota">' + esc(u.cargo) + '</span>' : ''}${u.correo ? '<br><span class="nota">' + esc(u.correo) + '</span>' : ''}</td><td>${esc(u.usuario)}</td>
+  ${filas.map(u => `<tr><td><b>${esc(u.nombre)}</b>${u.cargo ? '<br><span class="nota">' + esc(u.cargo) + '</span>' : ''}${u.correo ? '<br><span class="nota">' + esc(u.correo) + '</span>' : ''}<br><span class="nota">${u.telefono ? 'WhatsApp ' + esc(u.telefono) : 'Sin WhatsApp'}</span></td><td>${esc(u.usuario)}</td>
   <td style="min-width:190px"><select data-rol="${u.id}" ${u.id === S.user.id ? 'disabled' : ''}>${opcionesRol(u.rol)}</select>${rolDe(u.rol)?.descripcion ? `<br><span class="nota">${esc(rolDe(u.rol).descripcion)}</span>` : ''}
     ${S.roles?.length && rolDe(u.rol)?.base === 'personal' ? `<details style="margin-top:4px"><summary class="nota">Permisos extra${(u.permisos_extra || []).length ? ' (' + u.permisos_extra.length + ')' : ''}</summary>${PERMISOS.flatMap(([, l]) => l).filter(([k]) => !k.startsWith('sec.') && !rolDe(u.rol).permisos.includes(k)).map(([k, t]) => `<label style="font-weight:400;color:var(--texto);display:flex;gap:5px;align-items:center;margin:2px 0"><input type="checkbox" data-px="${k}" data-u="${u.id}" style="width:auto" ${(u.permisos_extra || []).includes(k) ? 'checked' : ''}>${esc(t)}</label>`).join('')}</details>` : ''}</td>
   <td style="min-width:170px">${['administrador', 'gerencia'].includes(rolDe(u.rol)?.base || u.rol) ? '<span class="nota">Todas</span><br>' : `${seccionesRol(u.rol) ? `<span class="nota">Por su rol: ${esc(seccionesRol(u.rol))}</span><br><span class="nota">Además:</span><br>` : ''}${checksSec(u.secciones || [], 'data-sec', `data-u="${u.id}"`)}`}${u.rol === 'administrador' ? '' : `<br><span class="nota">Ve el panel de:</span><br>${checksSec(u.paneles || [], 'data-pnl', `data-u="${u.id}"`)}`}<label style="font-weight:400;color:var(--texto);display:inline-flex;gap:5px;align-items:center;margin:0"><input type="checkbox" data-comite="${u.id}" style="width:auto" ${u.comite_credito ? 'checked' : ''}>Comité de crédito</label></td>
@@ -1295,7 +1337,8 @@ async function verUsuarios() {
     const nombre = prompt('Nombre completo:', u.nombre); if (nombre === null) return;
     const cargo = prompt('Cargo:', u.cargo || ''); if (cargo === null) return;
     const correo = prompt('Correo para avisos:', u.correo || ''); if (correo === null) return;
-    try { await q(sb.from('perfiles').update({ nombre: nombre || u.nombre, cargo: cargo || null, correo: correo || null }).eq('id', u.id)); await bit('Cambió datos de usuario', u.usuario); aviso('Datos guardados.'); verUsuarios(); } catch (e) { aviso(falla(e), true); }
+    const tel = prompt('WhatsApp (con código de país, ej. 50499998888):', u.telefono || ''); if (tel === null) return;
+    try { await q(sb.from('perfiles').update({ nombre: nombre || u.nombre, cargo: cargo || null, correo: correo || null, telefono: telWa(tel) || null }).eq('id', u.id)); await bit('Cambió datos de usuario', u.usuario); aviso('Datos guardados.'); verUsuarios(); } catch (e) { aviso(falla(e), true); }
   });
   app().querySelectorAll('[data-clave]').forEach(b => b.onclick = async () => {
     const clave = prompt('Nueva contraseña (mínimo 8 caracteres):'); if (!clave) return;

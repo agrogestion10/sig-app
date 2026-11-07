@@ -295,7 +295,9 @@ RUTAS.miclave = async function cambiarMiClave(modo) {
     ${nueva ? '<p class="ancho">Entraste con el enlace para recuperar la contraseña. Escribí la nueva.</p>' : '<div class="ancho"><label>Contraseña actual</label><input name="actual" type="password" required autocomplete="current-password"></div>'}
     <div><label>Contraseña nueva (al menos 8 caracteres)</label><input name="clave" type="password" required minlength="8" autocomplete="new-password"></div>
     <div><label>Repetila</label><input name="clave2" type="password" required minlength="8" autocomplete="new-password"></div>
-  </div><div class="acciones"><button>Guardar contraseña</button></div></form>`;
+  </div><div class="acciones"><button>Guardar contraseña</button></div></form>
+  ${nueva || S.maestro ? '' : `<h2>Tu WhatsApp</h2><form class="caja" id="fTel"><p class="nota">Para que te lleguen los avisos de las solicitudes que te toca autorizar, pagar o aprobar.</p><div class="rejilla"><div><label>Número de WhatsApp (con 504 para Honduras)</label><input name="tel" inputmode="tel" value="${esc(S.perfil?.telefono || '')}" placeholder="50499998888"></div></div><div class="acciones"><button>Guardar número</button></div></form>`}`;
+  if ($('#fTel')) $('#fTel').onsubmit = async ev => { ev.preventDefault(); const t = ev.target; ocupado(t, true); try { await q(sb.rpc('poner_mi_telefono', { t: t.tel.value })); S.perfil.telefono = telWa(t.tel.value) || null; aviso('Número guardado.'); } catch (e) { aviso(falla(e), true); } ocupado(t, false); };
   const f = $('#fClave');
   f.onsubmit = async ev => {
     ev.preventDefault();

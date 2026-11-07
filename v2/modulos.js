@@ -222,7 +222,7 @@ async function resumenGerencia() {
   const adm = puedeSec('adm'), cre = puedeSec('cre'), cer = puedeSec('cer'), mes = hoy().slice(0, 7), hace30 = new Date(Date.now() - 30 * 864e5).toLocaleDateString('en-CA', { timeZone: 'America/Tegucigalpa' });
   const ok = p => p.catch(() => null);
   const [sol, fac, crR, credP, nc, qj, prods, parc, aco, rev] = await Promise.all([
-    adm ? ok(q(sb.from('solicitudes').select('id,tipo,estado,monto,referencia,creado').eq('org_id', S.org.id).in('estado', ['Pendiente', 'Autorizada', 'Atendida']).limit(3000))) : null,
+    adm ? ok(q(sb.from('solicitudes').select('id,tipo,estado,monto,referencia,creado').eq('org_id', S.org.id).in('estado', ['Pendiente', 'Autorizada', 'Pago cargado', 'Pagada', 'Atendida']).limit(3000))) : null,
     adm ? ok(q(sb.from('facturas').select('total,observaciones').eq('org_id', S.org.id).eq('mes_fiscal', mes))) : null,
     cre ? ok(cuenta('creditos', x => x.in('estado', ['Solicitado', 'En evaluación', 'Aprobado']))) : null,
     cre ? ok(creditosConPagos(x => x.eq('estado', 'Desembolsado'))) : null,
@@ -237,7 +237,7 @@ async function resumenGerencia() {
   const bloques = [];
   if (sol) {
     const pend = sol.filter(x => x.estado === 'Pendiente'), porAt = sol.filter(x => x.estado === 'Autorizada' && ['compra', 'fondo'].includes(x.tipo));
-    const liq = new Set(sol.filter(x => x.tipo === 'liquidacion').map(x => x.referencia)), sinLiq = sol.filter(x => x.tipo === 'fondo' && ['Autorizada', 'Atendida'].includes(x.estado) && !liq.has(x.id));
+    const liq = new Set(sol.filter(x => x.tipo === 'liquidacion').map(x => x.referencia)), sinLiq = sol.filter(x => x.tipo === 'fondo' && ['Autorizada', 'Pago cargado', 'Pagada', 'Atendida'].includes(x.estado) && !liq.has(x.id));
     const incompl = (fac || []).filter(f => /falta/.test(f.observaciones || '')).length;
     bloques.push(['Administración', 'adm', [
       d('Solicitudes por autorizar', pend.length, pend.length ? 'Esperando a quien autoriza' : 'Nada pendiente', '#/solicitudes', pend.length ? 'alerta' : ''),
@@ -285,7 +285,7 @@ RUTAS.panel = async function panel() {
   const anio = new Date().getFullYear(), mes = hoy().slice(0, 7), ini = anio + '-01-01';
   const [pend, aut, pres, fac, cre, pagos, nprod, ncert, aco, qAb, ncAb] = await Promise.all([
     cuenta('solicitudes', x => x.eq('estado', 'Pendiente')),
-    q(sb.from('solicitudes').select('monto').eq('org_id', S.org.id).in('estado', ['Autorizada', 'Atendida']).in('tipo', ['compra', 'fondo']).gte('creado', mes + '-01')),
+    q(sb.from('solicitudes').select('monto').eq('org_id', S.org.id).in('estado', ['Autorizada', 'Pago cargado', 'Pagada', 'Atendida']).in('tipo', ['compra', 'fondo']).gte('creado', mes + '-01')),
     q(sb.from('ejecucion_presupuesto').select('aprobado,ejecutado,comprometido').eq('org_id', S.org.id).eq('anio', anio)),
     q(sb.from('facturas').select('total,isv,retencion').eq('org_id', S.org.id).eq('mes_fiscal', mes)),
     q(sb.from('creditos').select('id,monto_aprobado,plan,estado').eq('org_id', S.org.id).eq('estado', 'Desembolsado')),
@@ -2085,7 +2085,7 @@ async function datosPanelAdm() {
     q(sb.from('ejecucion_presupuesto').select('*').eq('org_id', S.org.id).eq('anio', anio)),
     q(sb.from('facturas').select('total,isv,retencion,mes_fiscal').eq('org_id', S.org.id).gte('mes_fiscal', anio + '-01'))
   ]);
-  const pend = sol.filter(s => s.estado === 'Pendiente'), aut = sol.filter(s => ['Autorizada', 'Atendida'].includes(s.estado));
+  const pend = sol.filter(s => s.estado === 'Pendiente'), aut = sol.filter(s => ['Autorizada', 'Pago cargado', 'Pagada', 'Atendida'].includes(s.estado));
   const aprobado = sumaP(pres, 'aprobado'), usado = sumaP(pres, 'ejecutado') + sumaP(pres, 'comprometido');
   const facMes = fac.filter(f => f.mes_fiscal === mes);
   const porTipo = Object.entries(TIPOS).map(([k, n]) => { const t = sol.filter(s => s.tipo === k); return `<tr><td>${n}</td><td class="n">${t.length}</td><td class="n">${t.filter(s => s.estado === 'Pendiente').length}</td><td class="n">${L(sumaP(t.filter(s => s.estado === 'Autorizada'), 'monto'))}</td></tr>`; }).join('');
