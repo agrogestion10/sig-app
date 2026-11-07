@@ -146,6 +146,8 @@ function cabecera(titulo, volver = S.seccion ? '#/' + S.seccion : '#/') {
 }
 
 // ---------- arranque ----------
+// Si se llega desde el enlace de «recuperar contraseña», se pide la nueva al entrar
+const VIENE_A_RECUPERAR = /type=recovery/.test(location.hash) || /type=recovery/.test(location.search);
 window.addEventListener('DOMContentLoaded', async () => {
   sb = supabase.createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
   $('#salir').onclick = async () => { await sb.auth.signOut({ scope: 'local' }); location.hash = '#/'; location.reload(); };
@@ -159,6 +161,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     else if (g.error || !g.data?.user) await sb.auth.signOut({ scope: 'local' });
     else { try { await cargarUsuario(g.data.user); } catch (e) { if (sinRed(e)) restaurarSinSenal(data.session.user); else await sb.auth.signOut({ scope: 'local' }); } }
   }
+  if (VIENE_A_RECUPERAR && S.user) { history.replaceState(null, '', '/#/miclave/nueva'); }
   pintarSenal(); setTimeout(() => enviarCola(), 3000);
   ruta();
 });
@@ -224,7 +227,7 @@ function pintarBarra() {
   $('#nombreOrg').hidden = !!S.maestro;
   // En Usuario maestro no se repite el nombre (ya está en el selector de organización)
   $('#quien').textContent = S.maestro ? '' : S.perfil.nombre + ' · ' + (S.puesto?.nombre || ROLES[S.rol]);
-  $('#quien').hidden = S.maestro;
+  $('#quien').hidden = S.maestro; $('#quien').title = 'Cambiar mi contraseña'; $('#quien').style.cursor = 'pointer'; $('#quien').onclick = () => { location.hash = '#/miclave'; };
   const sel = $('#cambioOrg');
   if (S.maestro) { sel.hidden = false; sel.innerHTML = S.orgs.map(o => `<option value="${o.id}" ${o.id === S.org.id ? 'selected' : ''}>${esc(o.nombre)}</option>`).join(''); }
   pintarEngrane();
@@ -257,6 +260,7 @@ function pintarEngrane() {
       ${op('#/catalogo', 'Catálogo de certificaciones', 'Cuáles se usan en esta organización')}
       ${op('#/bitacora', 'Bitácora', 'Quién hizo qué')}
       ${op('#/plan', 'Mi plan', 'Plan, uso, pagos y pedir carga de datos')}
+      ${op('#/miclave', 'Cambiar mi contraseña', 'Poné una contraseña nueva')}
       ${S.maestro ? op('#/orgs', 'Clientes y organizaciones', 'Planes, pagos, cargas pedidas y valores de ley') : ''}
     </div>`;
   $('#btnEng').onclick = () => {
@@ -308,11 +312,13 @@ function pantallaAcceso() {
       <label for="aClave">Contraseña</label><input id="aClave" name="clave" type="password" required autocomplete="current-password">
       <button>Entrar</button>
       <p class="nota error" id="aErr"></p>
-    </form><p style="text-align:center">¿Tu organización todavía no usa el SIG? <a href="#/registro" id="aReg"><b>Probalo gratis 30 días</b></a></p>
+    </form><p class="nota" style="text-align:center"><a href="#" id="aOlvido">¿Olvidaste tu contraseña?</a></p>
+    <p style="text-align:center">¿Tu organización todavía no usa el SIG? <a href="#/registro" id="aReg"><b>Probalo gratis 30 días</b></a></p>
     <p class="nota" style="text-align:center"><a href="/privacidad.html" target="_blank" rel="noopener">Aviso de privacidad y términos de uso</a></p></div>`;
   // La organización solo se pide cuando se entra con usuario (no con correo)
   const verOrg = () => { const v = $('#aUsr').value.trim(); $('#aOrgCaja').hidden = !v || v.includes('@'); };
   $('#aUsr').addEventListener('input', verOrg); $('#aUsr').addEventListener('change', verOrg); setTimeout(verOrg, 300);
+  $('#aOlvido').onclick = e => { e.preventDefault(); pantallaOlvido($('#aUsr').value.trim()); };
   $('#aReg').onclick = e => { e.preventDefault(); location.hash = '#/registro'; pantallaRegistro(); };
   $('#fAcceso').onsubmit = async ev => {
     ev.preventDefault(); const f = ev.target, d = datosForm(f); $('#aErr').textContent = '';

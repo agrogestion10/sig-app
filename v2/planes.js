@@ -269,3 +269,47 @@ async function pintarClientes(cont) {
     g.scrollIntoView({ behavior: 'smooth' });
   });
 }
+
+// ---------- contraseña: recuperar (quien entra con correo) y cambiar la propia ----------
+function pantallaOlvido(previo = '') {
+  $('#barra').hidden = true;
+  app().innerHTML = `<div class="acceso"><span class="logo">SIG</span><h1>Recuperar la contraseña</h1>
+    <form class="caja" id="fOlv"><label>Tu correo</label><input name="correo" type="email" required autocomplete="email" value="${esc(previo.includes('@') ? previo : '')}">
+    <button>Mandarme el enlace</button><p class="nota" id="oMsj"></p></form>
+    <div class="caja"><p class="nota"><b>¿Entrás con usuario y no con correo?</b> Pedile a tu administrador que te ponga una contraseña nueva desde Usuarios.</p></div>
+    <p class="nota" style="text-align:center"><a href="#/" id="oVolver">Volver a entrar</a></p></div>`;
+  $('#oVolver').onclick = e => { e.preventDefault(); pantallaAcceso(); };
+  $('#fOlv').onsubmit = async ev => {
+    ev.preventDefault(); const f = ev.target, correo = f.correo.value.trim().toLowerCase(); ocupado(f, true);
+    const { error } = await sb.auth.resetPasswordForEmail(correo, { redirectTo: location.origin + '/' });
+    ocupado(f, false);
+    if (error && !/rate|seconds/i.test(error.message)) { $('#oMsj').className = 'nota error'; $('#oMsj').textContent = falla(error); return; }
+    $('#oMsj').className = 'nota ok';
+    $('#oMsj').textContent = error ? 'Ya te mandamos un enlace hace poco. Esperá un minuto y revisá tu correo (también en no deseado).' : 'Si ese correo tiene cuenta, te llega un enlace para poner una contraseña nueva. Revisá también en correo no deseado.';
+  };
+}
+RUTAS.miclave = async function cambiarMiClave(modo) {
+  const nueva = modo === 'nueva';
+  app().innerHTML = cabecera(nueva ? 'Poné tu contraseña nueva' : 'Cambiar mi contraseña', '#/') + `<form class="caja" id="fClave"><div class="rejilla">
+    ${nueva ? '<p class="ancho">Entraste con el enlace para recuperar la contraseña. Escribí la nueva.</p>' : '<div class="ancho"><label>Contraseña actual</label><input name="actual" type="password" required autocomplete="current-password"></div>'}
+    <div><label>Contraseña nueva (al menos 8 caracteres)</label><input name="clave" type="password" required minlength="8" autocomplete="new-password"></div>
+    <div><label>Repetila</label><input name="clave2" type="password" required minlength="8" autocomplete="new-password"></div>
+  </div><div class="acciones"><button>Guardar contraseña</button></div></form>`;
+  const f = $('#fClave');
+  f.onsubmit = async ev => {
+    ev.preventDefault();
+    if (f.clave.value !== f.clave2.value) return aviso('Las dos contraseñas no son iguales.', true);
+    ocupado(f, true);
+    try {
+      if (!nueva) {
+        const { error } = await sb.auth.signInWithPassword({ email: S.user.email, password: f.actual.value });
+        if (error) throw new Error('La contraseña actual no es correcta.');
+      }
+      const { error } = await sb.auth.updateUser({ password: f.clave.value });
+      if (error) throw error;
+      sb.from('bitacora').insert({ org_id: S.org.id, usuario: nombreQuien(), accion: nueva ? 'Recuperó su contraseña' : 'Cambió su contraseña' }).then(() => {}, () => {});
+      aviso('Listo, tu contraseña quedó cambiada.'); location.hash = '#/';
+    } catch (e) { ocupado(f, false); aviso(/different|same/i.test(e.message || '') ? 'La contraseña nueva tiene que ser distinta de la anterior.' : falla(e), true); }
+  };
+};
+SECCION_DE.miclave = '';
