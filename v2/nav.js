@@ -169,7 +169,17 @@ async function descargarExcel(boton) {
       nombre = (nombre || titulo).replace(/[\[\]:*?\/\\]/g, ' ').trim().slice(0, 28) || 'Hoja';
       let fin = nombre, i = 2; while (usados.has(fin.toLowerCase())) fin = nombre.slice(0, 26) + ' ' + i++;
       usados.add(fin.toLowerCase());
-      X.utils.book_append_sheet(libro, X.utils.table_to_sheet(c, { raw: true }), fin);
+      const hoja = X.utils.table_to_sheet(c, { raw: true }), cabC = c.tHead?.rows[0];
+      const numCols = cabC ? [...cabC.cells].map((x, k) => x.classList.contains('n') ? k : -1).filter(k => k >= 0) : [];
+      if (hoja['!ref'] && numCols.length) {
+        const rg = X.utils.decode_range(hoja['!ref']);
+        for (let f = rg.s.r + 1; f <= rg.e.r; f++) numCols.forEach(k => {
+          const cel = hoja[X.utils.encode_cell({ r: f, c: k })]; if (!cel || typeof cel.v !== 'string') return;
+          const v = cel.v.replace(/[^\d.,-]/g, '').replace(/,/g, '');
+          if (/^-?\d+(\.\d+)?$/.test(v)) { cel.t = 'n'; cel.v = +v; cel.z = v.includes('.') ? '#,##0.00' : '#,##0'; delete cel.w; }
+        });
+      }
+      X.utils.book_append_sheet(libro, hoja, fin);
     });
     const archivo = `${titulo} - ${S.org.nombre} - ${hoy()}`.replace(/[\\\/:*?"<>|]+/g, ' ').slice(0, 120) + '.xlsx';
     X.writeFile(libro, archivo);
