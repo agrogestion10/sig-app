@@ -68,13 +68,13 @@ RUTAS.plan = async function verMiPlan(ir) {
   </tbody></table></div>
   <p class="nota">Precios en dólares, sin ISV. El arranque (alta, carga de tus datos desde Excel, configuración de certificaciones y capacitación) se cobra una sola vez: $1,000.</p>
   <h2>Cómo pagar</h2>
-  <div class="caja"><p style="white-space:pre-line">${esc(S.leyes.PAGO_INSTRUCCIONES || 'Pedí los datos para la transferencia a AgroGestión.')}</p>
-  ${esAdmin() ? `<p class="nota">Cuando hayás pagado, avisá aquí abajo con el comprobante. AgroGestión revisa el pago y enciende el plan.</p>
+  <div class="caja"><p style="white-space:pre-line">${esc(S.leyes.PAGO_INSTRUCCIONES || 'Para pagar tu plan, ponete en contacto con nosotros: info@agrogestionhn.com o al +504 9543-0148.')}</p>
+  ${esAdmin() ? `<p class="nota">Cuando ya hayás pagado, avisá aquí abajo con el comprobante y AgroGestión enciende el plan.</p>
   <form id="fPago"><div class="rejilla">
     <div><label>Plan</label><select name="plan" required>${pagables.map(x => `<option value="${x.codigo}" ${x.codigo === (p.plan === 'prueba' ? 'profesional' : p.plan) ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}</select></div>
     <div><label>Período</label><select name="periodo"><option value="anio">Un año</option><option value="mes">Un mes</option></select></div>
     <div><label>Monto</label><input name="monto" readonly></div>
-    <div><label>Número de transferencia o depósito</label><input name="referencia" required></div>
+    <div><label>Número de comprobante o referencia</label><input name="referencia" required></div>
     <div class="ancho"><label>Comprobante (foto o PDF)</label><input name="archivo" type="file" accept="image/*,.pdf" required></div>
   </div><div class="acciones"><button>Avisar que pagué</button></div></form>` : '<p class="nota">El administrador de tu organización es quien avisa los pagos.</p>'}</div>`}
   ${pagos.length ? `<h3>Pagos avisados</h3><div class="tabla"><table><thead><tr><th>Fecha</th><th>Plan</th><th>Monto</th><th>Referencia</th><th>Estado</th></tr></thead><tbody>${pagos.map(g => `<tr><td>${fechaHora(g.creado)}</td><td>${esc((planes.find(x => x.codigo === g.plan) || {}).nombre || g.plan)} · ${g.periodo === 'anio' ? 'año' : 'mes'}</td><td>${usd(g.monto)}</td><td>${esc(g.referencia)}</td><td>${estadoChip(g.estado === 'Aprobado' ? 'Aprobado' : g.estado, g.estado === 'Aprobado' ? 'Autorizada' : g.estado === 'Rechazado' ? 'Rechazada' : 'Pendiente')}${g.comentario ? '<br><span class="nota">' + esc(g.comentario) + '</span>' : ''}</td></tr>`).join('')}</tbody></table></div>` : ''}
