@@ -340,3 +340,6 @@ a.kpiLink{text-decoration:none;color:inherit;transition:border-color .12s,transf
 a.kpiLink:hover{border-color:#FECB18;transform:translateY(-1px)}
 .kpiTx small{color:var(--gris)}
 .kpiTx{min-width:0}.kpiTx b{white-space:nowrap;font-size:clamp(17px,1.55vw,22px)}
+/* Pantalla de entrada: solo la marca, al centro */
+.accesoMarca{display:flex;align-items:center;justify-content:center;gap:12px;font-weight:800;font-size:30px;color:#1D2C35;margin:0 0 22px}
+.logoAG{background:var(--amarillo,#FECB18);color:#1D2C35;border-radius:12px;width:48px;height:48px;display:inline-flex;align-items:center;justify-content:center;font-size:19px;letter-spacing:.5px}

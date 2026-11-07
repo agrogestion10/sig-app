@@ -313,8 +313,7 @@ async function ruta() {
 function pantallaAcceso() {
   $('#barra').hidden = true;
   app().innerHTML = `<div class="acceso">
-    <span class="logo">AgroGestión</span>
-    <h1>Sistema de Gestión Integral para organizaciones del agro</h1>
+    <div class="accesoMarca"><span class="logoAG">AG</span><span>AgroGestión</span></div>
     <form class="caja" id="fAcceso" autocomplete="on">
       <label for="aUsr">Correo o usuario</label><input id="aUsr" name="usuario" required autocomplete="username" autocapitalize="none" placeholder="Tu correo o tu usuario">
       <div id="aOrgCaja" hidden><label for="aOrg">Organización</label><input id="aOrg" name="org" autocomplete="organization" value="${esc(localStorage.getItem('sig_ultima_org') || '')}"><p class="nota">Solo si entrás con usuario. Con tu correo no hace falta.</p></div>

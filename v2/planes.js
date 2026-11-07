@@ -135,7 +135,7 @@ SECCION_DE.plan = ''; GUIA_DE.plan = 'plan';
 function pantallaRegistro() {
   $('#barra').hidden = true;
   app().innerHTML = `<div class="acceso">
-    <span class="logo">AgroGestión</span>
+    <div class="accesoMarca"><span class="logoAG">AG</span><span>AgroGestión</span></div>
     <h1>Probá AgroGestión gratis por 30 días</h1>
     <p class="nota" style="text-align:center">Creá la cuenta de tu organización. Vas a entrar como administrador general y después podés agregar a tu personal.</p>
     <form class="caja" id="fReg" autocomplete="on">
@@ -158,7 +158,7 @@ function pantallaRegistro() {
     if (error) { ocupado(f, false); $('#rErr').textContent = /registered|exists/i.test(error.message) ? 'Ese correo ya tiene cuenta. Entrá con él.' : falla(error); return; }
     if (data.user && Array.isArray(data.user.identities) && !data.user.identities.length) { ocupado(f, false); $('#rErr').textContent = 'Ese correo ya tiene cuenta. Entrá con él.'; return; }
     if (data.session) { try { await cargarUsuario(data.user); location.hash = '#/'; ruta(); } catch (e) { ocupado(f, false); $('#rErr').textContent = falla(e); } return; }
-    app().innerHTML = `<div class="acceso"><span class="logo">AgroGestión</span><h1>Revisá tu correo</h1><div class="caja"><p>Te mandamos un mensaje a <b>${esc(d.correo)}</b>. Abrí el enlace que trae para confirmar tu cuenta.</p><p>Después entrá con tu correo y tu contraseña, y tu organización queda lista con la prueba gratis.</p><p class="nota">Si no lo ves, buscalo en correo no deseado.</p><p><a href="#/" onclick="pantallaAcceso();return false">Ir a entrar</a></p></div></div>`;
+    app().innerHTML = `<div class="acceso"><div class="accesoMarca"><span class="logoAG">AG</span><span>AgroGestión</span></div><h1>Revisá tu correo</h1><div class="caja"><p>Te mandamos un mensaje a <b>${esc(d.correo)}</b>. Abrí el enlace que trae para confirmar tu cuenta.</p><p>Después entrá con tu correo y tu contraseña, y tu organización queda lista con la prueba gratis.</p><p class="nota">Si no lo ves, buscalo en correo no deseado.</p><p><a href="#/" onclick="pantallaAcceso();return false">Ir a entrar</a></p></div></div>`;
   };
 }
 // Primera entrada de una cuenta del registro abierto: crea su organización
@@ -274,7 +274,7 @@ async function pintarClientes(cont) {
 // ---------- contraseña: recuperar (quien entra con correo) y cambiar la propia ----------
 function pantallaOlvido(previo = '') {
   $('#barra').hidden = true;
-  app().innerHTML = `<div class="acceso"><span class="logo">AgroGestión</span><h1>Recuperar la contraseña</h1>
+  app().innerHTML = `<div class="acceso"><div class="accesoMarca"><span class="logoAG">AG</span><span>AgroGestión</span></div><h1>Recuperar la contraseña</h1>
     <form class="caja" id="fOlv"><label>Tu correo</label><input name="correo" type="email" required autocomplete="email" value="${esc(previo.includes('@') ? previo : '')}">
     <button>Mandarme el enlace</button><p class="nota" id="oMsj"></p></form>
     <div class="caja"><p class="nota"><b>¿Entrás con usuario y no con correo?</b> Pedile a tu administrador que te ponga una contraseña nueva desde Usuarios.</p></div>
