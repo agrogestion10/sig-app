@@ -415,7 +415,7 @@ const esPropia = s => S.user && s.creado_por === S.user.id;
 const CLASES_REG = {
   facturas: ['Factura escaneada', 'Comprobante de pago', 'Otro'], creditos: ['Comprobante de desembolso', 'Pagaré o contrato', 'Recibo de pago', 'Otro'],
   pagos_credito: ['Recibo de pago', 'Comprobante de depósito', 'Otro'], inspecciones: ['Foto de campo', 'Evidencia de cierre', 'Croquis', 'Otro'],
-  no_conformidades: ['Evidencia de cierre', 'Foto', 'Otro'], capacitaciones: ['Lista de asistencia firmada', 'Foto', 'Material usado', 'Otro'],
+  no_conformidades: ['Evidencia de cierre', 'Foto', 'Otro'], capacitaciones: ['Foto', 'Lista de asistencia', 'Anexo', 'Material usado', 'Otro'],
   acopio: ['Recibo firmado', 'Foto', 'Otro'], beneficiado: ['Registro de fermentación o secado', 'Foto', 'Otro'], despachos: ['Contrato', 'Factura de venta', 'Guía de remisión o BL', 'Certificado de transacción', 'Otro'],
   prima_uso: ['Acta de aprobación', 'Factura o recibo', 'Foto', 'Otro'], proveedores: ['RTN', 'Constancia de pagos a cuenta', 'Otro'], quejas: ['Evidencia', 'Respuesta', 'Otro'],
   insumos_aplicados: ['Factura del insumo', 'Ficha técnica', 'Foto', 'Otro'], empleados: ['Contrato', 'Identidad', 'Otro']
@@ -459,10 +459,24 @@ async function pintarAdjReg(caja, tabla, id) {
     aviso(fallos.length ? 'No se subió: ' + fallos.join('; ') : 'Respaldo subido.', !!fallos.length); pintarAdjReg(caja, tabla, id);
   };
 }
+// Las fotos del celular se achican (lado mayor 1600 px) y se enderezan antes de subir: pesan menos y salen derechas en el PDF
+async function achicarFoto(archivo) {
+  if (!/^image\/(jpeg|png|webp|heic|heif)$/i.test(archivo.type || '') || archivo.size < 350 * 1024) return archivo;
+  try {
+    const bm = await createImageBitmap(archivo, { imageOrientation: 'from-image' });
+    const k = Math.min(1, 1600 / Math.max(bm.width, bm.height)), cv = document.createElement('canvas');
+    cv.width = Math.round(bm.width * k); cv.height = Math.round(bm.height * k);
+    cv.getContext('2d').drawImage(bm, 0, 0, cv.width, cv.height);
+    const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.82));
+    if (!blob || blob.size >= archivo.size) return archivo;
+    return new File([blob], archivo.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' });
+  } catch (_) { return archivo; }
+}
 async function subirAdjReg(tabla, id, lista) {
   const fallos = [];
   for (const a of lista) {
     try {
+      a.archivo = await achicarFoto(a.archivo);
       const ruta = `${S.org.id}/adjuntos/${tabla}/${id}/${Date.now()}-${a.archivo.name.replace(/[^\w.\-]+/g, '_')}`;
       const { error } = await sb.storage.from('documentos').upload(ruta, a.archivo, { contentType: a.archivo.type || undefined });
       if (error) throw error;

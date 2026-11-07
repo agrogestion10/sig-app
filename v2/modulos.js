@@ -1535,7 +1535,7 @@ RUTAS.recibo = async function verRecibo(id) {
       ${a.neto_pagar != null ? fila('Neto a pagar', `<b style="font-size:1.15em">${L(a.neto_pagar)}</b>`) : ''}${fila('Pago', esc(a.estado_pago || 'Pendiente') + (a.pagado_fecha ? ' el ' + esc(a.pagado_fecha) : ''))}
     </tbody></table></div>
     ${a.observaciones ? `<p class="nota">${esc(a.observaciones)}</p>` : ''}
-    <div style="display:flex;justify-content:space-between;gap:24px;margin-top:48px"><div style="flex:1;border-top:1px solid #333;text-align:center;padding-top:4px">Recibió</div><div style="flex:1;border-top:1px solid #333;text-align:center;padding-top:4px">Productor</div></div>
+    <p style="margin:14px 0 0;font-size:.92em">${a.registro ? `<b>Recibió:</b> ${esc(a.registro)}<br>` : ''}<b>Productor:</b> ${esc(pr.nombre || '')}</p>
   </div><div class="acciones"><button id="imp">Imprimir (carta)</button><button class="sec" id="impT">Imprimir ticket (80 mm)</button><a class="boton sec" target="_blank" rel="noopener" href="${esc(wa)}">Mandar por WhatsApp</a>${puede('acopio.pagar') && a.estado_pago !== 'Pagado' && !a._local ? '<button class="sec" id="pagar">Marcar como pagado</button>' : ''}<a class="boton sec" href="#/acopio">Registrar otra entrega</a></div>`;
   agregarAdjuntos('acopio', id);
   $('#imp').onclick = () => imprimirRecibo(false); $('#impT').onclick = () => imprimirRecibo(true);
@@ -2700,7 +2700,7 @@ RUTAS.cap = async function verAyudaMemoria(id) {
   <p><a href="#/asistencia/${c.id}">Ver o completar la lista de asistencia</a></p>
   <h2>Evaluación de lo aprendido</h2><div class="caja">${c.evaluacion_aplicada ? `${c.respondieron_bien ?? 0} de ${c.evaluados ?? 0} respondieron bien${c.evaluacion_obs ? '. ' + esc(c.evaluacion_obs) : ''}` : c.evaluacion_aplicada === false ? 'No se aplicó evaluación.' : '—'}</div>
   <h2>Acuerdos y compromisos</h2><div class="caja">${esc(c.acuerdos || '—')}</div>
-  ${(c.datos?.adjuntos || []).length ? `<p class="nota">Tiene ${c.datos.adjuntos.length} foto(s) de Kobo; salen en el PDF.</p>` : ''}
+  <p class="nota noImprimir">Las fotos y anexos de abajo salen en el PDF: las fotos en «Evidencias» y la lista de asistencia y los anexos al final.${(c.datos?.adjuntos || []).length ? ` También las ${c.datos.adjuntos.length} foto(s) que vinieron de Kobo.` : ''}</p>
   <div class="acciones"><button class="sec" id="pdfCap">Ver PDF</button></div>`;
   agregarAdjuntos('capacitaciones', id);
   conectarRevision('capacitaciones', id, () => RUTAS.cap(id));
@@ -2725,7 +2725,11 @@ RUTAS.capacitacion = async function formAyudaMemoria(codigo) {
     <div><label>¿Se aplicó la evaluación?</label><select name="eval_aplicada"><option value="si">Sí</option><option value="no">No</option></select></div>
     <div><label>¿Cuántos respondieron?</label><input name="evaluados" inputmode="numeric"></div><div><label>¿Cuántos respondieron bien?</label><input name="bien" inputmode="numeric"></div>
     <div class="ancho"><label>Acuerdos y compromisos</label><textarea name="acuerdos" rows="3" required></textarea></div>
-  </div><p class="nota">Después de guardar se abre la lista de asistencia para agregar a cada participante. Las fotos y la lista firmada se suben desde el formulario de Kobo.</p><div class="acciones"><button>Guardar ayuda memoria</button></div></form>`;
+    <div class="ancho"><h3 style="margin:10px 0 0">Fotos y anexos</h3><p class="nota" style="margin:2px 0 0">Todo lo que subás aquí sale en el PDF: las fotos en «Evidencias» y la lista y los anexos al final, cada uno en su hoja.</p></div>
+    <div><label>Fotos de la capacitación</label><input type="file" id="capFotos" multiple accept="image/*"></div>
+    <div><label>Lista de asistencia (foto o PDF, tal como está)</label><input type="file" id="capLista" multiple accept="image/*,application/pdf"></div>
+    <div class="ancho"><label>Otros anexos (PDF o fotos: presentación, material entregado…)</label><input type="file" id="capAnexos" multiple accept="image/*,application/pdf"></div>
+  </div><p class="nota">Fotos o PDF de hasta ${MAX_ADJ_MB} MB cada uno. Después de guardar podés agregar a cada participante del padrón en la lista de asistencia.</p><div class="acciones"><button>Guardar ayuda memoria</button></div></form>`;
   const f = $('#f');
   const pintar = () => {
     const g = gs.find(x => x.codigo === f.codigo.value); $('#otraBox').hidden = f.codigo.value !== 'otra';
@@ -2746,8 +2750,20 @@ RUTAS.capacitacion = async function formAyudaMemoria(codigo) {
       facilitador: d.facilitador, institucion: d.institucion || null, solicitada_por: d.solicitada_por || null, elaborada_por: d.elaborada_por, contenidos: cont, resumen: d.resumen, materiales: mats,
       hombres: num(d.hombres), mujeres: num(d.mujeres), jovenes: num(d.jovenes), evaluacion_aplicada: ev2, evaluados: ev2 ? num(d.evaluados) : null, respondieron_bien: ev2 ? num(d.bien) : null, acuerdos: d.acuerdos, datos: { asistentes: [] } };
     if (!reg.tema) return aviso('Escogé la guía o escribí el tema.', true);
+    const arch = (sel, clase) => [...($(sel)?.files || [])].map(archivo => ({ archivo, clase }));
+    const adj = [...arch('#capFotos', 'Foto'), ...arch('#capLista', 'Lista de asistencia'), ...arch('#capAnexos', 'Anexo')];
+    const malos = adj.filter(a => !/^image\/|pdf/.test(a.archivo.type || '')).map(a => `«${a.archivo.name}» no es foto ni PDF.`);
+    const mal = [...malos, ...revisarArchivos(adj.filter(a => !/^image\//.test(a.archivo.type || '')))]; if (mal.length) return aviso(mal.join(' '), true);
     ocupado(f, true);
-    try { await q(sb.from('capacitaciones').insert(reg)); avisar('revision', reg.id, { tabla: 'capacitaciones' }); aviso('Ayuda memoria guardada. Ahora agregá la lista de asistencia.'); archivarLuego(true); location.hash = '#/asistencia/' + reg.id; }
+    try {
+      await q(sb.from('capacitaciones').insert(reg));
+      if (adj.length) aviso(`Subiendo ${adj.length} archivo${adj.length > 1 ? 's' : ''}…`);
+      const fallos = adj.length ? await subirAdjReg('capacitaciones', reg.id, adj) : [];
+      avisar('revision', reg.id, { tabla: 'capacitaciones' }); archivarLuego(true);
+      const conLista = adj.some(a => a.clase === 'Lista de asistencia');
+      aviso(fallos.length ? 'Ayuda memoria guardada, pero no se subió: ' + fallos.join('; ') + '. Subilo desde la ayuda memoria.' : conLista ? 'Ayuda memoria guardada con sus fotos y anexos.' : 'Ayuda memoria guardada. Ahora agregá la lista de asistencia.', !!fallos.length);
+      location.hash = (conLista || fallos.length ? '#/cap/' : '#/asistencia/') + reg.id;
+    }
     catch (e) { ocupado(f, false); aviso(falla(e), true); }
   };
 };
