@@ -2877,7 +2877,8 @@ function herramientaPoligono(caja, f, clave) {
     const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), lat0 = ys[0] * Math.PI / 180;
     const minx = Math.min(...xs), maxx = Math.max(...xs), miny = Math.min(...ys), maxy = Math.max(...ys);
     const w = Math.max((maxx - minx) * Math.cos(lat0), 1e-7), h = Math.max(maxy - miny, 1e-7), e = 200 / Math.max(w, h);
-    const P = pts.map(([x, y]) => [10 + (x - minx) * Math.cos(lat0) * e, 210 - (y - miny) * e].map(v => v.toFixed(1)).join(','));
+    const ox = 10 + (200 - w * e) / 2, oy = 210 - (200 - h * e) / 2;
+    const P = pts.map(([x, y]) => [ox + (x - minx) * Math.cos(lat0) * e, oy - (y - miny) * e].map(v => v.toFixed(1)).join(','));
     return `<svg class="gpsDibujo" viewBox="0 0 220 220"><polygon points="${P.join(' ')}" fill="rgba(254,203,24,.25)" stroke="#1D2C35" stroke-width="2" stroke-linejoin="round"/>${P.map((q, i) => `<circle cx="${q.split(',')[0]}" cy="${q.split(',')[1]}" r="${i === 0 ? 4 : 2.5}" fill="${i === 0 ? '#0b7a4a' : '#1D2C35'}"/>`).join('')}</svg>`;
   };
   const pintar = (estado = '') => {
