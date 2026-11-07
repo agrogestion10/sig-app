@@ -176,7 +176,7 @@ RUTAS[''] = async function portal() {
     ponerSec('cer', partes.length ? partes.join(' · ') : 'Al día', ncV.length ? 'rojo' : partes.length ? 'ambar' : 'verde');
     const num = $('#nums');
     if (num && jefe) {
-      const [aco, desp, uso] = await Promise.all([q(sb.from('acopio').select('psec_lb').eq('org_id', S.org.id).gte('fecha', new Date(Date.now() - 6 * 864e5).toLocaleDateString('en-CA', { timeZone: 'America/Tegucigalpa' }))).catch(() => []), q(sb.from('despachos').select('prima_usd').eq('org_id', S.org.id).gt('prima_usd', 0)).catch(() => []), q(sb.from('prima_uso').select('monto_usd').eq('org_id', S.org.id)).catch(() => [])]);
+      const [aco, desp, uso] = await Promise.all([q(sb.from('acopio').select('psec_lb').eq('org_id', S.org.id).gte('fecha', new Date(Date.now() - 6 * 864e5).toLocaleDateString('en-CA', { timeZone: 'America/Tegucigalpa' }))).catch(() => []), q(sb.from('despachos').select('prima_usd').eq('org_id', S.org.id).eq('anulado', false).gt('prima_usd', 0)).catch(() => []), q(sb.from('prima_uso').select('monto_usd').eq('org_id', S.org.id)).catch(() => [])]);
       const qq = aco.reduce((t, a) => t + num0(a.psec_lb), 0) / 100, prima = desp.reduce((t, x) => t + num0(x.prima_usd), 0) - uso.reduce((t, x) => t + num0(x.monto_usd), 0);
       num.insertAdjacentHTML('afterbegin', `<div class="caja"><span class="nota">${nomProducto()} acopiado en los últimos 7 días</span><b>${qqTxt(qq)}</b><span class="nota">${secoTxt()} · ${aco.length} entrega${aco.length === 1 ? '' : 's'}</span></div>`);
       num.insertAdjacentHTML('beforeend', `<div class="caja"><span class="nota">Prima disponible</span><b>USD ${prima.toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b><span class="nota">Comercio Justo</span></div>`);
@@ -1809,7 +1809,7 @@ RUTAS.paquete = async function paqueteCertificadora() {
 };
 
 RUTAS.prima = async function verPrima() {
-  const [desp, uso] = await Promise.all([q(sb.from('despachos').select('fecha,prima_usd,numero').eq('org_id', S.org.id).gt('prima_usd', 0)), q(sb.from('prima_uso').select('*').eq('org_id', S.org.id).order('fecha', { ascending: false }))]);
+  const [desp, uso] = await Promise.all([q(sb.from('despachos').select('fecha,prima_usd,numero').eq('org_id', S.org.id).eq('anulado', false).gt('prima_usd', 0)), q(sb.from('prima_uso').select('*').eq('org_id', S.org.id).order('fecha', { ascending: false }))]);
   const gen = desp.reduce((t, x) => t + num(x.prima_usd), 0), usado = uso.reduce((t, x) => t + num(x.monto_usd), 0), prod = uso.filter(x => x.categoria === 'Productividad y calidad').reduce((t, x) => t + num(x.monto_usd), 0), minPct = cfgN('PRIMA_PCT_PRODUCTIVIDAD', 25);
   const usd = v => 'USD ' + num(v).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   app().innerHTML = cabecera('Prima de Comercio Justo') + `<div class="tarjetas">
@@ -2139,7 +2139,7 @@ async function datosPanelCer() {
     q(sb.from('productores').select('id,activo,estado_cert,sexo').eq('org_id', S.org.id)),
     q(sb.from('parcelas').select('area_ha,poligono').eq('org_id', S.org.id)),
     q(sb.from('acopio').select('psec_lb,certificaciones,certificacion,total').eq('org_id', S.org.id).gte('fecha', ini)),
-    q(sb.from('despachos').select('psec_lb,prima_usd,certificacion').eq('org_id', S.org.id).gte('fecha', ini)),
+    q(sb.from('despachos').select('psec_lb,prima_usd,certificacion').eq('org_id', S.org.id).eq('anulado', false).gte('fecha', ini)),
     q(sb.from('prima_uso').select('monto_usd').eq('org_id', S.org.id)),
     cuenta('no_conformidades', x => x.eq('estado', 'Abierta')),
     cuenta('quejas', x => x.neq('estado', 'Cerrada')),
@@ -2149,7 +2149,7 @@ async function datosPanelCer() {
   const act = ps.filter(p => p.activo), ha = sumaP(parc, 'area_ha'), sinPol = parc.filter(p => num(p.area_ha) >= 4 && !p.poligono).length;
   const qq = lb => (num(lb) / 100).toLocaleString('es-HN', { maximumFractionDigits: 1 }) + ' qq';
   const porCert = cs.map(c => ({ c, comprado: aco.filter(a => (a.certificaciones || [a.certificacion]).includes(c.codigo)).reduce((t, a) => t + num(a.psec_lb), 0), vendido: des.filter(d => d.certificacion === c.codigo).reduce((t, d) => t + num(d.psec_lb), 0) })).filter(x => x.comprado || x.vendido);
-  const primaRec = sumaP(await q(sb.from('despachos').select('prima_usd').eq('org_id', S.org.id)), 'prima_usd'), primaUso = sumaP(prima, 'monto_usd');
+  const primaRec = sumaP(await q(sb.from('despachos').select('prima_usd').eq('org_id', S.org.id).eq('anulado', false)), 'prima_usd'), primaUso = sumaP(prima, 'monto_usd');
   const usd = v => 'USD ' + num(v).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return `<div class="tarjetas">
     ${datoP('Productores activos', act.length, act.filter(p => p.estado_cert === 'Aprobado').length + ' aprobados en inspección', '#/padron')}
@@ -2322,7 +2322,7 @@ RUTAS.eudr = async function verEudr(id) {
   const malas = filas.filter(x => x.r.some(y => y[0] === 'error')).length, dudas = filas.filter(x => x.r.length && !x.r.some(y => y[0] === 'error')).length;
   const sinLote = conProd ? [] : lotes.filter(l => !aco.some(a => String(a.lote || '').toUpperCase() === l));
   const fc = { type: 'FeatureCollection', features: parc.filter(p => p.poligono || (p.lat !== null && p.lat !== undefined)).map(p => ({ type: 'Feature', geometry: p.poligono || { type: 'Point', coordinates: [num(p.lon), num(p.lat)] }, properties: { ProducerName: p.productores?.nombre || '', ProducerCountry: 'HN', ProductionPlace: p.nombre || '', Area: num(p.area_ha) } })) };
-  app().innerHTML = cabecera('EUDR · venta ' + d.numero, '#/despacho') + `<div class="caja"><dl class="detalle">
+  app().innerHTML = moldeCab('EUDR · venta ' + d.numero, !d.anulado && esJefe() ? '<button class="rojo" id="anular">Anular venta</button>' : '', '#/despacho') + (d.anulado ? `<div class="caja" style="border-color:#fecaca;background:#fef2f2"><b class="error">Venta anulada</b> el ${fechaHora(d.anulado_fecha)}. Motivo: ${esc(d.anulado_motivo || '')}. El producto volvió a sus lotes y ya no cuenta en el balance de masas.</div>` : '') + `<div class="caja"><dl class="detalle">
     <dt>Comprador</dt><dd>${esc(d.comprador)} · ${esc(d.fecha)} · ${num(d.peso_lb).toLocaleString('es-HN')} lb ${esc(d.tipo_cafe)}</dd>
     <dt>Lotes</dt><dd>${lotes.map(l => `<a href="#/lote/${encodeURIComponent(l)}">${esc(l)}</a>`).join(', ') || '—'}</dd><dt>Productores</dt><dd>${ids.length}</dd><dt>Parcelas</dt><dd>${parc.length}</dd></dl>
     ${!lotes.length && !conProd ? '<p class="error">Esta venta no tiene lotes ni productores. Sin eso no se sabe de qué fincas salió el producto.</p>' : ''}${conProd ? `<p class="nota">El GeoJSON lleva las parcelas de los ${ids.length} productores que se eligieron al registrar la venta.</p>` : ''}
@@ -2335,6 +2335,8 @@ RUTAS.eudr = async function verEudr(id) {
   ${filas.map(({ p, r }) => `<tr><td><a href="#/prod/${p.productor_id}">${esc(p.productores?.codigo || '')} ${esc(p.productores?.nombre || '')}</a></td><td><a href="#/parcela/${p.id}">${esc(p.nombre)}</a></td><td class="n">${num(p.area_ha).toFixed(2)}</td><td>${p.poligono ? 'Polígono' : p.lat !== null && p.lat !== undefined ? 'Punto' : '—'}</td><td>${chipSat(p)}</td><td>${chipEudr(r)}</td></tr>`).join('') || '<tr><td colspan="6" class="nota">No hay parcelas para mostrar.</td></tr>'}</tbody></table></div>`;
   $('#bajar').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(fc)], { type: 'application/geo+json' })); a.download = `EUDR_${d.numero}.geojson`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); };
   if ($('#satDesp')) $('#satDesp').onclick = () => revisarSatelite(parc.filter(p => p.poligono || p.lat != null).map(p => p.id), $('#satAv'), () => setTimeout(() => RUTAS.eudr(id), 1500));
+  if ($('#anular')) $('#anular').onclick = () => dialogo('Anular la venta ' + d.numero, `<p>El producto vuelve a los lotes de donde salió, y la venta deja de contar en el balance de masas y en la prima. La venta no se borra: queda marcada como anulada, con el motivo y quién la anuló.</p>${d.dds_numero ? '<p class="error">Ojo: esta venta ya tiene número de declaración EUDR. Si la anulás, también hay que retirar la declaración en TRACES.</p>' : ''}<label>Motivo</label><textarea name="motivo" rows="3" required minlength="5" placeholder="El comprador canceló el contrato, se registró dos veces, etc."></textarea>`, 'Anular venta', async f => { await q(sb.rpc('venta_anular', { p_despacho: d.id, p_motivo: f.motivo.value })); aviso('Venta anulada. El producto volvió a sus lotes.'); RUTAS.eudr(id); });
+  if (d.anulado) { $('#fd').hidden = true; app().querySelectorAll('#satDesp').forEach(b => b.hidden = true); }
   $('#fd').onsubmit = async ev => {
     ev.preventDefault(); const f = ev.target; ocupado(f, true);
     try { await q(sb.from('despachos').update({ dds_numero: f.dds.value.trim() || null, geojson: fc }).eq('id', id)); aviso('Guardado.'); RUTAS.eudr(id); }
@@ -2511,7 +2513,7 @@ RUTAS.lote = async function verLote(codigo) {
   const [aco, ben, des] = await Promise.all([
     q(sb.from('acopio').select('*, productores(id,codigo,nombre,comunidad)').eq('org_id', S.org.id).ilike('lote', lote).order('fecha')),
     q(sb.from('beneficiado').select('*').eq('org_id', S.org.id).ilike('lote', lote).order('fecha_inicio')),
-    q(sb.from('despachos').select('*').eq('org_id', S.org.id).ilike('lotes', '%' + lote + '%').order('fecha'))
+    q(sb.from('despachos').select('*').eq('org_id', S.org.id).eq('anulado', false).ilike('lotes', '%' + lote + '%').order('fecha'))
   ]);
   await certs();
   const ids = [...new Set(aco.map(a => a.productor_id))];
