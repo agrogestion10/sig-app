@@ -1340,21 +1340,42 @@ RUTAS.insp = async function verInspeccion(id) {
 
 RUTAS.inspecciones = async function verInspecciones() {
   const filas = await q(sb.from('inspecciones').select('*, productores(nombre,codigo)').eq('org_id', S.org.id).order('fecha', { ascending: false }).limit(500)); await certs();
-  const cuenta3 = k => filas.filter(x => x.resultado === k).length;
-  app().innerHTML = cabecera('Inspecciones internas') + `<div class="filtros"><a class="boton" href="#/inspeccion">+ Nueva inspección</a><a class="boton sec" href="#/carga/inspecciones">Subir historial desde Excel</a></div>
-  <p>${filas.length} inspecciones · ${cuenta3('Aprobado')} aprobadas · ${cuenta3('Condicionado')} condicionadas · ${cuenta3('No aprobado')} no aprobadas</p>
-  <div class="tabla"><table><thead><tr><th>Fecha</th><th>Productor</th><th>Inspector</th><th>Certificaciones</th><th>Resultado</th></tr></thead><tbody>
-  ${filas.map(x => `<tr><td><a href="#/insp/${x.id}">${esc(x.fecha)}</a></td><td><a href="#/prod/${x.productor_id}">${esc(x.productores?.nombre)}</a></td><td>${esc(x.inspector)}</td><td>${x.certificaciones.map(nombreCert).map(esc).join(', ')}</td><td>${esc(x.resultado)}</td></tr>`).join('') || '<tr><td colspan="5" class="nota">Sin inspecciones.</td></tr>'}</tbody></table></div>`;
+  const n = k => filas.filter(x => x.resultado === k).length;
+  let pest = 'todas';
+  app().innerHTML = moldeCab('Inspecciones internas', `${puede('inspeccion.registrar') ? '<a class="boton" href="#/inspeccion">+ Nueva inspección</a>' : ''}${S.maestro ? '<a class="boton sec" href="#/carga/inspecciones">Subir historial desde Excel</a>' : ''}`) + `
+  <div class="barraFiltros"><input id="bus" class="busca" type="search" placeholder="Buscar por productor, código o inspector"></div>
+  ${kpis([kpi('azul', 'doc', 'Inspecciones', filas.length, 'Registradas'), kpi('verde', 'hoja', 'Aprobadas', n('Aprobado')), kpi(n('Condicionado') ? 'ambar' : 'gris', 'reloj', 'Condicionadas', n('Condicionado')), kpi(n('No aprobado') ? 'rojo' : 'gris', 'alerta', 'No aprobadas', n('No aprobado'))])}
+  ${pestanas([['todas', 'Todas', filas.length], ['Aprobado', 'Aprobadas', n('Aprobado')], ['Condicionado', 'Condicionadas', n('Condicionado')], ['No aprobado', 'No aprobadas', n('No aprobado')]], pest)}
+  <div id="lista"></div>`;
+  const pintar = () => {
+    const t = norm($('#bus').value), f = filas.filter(x => (pest === 'todas' || x.resultado === pest) && (!t || norm((x.productores?.nombre || '') + (x.productores?.codigo || '') + (x.inspector || '')).includes(t)));
+    $('#lista').innerHTML = !f.length ? vacio(filas.length ? 'No hay inspecciones con ese filtro.' : 'Todavía no hay inspecciones internas.', puede('inspeccion.registrar') ? '<a class="boton" href="#/inspeccion">Registrar la primera</a>' : '') : `<div class="tabla"><table><thead><tr><th>Fecha</th><th>Productor</th><th>Inspector</th><th>Certificaciones</th><th>Resultado</th></tr></thead><tbody>
+    ${f.map(x => `<tr><td><a href="#/insp/${x.id}">${esc(x.fecha)}</a></td><td><a href="#/prod/${x.productor_id}">${esc(x.productores?.nombre)}</a></td><td>${esc(x.inspector)}</td><td>${x.certificaciones.map(nombreCert).map(esc).join(', ')}</td><td>${x.resultado ? estadoChip(x.resultado, { Aprobado: 'Autorizada', Condicionado: 'Pendiente', 'No aprobado': 'Rechazada' }[x.resultado]) : ''}</td></tr>`).join('')}</tbody></table></div>`;
+  };
+  alPestana(app(), k => { pest = k; pintar(); }); $('#bus').oninput = pintar; pintar();
 };
 
 RUTAS.nc = async function verNC() {
   const filas = await q(sb.from('no_conformidades').select('*, productores(nombre)').eq('org_id', S.org.id).order('estado').order('plazo'));
-  app().innerHTML = cabecera('No conformidades') + `<div class="tabla"><table><thead><tr><th>Productor</th><th>Requisito</th><th>Hallazgo</th><th>Acción</th><th>Plazo</th><th>Estado</th><th></th></tr></thead><tbody>
-  ${filas.map(x => { const venc = x.estado === 'Abierta' && x.plazo && x.plazo < hoy(); return `<tr><td><b>${esc(x.numero || '')}</b><br><a href="#/prod/${x.productor_id}">${esc(x.productores?.nombre)}</a></td><td>${esc(x.requisito)}${x.gravedad ? '<br><span class="nota">' + esc(x.gravedad) + '</span>' : ''}</td><td>${esc(x.descripcion)}</td><td>${esc(x.accion)}</td><td class="${venc ? 'error' : ''}">${esc(x.plazo || '')}${venc ? ' (vencido)' : ''}</td><td>${estadoChip(x.estado, x.estado === 'Abierta' ? 'Pendiente' : 'Autorizada')}${x.cerrada ? '<br><span class="nota">' + esc(x.cerrada) + ' · ' + esc(x.verificacion) + '</span>' : ''}</td><td>${esJefe() && x.estado === 'Abierta' ? `<button class="sec" data-cerrar="${x.id}">Cerrar</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="7" class="nota">Sin no conformidades.</td></tr>'}</tbody></table></div>`;
-  app().querySelectorAll('[data-cerrar]').forEach(b => b.onclick = async () => {
-    const v = prompt('¿Cómo se verificó que se corrigió?'); if (!v) return;
-    try { await q(sb.from('no_conformidades').update({ estado: 'Cerrada', cerrada: hoy(), verificacion: v }).eq('id', b.dataset.cerrar)); aviso('No conformidad cerrada.'); RUTAS.nc(); } catch (e) { aviso(falla(e), true); }
-  });
+  const venc = x => x.estado === 'Abierta' && x.plazo && x.plazo < hoy();
+  const GR = { ab: x => x.estado === 'Abierta', ven: venc, cer: x => x.estado !== 'Abierta', todas: () => true };
+  const n = k => filas.filter(GR[k]).length;
+  let pest = 'ab';
+  app().innerHTML = moldeCab('No conformidades', `<a class="boton sec" href="#/inspecciones">Ver inspecciones</a>`) + `
+  <div class="barraFiltros"><input id="bus" class="busca" type="search" placeholder="Buscar por productor, número o requisito"></div>
+  ${kpis([kpi(n('ab') ? 'ambar' : 'verde', 'reloj', 'Abiertas', n('ab'), 'Por corregir'), kpi(n('ven') ? 'rojo' : 'verde', 'alerta', 'Con el plazo vencido', n('ven'), n('ven') ? 'Hay que darles seguimiento' : 'Ninguna vencida'), kpi('verde', 'hoja', 'Cerradas', n('cer'), 'Corregidas y verificadas')])}
+  ${pestanas([['ab', 'Abiertas', n('ab')], ['ven', 'Vencidas', n('ven')], ['cer', 'Cerradas', n('cer')], ['todas', 'Todas', filas.length]], pest)}
+  <div id="lista"></div>`;
+  const pintar = () => {
+    const t = norm($('#bus').value), f = filas.filter(x => GR[pest](x) && (!t || norm((x.productores?.nombre || '') + (x.numero || '') + (x.requisito || '')).includes(t)));
+    $('#lista').innerHTML = !f.length ? vacio(filas.length ? 'No hay no conformidades con ese filtro.' : 'No hay no conformidades registradas. Salen de las inspecciones internas.') : `<div class="tabla"><table><thead><tr><th>Productor</th><th>Requisito</th><th>Hallazgo</th><th>Acción</th><th>Plazo</th><th>Estado</th><th></th></tr></thead><tbody>
+    ${f.map(x => `<tr><td><b>${esc(x.numero || '')}</b><br><a href="#/prod/${x.productor_id}">${esc(x.productores?.nombre)}</a></td><td>${esc(x.requisito)}${x.gravedad ? '<br><span class="nota">' + esc(x.gravedad) + '</span>' : ''}</td><td>${esc(x.descripcion)}</td><td>${esc(x.accion)}</td><td class="${venc(x) ? 'error' : ''}">${esc(x.plazo || '')}${venc(x) ? ' (vencido)' : ''}</td><td>${estadoChip(x.estado, x.estado === 'Abierta' ? 'Pendiente' : 'Autorizada')}${x.cerrada ? '<br><span class="nota">' + esc(x.cerrada) + ' · ' + esc(x.verificacion) + '</span>' : ''}</td><td>${esJefe() && x.estado === 'Abierta' ? `<button class="sec" data-cerrar="${x.id}">Cerrar</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
+    app().querySelectorAll('[data-cerrar]').forEach(b => b.onclick = async () => {
+      const v = prompt('¿Cómo se verificó que se corrigió?'); if (!v) return;
+      try { await q(sb.from('no_conformidades').update({ estado: 'Cerrada', cerrada: hoy(), verificacion: v }).eq('id', b.dataset.cerrar)); aviso('No conformidad cerrada.'); RUTAS.nc(); } catch (e) { aviso(falla(e), true); }
+    });
+  };
+  alPestana(app(), k => { pest = k; pintar(); }); $('#bus').oninput = pintar; pintar();
 };
 
 // ---------- acopio, despachos y balance de masas ----------
@@ -1655,7 +1676,12 @@ async function disponibleCert(cert, anio, producto = 'Café') {
 RUTAS.despacho = async function formDespacho() {
   const cs = await certs(), anio = new Date().getFullYear();
   const desp = await q(sb.from('despachos').select('*').eq('org_id', S.org.id).order('fecha', { ascending: false }).limit(100));
-  app().innerHTML = cabecera('Despacho y venta') + `<form class="caja" id="f"><div class="rejilla">
+  const dAn = desp.filter(x => String(x.fecha || '').startsWith(String(anio))), porDeclarar = desp.filter(x => !x.dds_numero).length;
+  app().innerHTML = moldeCab('Despacho y venta', `<a class="boton sec" href="#/lotes">Trazabilidad por lote</a><a class="boton sec" href="#/balance">Balance de masas</a>`) + kpis([
+    kpi('azul', 'doc', 'Despachos ' + anio, dAn.length, desp.length + ' en total'),
+    kpi('verde', 'saco', 'Vendido ' + anio, (dAn.reduce((t, x) => t + num(x.psec_lb), 0) / 100).toLocaleString('es-HN', { maximumFractionDigits: 1 }) + ' qq', 'Equivalente seco'),
+    kpi('verde', 'dinero', 'Prima generada ' + anio, '$' + dAn.reduce((t, x) => t + num(x.prima_usd), 0).toLocaleString('en-US', { maximumFractionDigits: 2 }), 'Comercio Justo'),
+    kpi(porDeclarar ? 'ambar' : 'verde', 'mapa', 'EUDR por declarar', porDeclarar, porDeclarar ? 'Despachos sin número de declaración' : 'Todos declarados')]) + `<h2>Registrar un despacho</h2><form class="caja" id="f"><div class="rejilla">
     <div><label>Fecha</label><input type="date" name="fecha" required value="${hoy()}"></div>
     <div><label>Contrato</label><input name="contrato"></div><div><label>Comprador</label><input name="comprador" required></div>
     <div><label>Certificación con la que se vende</label><select name="certificacion" id="cert"><option value="">Convencional</option>${cs.map(c => `<option value="${esc(c.codigo)}">${esc(c.nombre)}</option>`).join('')}</select></div>
@@ -2613,11 +2639,25 @@ RUTAS.guias = async function verGuias(codigo) {
 };
 RUTAS.capacitaciones = async function verCapacitaciones() {
   const caps = await q(sb.from('capacitaciones').select('id,fecha,codigo,tema,publico,lugar,sector,hombres,mujeres,jovenes,revision').eq('org_id', S.org.id).order('fecha', { ascending: false }).limit(500));
-  app().innerHTML = cabecera('Capacitaciones') + `<div class="filtros"><a class="boton" href="#/capacitacion">+ Registrar ayuda memoria</a><a class="boton sec" href="#/guias">Guías y plan</a><a class="boton sec" href="#/asistencia">Asistencia por productor</a></div>
-  <p class="nota">Lo normal es llenar la ayuda memoria en Kobo el mismo día, con las fotos y la lista firmada. Aquí también se puede registrar o completar.</p>
-  <div class="tabla"><table><thead><tr><th>Fecha</th><th>Capacitación</th><th>Público</th><th>Lugar</th><th class="n">H</th><th class="n">M</th><th class="n">Jóvenes</th><th>Revisión</th></tr></thead><tbody>
-  ${caps.map(c => `<tr><td>${esc(c.fecha)}</td><td><a href="#/cap/${c.id}">${c.codigo ? '<b>' + esc(c.codigo) + '</b> ' : ''}${esc(c.tema)}</a></td><td>${esc(PUBLICO_CAP[c.publico] || c.publico || '')}</td><td>${esc([c.sector, c.lugar].filter(Boolean).join(' · '))}</td><td class="n">${c.hombres || 0}</td><td class="n">${c.mujeres || 0}</td><td class="n">${c.jovenes || 0}</td><td>${c.revision ? `<span class="punto ${{ Pendiente: 'p-ambar', Aprobado: 'p-verde', Devuelto: 'p-rojo' }[c.revision]}"></span>${esc(c.revision)}` : ''}</td></tr>`).join('') || '<tr><td colspan="8" class="nota">Todavía no hay capacitaciones.</td></tr>'}
-  </tbody></table></div>`;
+  const anio = String(new Date().getFullYear()), delAnio = caps.filter(c => String(c.fecha || '').startsWith(anio));
+  const h = delAnio.reduce((t, c) => t + num(c.hombres), 0), m = delAnio.reduce((t, c) => t + num(c.mujeres), 0);
+  const GR = { todas: () => true, pend: c => c.revision === 'Pendiente', apr: c => c.revision === 'Aprobado', dev: c => c.revision === 'Devuelto' };
+  const n = k => caps.filter(GR[k]).length;
+  let pest = 'todas';
+  app().innerHTML = moldeCab('Capacitaciones', `<a class="boton" href="#/capacitacion">+ Registrar ayuda memoria</a><a class="boton sec" href="#/guias">Guías y plan</a><a class="boton sec" href="#/asistencia">Asistencia por productor</a>`) + `
+  <div class="barraFiltros"><input id="bus" class="busca" type="search" placeholder="Buscar por tema, código o lugar"></div>
+  ${kpis([kpi('azul', 'doc', 'Capacitaciones ' + anio, delAnio.length, caps.length + ' en total'), kpi('verde', 'gente', 'Participantes ' + anio, (h + m).toLocaleString('es-HN'), h + ' hombres · ' + m + ' mujeres'),
+    kpi('gris', 'gente', 'Mujeres', h + m ? Math.round(m / (h + m) * 100) + ' %' : '—', 'De los participantes del año'), kpi(n('pend') ? 'ambar' : 'gris', 'reloj', 'Por revisar', n('pend'), 'Esperan aprobación')])}
+  ${pestanas([['todas', 'Todas', caps.length], ['pend', 'Por revisar', n('pend')], ['apr', 'Aprobadas', n('apr')], ['dev', 'Devueltas', n('dev')]], pest)}
+  <div id="lista"></div>
+  <p class="nota">Lo normal es llenar la ayuda memoria en Kobo el mismo día, con las fotos y la lista firmada. Aquí también se puede registrar o completar.</p>`;
+  const pintar = () => {
+    const t = norm($('#bus').value), f = caps.filter(c => GR[pest](c) && (!t || norm((c.tema || '') + (c.codigo || '') + (c.lugar || '') + (c.sector || '')).includes(t)));
+    $('#lista').innerHTML = !f.length ? vacio(caps.length ? 'No hay capacitaciones con ese filtro.' : 'Todavía no hay capacitaciones registradas.', '<a class="boton" href="#/capacitacion">Registrar la primera</a>') : `<div class="tabla"><table><thead><tr><th>Fecha</th><th>Capacitación</th><th>Público</th><th>Lugar</th><th class="n">H</th><th class="n">M</th><th class="n">Jóvenes</th><th>Revisión</th></tr></thead><tbody>
+    ${f.map(c => `<tr><td>${esc(c.fecha)}</td><td><a href="#/cap/${c.id}">${c.codigo ? '<b>' + esc(c.codigo) + '</b> ' : ''}${esc(c.tema)}</a></td><td>${esc(PUBLICO_CAP[c.publico] || c.publico || '')}</td><td>${esc([c.sector, c.lugar].filter(Boolean).join(' · '))}</td><td class="n">${c.hombres || 0}</td><td class="n">${c.mujeres || 0}</td><td class="n">${c.jovenes || 0}</td><td>${c.revision ? `<span class="punto ${{ Pendiente: 'p-ambar', Aprobado: 'p-verde', Devuelto: 'p-rojo' }[c.revision]}"></span>${esc(c.revision)}` : ''}</td></tr>`).join('')}
+    </tbody></table></div>`;
+  };
+  alPestana(app(), k => { pest = k; pintar(); }); $('#bus').oninput = pintar; pintar();
 };
 RUTAS.cap = async function verAyudaMemoria(id) {
   const c = await q(sb.from('capacitaciones').select('*').eq('id', id).single());

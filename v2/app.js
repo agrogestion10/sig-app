@@ -830,18 +830,27 @@ async function verFactura(id) {
 async function verFacturas(mes) {
   mes = mes || hoy().slice(0, 7);
   const fac = await q(sb.from('facturas').select('*').eq('org_id', S.org.id).eq('mes_fiscal', mes).order('fecha_emision'));
-  const s = k => fac.reduce((a, x) => a + num(x[k]), 0);
-  app().innerHTML = cabecera('Facturas') + `
-  <div class="filtros"><input type="month" id="mes" value="${mes}"><a class="boton" href="#/agregarfac">+ Agregar facturas</a><button class="sec" id="csv">Descargar CSV</button></div>
-  <div class="tabla"><table><thead><tr><th>Fecha</th><th>Número</th><th>Emisor</th><th>RTN</th><th class="n">Gravado</th><th class="n">ISV</th><th class="n">Total</th><th class="n">Retención</th><th>SAR</th></tr></thead><tbody>
-  ${fac.map(x => `<tr><td>${esc(x.fecha_emision)}</td><td><a href="#/fac/${x.id}">${esc(x.numero || x.tipo_documento)}</a></td><td>${esc(x.emisor)}</td><td>${esc(x.rtn_emisor)}</td><td class="n">${L(x.gravado)}</td><td class="n">${L(x.isv)}</td><td class="n">${L(x.total)}</td><td class="n">${x.retencion ? L(x.retencion) : ''}</td><td>${x.valida_sar ? '<span class="estado e-Autorizada">Válida</span>' : `<span class="estado e-Rechazada" title="${esc(x.observaciones)}">Revisar</span>`}</td></tr>`).join('') || '<tr><td colspan="9" class="nota">No hay facturas en este mes.</td></tr>'}
-  </tbody>${fac.length ? `<tfoot><tr><th colspan="4">Totales del mes (${fac.length})</th><th class="n">${L(s('gravado'))}</th><th class="n">${L(s('isv'))}</th><th class="n">${L(s('total'))}</th><th class="n">${L(s('retencion'))}</th><th></th></tr></tfoot>` : ''}</table></div>
-  <p class="nota">El ISV pagado en compras (${L(s('isv'))}) es crédito fiscal para la declaración del mes. Las retenciones se enteran al SAR a más tardar el día 10 del mes siguiente.</p>`;
+  const s = (k, l = fac) => l.reduce((a, x) => a + num(x[k]), 0);
+  const malas = fac.filter(x => !x.valida_sar);
+  let pest = 'todas';
+  app().innerHTML = moldeCab('Libro de compras', `${puede('facturas.registrar') ? '<a class="boton" href="#/agregarfac">+ Agregar facturas</a>' : ''}<button class="sec" id="csv">Descargar CSV</button>`) + `
+  <div class="barraFiltros"><input type="month" id="mes" value="${mes}"><input id="bus" class="busca" type="search" placeholder="Buscar por emisor, RTN o número"></div>
+  ${kpis([kpi('azul', 'doc', 'Facturas del mes', fac.length, 'Total ' + L(s('total'))), kpi('verde', 'dinero', 'ISV (crédito fiscal)', L(s('isv')), 'Para la declaración del mes'),
+    kpi('gris', 'reloj', 'Retenciones', L(s('retencion')), 'Se enteran al SAR a más tardar el día 10'), kpi(malas.length ? 'rojo' : 'verde', 'alerta', 'Por revisar', malas.length, malas.length ? 'Les falta algo para el SAR' : 'Todas completas')])}
+  ${pestanas([['todas', 'Todas', fac.length], ['ok', 'Completas', fac.length - malas.length], ['mal', 'Por revisar', malas.length]], pest)}
+  <div id="lista"></div>`;
+  const pintar = () => {
+    const t = norm($('#bus').value), f = fac.filter(x => (pest === 'todas' || (pest === 'ok' ? x.valida_sar : !x.valida_sar)) && (!t || norm((x.emisor || '') + (x.rtn_emisor || '') + (x.numero || '')).includes(t)));
+    $('#lista').innerHTML = !f.length ? vacio(fac.length ? 'No hay facturas con ese filtro.' : 'No hay facturas en este mes.', puede('facturas.registrar') ? '<a class="boton" href="#/agregarfac">Agregar facturas</a>' : '') : `<div class="tabla"><table><thead><tr><th>Fecha</th><th>Número</th><th>Emisor</th><th>RTN</th><th class="n">Gravado</th><th class="n">ISV</th><th class="n">Total</th><th class="n">Retención</th><th>SAR</th></tr></thead><tbody>
+    ${f.map(x => `<tr><td>${esc(x.fecha_emision)}</td><td><a href="#/fac/${x.id}">${esc(x.numero || x.tipo_documento)}</a></td><td>${esc(x.emisor)}</td><td>${esc(x.rtn_emisor)}</td><td class="n">${L(x.gravado)}</td><td class="n">${L(x.isv)}</td><td class="n">${L(x.total)}</td><td class="n">${x.retencion ? L(x.retencion) : ''}</td><td>${x.valida_sar ? '<span class="estado e-Autorizada">Válida</span>' : `<span class="estado e-Rechazada" title="${esc(x.observaciones)}">Revisar</span>`}</td></tr>`).join('')}
+    </tbody><tfoot><tr><th colspan="4">Totales (${f.length})</th><th class="n">${L(s('gravado', f))}</th><th class="n">${L(s('isv', f))}</th><th class="n">${L(s('total', f))}</th><th class="n">${L(s('retencion', f))}</th><th></th></tr></tfoot></table></div>`;
+  };
+  alPestana(app(), k => { pest = k; pintar(); }); $('#bus').oninput = pintar; pintar();
   $('#mes').onchange = e => location.hash = '#/facturas/' + e.target.value;
   $('#csv').onclick = () => {
     const cols = ['fecha_emision', 'tipo_documento', 'numero', 'cai', 'rtn_emisor', 'emisor', 'exento', 'gravado', 'isv', 'total', 'tipo_retencion', 'retencion', 'valida_sar', 'observaciones'];
     const csv = [cols.join(','), ...fac.map(x => cols.map(c => '"' + String(x[c] ?? '').replace(/"/g, '""') + '"').join(','))].join('\n');
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = `facturas-${mes}.csv`; a.click();
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv' })); a.download = `facturas-${mes}.csv`; a.click();
   };
 }
 
@@ -979,10 +988,19 @@ async function pintarAdjuntos(s) {
 // ---------- proveedores ----------
 async function verProveedores() {
   const filas = await q(sb.from('proveedores').select('*').eq('org_id', S.org.id).order('nombre'));
-  app().innerHTML = cabecera('Proveedores') + `<div class="filtros"><input id="bus" placeholder="Buscar por nombre o RTN"><a class="boton" href="#/proveedor">+ Nuevo proveedor</a><a class="boton sec" href="#/carga/proveedores">Subir varios desde Excel</a></div>
-  <div class="tabla"><table><thead><tr><th>Nombre</th><th>RTN</th><th>Contacto</th><th>Teléfono</th><th>Qué vende</th><th></th></tr></thead><tbody id="cuerpo"></tbody></table></div>`;
-  const pintar = t => { t = norm(t); $('#cuerpo').innerHTML = filas.filter(p => !t || norm(p.nombre + p.rtn).includes(t)).map(p => `<tr${p.activo ? '' : ' style="opacity:.5"'}><td>${esc(p.nombre)}</td><td>${esc(p.rtn)}</td><td>${esc(p.contacto)}</td><td>${esc(p.telefono)}</td><td>${esc(p.bienes)}</td><td>${esJefe() ? `<a href="#/proveedor/${p.id}">Editar</a>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="nota">Sin proveedores.</td></tr>'; };
-  $('#bus').oninput = e => pintar(e.target.value); pintar('');
+  const act = filas.filter(p => p.activo), conRtn = act.filter(p => String(p.rtn || '').replace(/\D/g, '').length >= 14).length;
+  let pest = 'act';
+  app().innerHTML = moldeCab('Proveedores', `<a class="boton" href="#/proveedor">+ Nuevo proveedor</a>${S.maestro ? '<a class="boton sec" href="#/carga/proveedores">Subir desde Excel</a>' : ''}`) + `
+  <div class="barraFiltros"><input id="bus" class="busca" type="search" placeholder="Buscar por nombre, RTN o lo que vende"></div>
+  ${kpis([kpi('verde', 'gente', 'Proveedores activos', act.length), kpi(conRtn < act.length ? 'ambar' : 'verde', 'doc', 'Con RTN completo', conRtn, conRtn < act.length ? (act.length - conRtn) + ' sin RTN de 14 dígitos' : 'Todos con RTN'), kpi('gris', 'reloj', 'Inactivos', filas.length - act.length)])}
+  ${pestanas([['act', 'Activos', act.length], ['inact', 'Inactivos', filas.length - act.length], ['todos', 'Todos', filas.length]], pest)}
+  <div id="lista"></div>`;
+  const pintar = () => {
+    const t = norm($('#bus').value), f = filas.filter(p => (pest === 'todos' || (pest === 'act' ? p.activo : !p.activo)) && (!t || norm(p.nombre + p.rtn + (p.bienes || '')).includes(t)));
+    $('#lista').innerHTML = !f.length ? vacio(filas.length ? 'No hay proveedores con ese filtro.' : 'Todavía no hay proveedores.', '<a class="boton" href="#/proveedor">Agregar el primero</a>') : `<div class="tabla"><table><thead><tr><th>Nombre</th><th>RTN</th><th>Contacto</th><th>Teléfono</th><th>Qué vende</th><th></th></tr></thead><tbody>
+    ${f.map(p => `<tr${p.activo ? '' : ' style="opacity:.5"'}><td>${esc(p.nombre)}</td><td>${esc(p.rtn)}</td><td>${esc(p.contacto)}</td><td>${esc(p.telefono)}</td><td>${esc(p.bienes)}</td><td>${esJefe() ? `<a href="#/proveedor/${p.id}">Editar</a>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
+  };
+  alPestana(app(), k => { pest = k; pintar(); }); $('#bus').oninput = pintar; pintar();
 }
 async function formProveedor(id) {
   const p = id ? await q(sb.from('proveedores').select('*').eq('id', id).single()) : {};
