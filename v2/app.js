@@ -303,13 +303,16 @@ function pantallaAcceso() {
     <span class="logo">SIG</span>
     <h1>Sistema de Gestión Integral</h1>
     <form class="caja" id="fAcceso" autocomplete="on">
-      <label for="aOrg">Organización <span class="nota">(no hace falta si entrás con tu correo)</span></label><input id="aOrg" name="org" autocomplete="organization" value="${esc(localStorage.getItem('sig_ultima_org') || '')}">
-      <label for="aUsr">Usuario</label><input id="aUsr" name="usuario" required autocomplete="username" autocapitalize="none" placeholder="Tu usuario o tu correo">
+      <label for="aUsr">Correo o usuario</label><input id="aUsr" name="usuario" required autocomplete="username" autocapitalize="none" placeholder="Tu correo o tu usuario">
+      <div id="aOrgCaja" hidden><label for="aOrg">Organización</label><input id="aOrg" name="org" autocomplete="organization" value="${esc(localStorage.getItem('sig_ultima_org') || '')}"><p class="nota">Solo si entrás con usuario. Con tu correo no hace falta.</p></div>
       <label for="aClave">Contraseña</label><input id="aClave" name="clave" type="password" required autocomplete="current-password">
       <button>Entrar</button>
       <p class="nota error" id="aErr"></p>
     </form><p style="text-align:center">¿Tu organización todavía no usa el SIG? <a href="#/registro" id="aReg"><b>Probalo gratis 30 días</b></a></p>
     <p class="nota" style="text-align:center"><a href="/privacidad.html" target="_blank" rel="noopener">Aviso de privacidad y términos de uso</a></p></div>`;
+  // La organización solo se pide cuando se entra con usuario (no con correo)
+  const verOrg = () => { const v = $('#aUsr').value.trim(); $('#aOrgCaja').hidden = !v || v.includes('@'); };
+  $('#aUsr').addEventListener('input', verOrg); $('#aUsr').addEventListener('change', verOrg); setTimeout(verOrg, 300);
   $('#aReg').onclick = e => { e.preventDefault(); location.hash = '#/registro'; pantallaRegistro(); };
   $('#fAcceso').onsubmit = async ev => {
     ev.preventDefault(); const f = ev.target, d = datosForm(f); $('#aErr').textContent = '';
