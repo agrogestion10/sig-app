@@ -12,6 +12,14 @@ const ICONOS = {
   padron: IC('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14.8c1.6.8 2.6 2.5 3 5.2"/>'),
   acopio: IC('<path d="M4 7h16l-1.5 12a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2z"/><path d="M8 7a4 4 0 0 1 8 0"/>'),
   eudr: IC('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3"/>'),
+  solic: IC('<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 11l2 2 4-4M9 17h6"/>'),
+  facturas: IC('<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/>'),
+  proveedores: IC('<path d="M3 9l1.5-5h15L21 9"/><path d="M3 9h18v2a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0z"/><path d="M5 13v7h14v-7"/>'),
+  empleados: IC('<circle cx="12" cy="8" r="3.5"/><path d="M5 20c.9-3.6 3.6-5.5 7-5.5s6.1 1.9 7 5.5"/>'),
+  presupuesto: IC('<path d="M12 3v9h9"/><path d="M20.5 15A9 9 0 1 1 9 3.5"/>'),
+  beneficio: IC('<path d="M12 3c3 4 5 6.8 5 9.5a5 5 0 0 1-10 0C7 9.8 9 7 12 3z"/>'),
+  basculas: IC('<path d="M12 4v16M7 20h10M5 8h14"/><path d="M5 8l-2.5 6a3 3 0 0 0 5 0zM19 8l-2.5 6a3 3 0 0 0 5 0z"/>'),
+  balance: IC('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'),
   procesos: IC('<rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="10" rx="1.5"/><rect x="17" y="4" width="4" height="13" rx="1.5"/>'),
   ventas: IC('<path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>'),
   traza: IC('<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.5 6H15a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h6.5"/>'),
@@ -26,7 +34,7 @@ const ICONOS = {
 };
 
 // Qué opción del menú se marca según la pantalla abierta
-const MARCA_DE = { padron: 'padron', prod: 'padron', prodf: 'padron', parcela: 'padron', acopio: 'acopio', acopios: 'acopio', recibo: 'acopio', procesos: 'procesos', inventario: 'procesos', reg: 'procesos', despacho: 'ventas', eudr: 'ventas', balance: 'ventas', lotes: 'traza', lote: 'traza', eudrparc: 'eudr', kobo: 'kobo', plan: 'plan', config: 'config', usuarios: 'config', roles: 'config', catalogo: 'config', bitacora: 'config', orgs: 'config', guia: 'guia', ger: 'ger' };
+const MARCA_DE = { padron: 'padron', prod: 'padron', prodf: 'padron', parcela: 'padron', acopio: 'acopio', acopios: 'acopio', recibo: 'acopio', procesos: 'procesos', inventario: 'procesos', reg: 'beneficio', basculas: 'basculas', despacho: 'ventas', eudr: 'ventas', balance: 'balance', lotes: 'traza', lote: 'traza', adm: 'adm', solicitudes: 'solic', solicitud: 'solic', compra: 'solic', fondo: 'solic', liquidacion: 'solic', vacacion: 'solic', laboral: 'solic', facturas: 'facturas', factura: 'facturas', fac: 'facturas', agregarfac: 'facturas', proveedores: 'proveedores', proveedor: 'proveedores', empleados: 'empleados', empleado: 'empleados', presupuesto: 'presupuesto', eudrparc: 'eudr', kobo: 'kobo', plan: 'plan', config: 'config', usuarios: 'config', roles: 'config', catalogo: 'config', bitacora: 'config', orgs: 'config', guia: 'guia', ger: 'ger' };
 
 function itemsNav() {
   if (!S.user || !S.org) return null;
@@ -36,9 +44,15 @@ function itemsNav() {
     ['Gestioná tu organización', [
       ['inicio', '#/', 'Inicio'],
       puedeSec('ger') && ['ger', '#/ger', 'Gerencia'],
-      puedeSec('adm') && ['adm', '#/adm', 'Administración'],
       puedeSec('cre') && ['cre', '#/cre', 'Crédito interno'],
       cer && ['cer', '#/cer', 'Certificaciones']]],
+    puedeSec('adm') && ['Administración', [
+      ['adm', '#/adm', 'Resumen'],
+      ['solic', '#/solicitudes', puede('solicitudes.autorizar') ? 'Autorizaciones' : 'Mis solicitudes'],
+      ['facturas', '#/facturas', 'Libro de compras'],
+      ['proveedores', '#/proveedores', 'Proveedores'],
+      puede('empleados.gestionar') && ['empleados', '#/empleados', 'Empleados'],
+      ['presupuesto', '#/presupuesto', 'Presupuesto']]],
     cer && ['Campo y cumplimiento', [
       ['padron', '#/padron', 'Productores y fincas'],
       ['eudr', '#/eudrparc', 'Revisión EUDR', sinSat],
@@ -46,7 +60,10 @@ function itemsNav() {
     cer && ['Del acopio a la exportación', [
       ['acopio', '#/acopios', 'Acopio'],
       ['procesos', '#/procesos', 'Procesos y lotes'],
+      ['beneficio', '#/reg/beneficiado', typeof cultivos === 'function' && cultivos().length === 1 && cultivos()[0] === 'Cacao' ? 'Fermentación y secado' : 'Beneficio y secado'],
+      ['basculas', '#/basculas', 'Básculas'],
       ['ventas', '#/despacho', 'Ventas y exportación'],
+      ['balance', '#/balance', 'Balance de masas'],
       ['traza', '#/lotes', 'Trazabilidad']]],
     ['Tu cuenta', [
       ['plan', '#/plan', 'Mi plan', false, p.nombre],
@@ -55,7 +72,7 @@ function itemsNav() {
   ].filter(Boolean).map(([t, l]) => [t, l.filter(Boolean)]);
 }
 // Aviso en el menú: cuántas cosas esperan en cada sección (lo que antes salía en las tarjetas de Inicio)
-function marcarNav(k, txt, clase) { const m = String(txt || '').match(/^\d+/); (S.avisosNav = S.avisosNav || {})[k] = m && +m[0] > 0 ? { n: +m[0], clase, txt } : null; pintarAvisosNav(); }
+function marcarNav(k, txt, clase) { const m = String(txt || '').match(/^\d+/), v = m && +m[0] > 0 ? { n: +m[0], clase, txt } : null; S.avisosNav = S.avisosNav || {}; S.avisosNav[k] = v; if (k === 'adm') S.avisosNav.solic = v; pintarAvisosNav(); }
 function pintarAvisosNav() {
   const av = S.avisosNav || {};
   document.querySelectorAll('#navLat .navItem[data-k], #navBaja a[data-k]').forEach(a => {

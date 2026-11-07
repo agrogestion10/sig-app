@@ -915,18 +915,16 @@ RUTAS.cartera = async function verCartera() {
 RUTAS.cer = async function menuCert() {
   S.seccion = 'cer';
   setTimeout(() => sincronizarKobo(false), 0);
-  const mesIni = hoy().slice(0, 8) + '01';
-  const [nc, qj, nProd, acoMes] = await Promise.all([cuenta('no_conformidades', x => x.eq('estado', 'Abierta')), cuenta('quejas', x => x.neq('estado', 'Cerrada')), cuenta('productores', x => x.eq('activo', true)),
-    sb.from('acopio').select('psec_lb').eq('org_id', S.org.id).gte('fecha', mesIni).limit(5000).then(r => r.data || [], () => [])]);
-  const qqMes = acoMes.reduce((t, x) => t + num(x.psec_lb), 0) / 100;
-  const rapidos = [puede('acopio.registrar') && '<a class="boton" href="#/acopio">+ Registrar acopio</a>', puede('inspeccion.registrar') && '<a class="boton sec" href="#/inspeccion">+ Inspección</a>',
-    puede('padron.crear') && '<a class="boton sec" href="#/prodf">+ Productor</a>', puede('padron.crear') && '<a class="boton sec" href="#/parcela">+ Parcela</a>'].filter(Boolean).join('');
+  const ini = hoy().slice(0, 4) + '-01-01';
+  const [nc, qj, nIns, nCap] = await Promise.all([cuenta('no_conformidades', x => x.eq('estado', 'Abierta')), cuenta('quejas', x => x.neq('estado', 'Cerrada')),
+    cuenta('inspecciones', x => x.gte('fecha', ini)), cuenta('capacitaciones', x => x.gte('fecha', ini))]);
+  const rapidos = [puede('inspeccion.registrar') && '<a class="boton" href="#/inspeccion">+ Inspección interna</a>', puede('capacitacion.registrar') && '<a class="boton sec" href="#/capacitaciones">+ Capacitación</a>',
+    puede('quejas.gestionar') ? '' : '<a class="boton sec" href="#/queja">Registrar una queja</a>'].filter(Boolean).join('');
   app().innerHTML = moldeCab('Certificaciones', rapidos, '#/') + kpis([
-    kpi('verde', 'gente', 'Productores activos', nProd, '<a href="#/padron">Ver padrón</a>'),
-    kpi('azul', 'saco', 'Acopio de este mes', qqMes.toLocaleString('es-HN', { maximumFractionDigits: 1 }) + ' qq', '<a href="#/acopios">Ver acopio</a>'),
+    kpi('azul', 'doc', 'Inspecciones este año', nIns, '<a href="#/inspecciones">Ver inspecciones</a>'),
     kpi(nc ? 'rojo' : 'verde', 'alerta', 'No conformidades abiertas', nc, '<a href="#/nc">Dar seguimiento</a>'),
-    kpi(qj ? 'ambar' : 'verde', 'doc', 'Quejas sin cerrar', qj, puede('quejas.gestionar') ? '<a href="#/quejas">Atender</a>' : '')]) + `<div class="caja nota" id="koboEstado" style="padding:10px 14px">Revisando Kobo…</div>
-  ${S.maestro || esAdmin() ? `<div class="tarjetas">${S.maestro ? tarjeta('#/carga', 'Carga masiva desde Excel', 'Productores, parcelas, polígonos, acopio anterior, inspecciones, insumos y documentos') : tarjeta('#/plan/carga', 'Pedir carga de datos', 'Mandá tu Excel y AgroGestión lo carga')}</div>` : ''}
+    kpi('verde', 'gente', 'Capacitaciones este año', nCap, '<a href="#/capacitaciones">Ver capacitaciones</a>'),
+    kpi(qj ? 'ambar' : 'verde', 'reloj', 'Quejas sin cerrar', qj, puede('quejas.gestionar') ? '<a href="#/quejas">Atender</a>' : '')]) + `<div class="caja nota" id="koboEstado" style="padding:10px 14px">Revisando Kobo…</div>
   <h2 class="grupoMenu">Control interno</h2><div class="tarjetas">
     ${tarjeta('#/inspecciones', 'Inspecciones internas', 'Resultado anual de cada productor')}
     ${tarjeta('#/nc', 'No conformidades', 'Seguimiento y cierre', nc)}
@@ -936,12 +934,7 @@ RUTAS.cer = async function menuCert() {
     ${tarjeta('#/asistencia', 'Asistencia por productor', 'Quién llegó a cada capacitación')}
     ${puede('quejas.gestionar') ? tarjeta('#/quejas', 'Quejas y reclamos', 'Buzón, también anónimo', qj) : tarjeta('#/queja', 'Registrar una queja', 'Buzón, también anónimo')}
   </div>
-  <h2 class="grupoMenu">Beneficio y básculas</h2><div class="tarjetas">
-    ${tarjeta('#/basculas', 'Básculas', 'Calibración y vencimiento')}
-    ${tarjeta('#/reg/beneficiado', cultivos().length === 1 && cultivos()[0] === 'Cacao' ? 'Fermentación y secado' : 'Beneficiado y secado', cultivos().includes('Cacao') ? 'Fermentación, secado y prueba de corte de cada lote' : 'Proceso de cada lote')}
-  </div>
-  <h2 class="grupoMenu">Balance, Comercio Justo y asamblea</h2><div class="tarjetas">
-    ${tarjeta('#/balance', 'Balance de masas', 'Comprado contra vendido por certificación')}
+  <h2 class="grupoMenu">Comercio Justo y asamblea</h2><div class="tarjetas">
     ${tarjeta('#/prima', 'Prima de Comercio Justo', 'Generada, usada y disponible')}
     ${tarjeta('#/actas', 'Actas de asamblea', 'Lo que aprueba la asamblea y lo que se gastó')}
   </div>
@@ -958,8 +951,8 @@ RUTAS.padron = async function verPadron() {
   const act = ps.filter(p => p.activo), inc = act.filter(p => falta[p.id].length), conSinPol = act.filter(p => sinPol[p.id]);
   const GR = { act: p => p.activo, inc: p => p.activo && falta[p.id].length, pol: p => p.activo && sinPol[p.id], inact: p => !p.activo };
   let pest = 'act';
-  const carga = S.maestro ? '<a class="boton sec" href="#/carga/productores">Subir desde Excel</a>' : esAdmin() ? '<a class="boton sec" href="#/plan/carga">Pedir carga de datos</a>' : '';
-  app().innerHTML = moldeCab('Padrón de productores', `${puede('padron.crear') ? '<a class="boton" href="#/prodf">+ Nuevo productor</a>' : ''}${carga}${puedeExcel() ? '<button class="sec" id="csv">Padrón completo (CSV)</button>' : ''}`) + `
+  const carga = S.maestro ? `<details class="menuBoton"><summary class="boton sec">Subir desde Excel ▾</summary><div><a href="#/carga/productores">Productores</a><a href="#/carga/parcelas">Parcelas</a><a href="#/carga/poligonos">Polígonos de las parcelas</a><a href="#/carga/documentos">Documentos de los productores</a></div></details>` : esAdmin() ? '<a class="boton sec" href="#/plan/carga">Pedir carga de datos</a>' : '';
+  app().innerHTML = moldeCab('Padrón de productores', `${puede('padron.crear') ? '<a class="boton" href="#/prodf">+ Nuevo productor</a><a class="boton sec" href="#/parcela">+ Parcela</a>' : ''}${carga}${puedeExcel() ? '<button class="sec" id="csv">Padrón completo (CSV)</button>' : ''}`) + `
   <div class="barraFiltros"><input id="bus" class="busca" type="search" placeholder="Buscar por nombre, código o comunidad"><select id="fc"><option value="">Todas las certificaciones</option>${cs.map(c => `<option value="${c.codigo}">${esc(c.nombre)}</option>`).join('')}</select></div>
   ${kpis([kpi('verde', 'gente', 'Productores activos', act.length, act.filter(p => p.certificaciones.length).length + ' con alguna certificación'),
     kpi('azul', 'mapa', 'Hectáreas', act.reduce((t, p) => t + (ha[p.id] || 0), 0).toLocaleString('es-HN', { maximumFractionDigits: 1 }), parc.length + ' parcelas'),

@@ -335,19 +335,30 @@ function pantallaAcceso() {
 
 // ---------- inicio ----------
 async function inicio() {
-  let pend = 0;
-  if (esJefe()) { const r = await sb.from('solicitudes').select('id', { count: 'exact', head: true }).eq('org_id', S.org.id).eq('estado', 'Pendiente'); pend = r.count || 0; }
-  const t = (h, b, s, n) => `<a class="tarjeta" href="${h}">${n ? `<span class="num">${n}</span>` : ''}<b>${b}</b><span>${s}</span></a>`;
-  app().innerHTML = cabecera('Administración', '#/') + menuGrupos([
-    ['Solicitudes', [t('#/compra', 'Solicitud de compra', 'Con cotizaciones y proveedor'), t('#/fondo', 'Solicitud de fondos', 'Anticipos para actividades'),
-      t('#/liquidacion', 'Liquidar fondos', 'Rendir cuentas de un anticipo con sus facturas'),
-      t('#/solicitudes', puede('solicitudes.autorizar') ? 'Autorizaciones' : 'Mis solicitudes', puede('solicitudes.autorizar') ? 'Revisar y resolver' : 'Ver en qué van', pend)]],
-    ['Personal', [t('#/vacacion', 'Vacaciones', 'Solicitar días'), esJefe() ? t('#/laboral', 'Liquidación laboral', 'Prestaciones al terminar la relación') : '',
-      puede('empleados.gestionar') ? t('#/empleados', 'Empleados', 'Datos del personal') : '']],
-    ['Compras y contabilidad', [t('#/facturas', 'Libro de compras', 'Facturas del mes, ISV y retenciones'), puede('facturas.registrar') ? t('#/agregarfac', 'Agregar facturas', 'Servicios, alquiler, facturas a crédito') : '',
-      t('#/proveedores', 'Proveedores', 'Directorio con RTN'), t('#/presupuesto', 'Presupuesto', 'Aprobado y ejecutado')]],
-    ['Panel de control', [puedePanel('adm') ? t('#/pnl/adm', 'Panel de control', 'Números de la sección y archivo de PDF') : '']]
-  ]);
+  const aut = puede('solicitudes.autorizar'), mes = hoy().slice(0, 7), anio = +mes.slice(0, 4), verFac = puede('facturas.registrar') || puede('facturas.gestionar');
+  const [sol, fac, pres, emp] = await Promise.all([
+    q(sb.from('solicitudes').select('id,numero,tipo,creado,solicitante,estado,monto,descripcion').eq('org_id', S.org.id).order('creado', { ascending: false }).limit(200)),
+    verFac ? q(sb.from('facturas').select('total,isv').eq('org_id', S.org.id).eq('mes_fiscal', mes)).catch(() => []) : [],
+    q(sb.from('ejecucion_presupuesto').select('aprobado,ejecutado,comprometido').eq('org_id', S.org.id).eq('anio', anio)).catch(() => []),
+    puede('empleados.gestionar') ? q(sb.from('empleados').select('id,activo').eq('org_id', S.org.id)).catch(() => []) : []]);
+  const pend = sol.filter(x => x.estado === 'Pendiente'), delMes = sol.filter(x => String(x.creado).startsWith(mes)), autMes = delMes.filter(x => ['Autorizada', 'Atendida'].includes(x.estado));
+  const porAtender = sol.filter(x => x.estado === 'Autorizada' && ['compra', 'fondo'].includes(x.tipo));
+  const sp = k => pres.reduce((t, x) => t + num(x[k]), 0), apro = sp('aprobado'), uso = sp('ejecutado') + sp('comprometido'), pct = apro ? uso / apro * 100 : 0, alerta = num(S.cfg.PRESUPUESTO_AVISO_PCT || 85);
+  const acciones = ['<a class="boton" href="#/compra">+ Solicitud de compra</a>', '<a class="boton sec" href="#/fondo">Pedir fondos</a>', '<a class="boton sec" href="#/liquidacion">Liquidar fondos</a>',
+    '<a class="boton sec" href="#/vacacion">Vacaciones</a>', esJefe() ? '<a class="boton sec" href="#/laboral">Liquidación laboral</a>' : '', puede('facturas.registrar') ? '<a class="boton sec" href="#/agregarfac">+ Facturas</a>' : '',
+    puedePanel('adm') ? '<a class="boton sec" href="#/pnl/adm">Panel de control</a>' : ''].filter(Boolean).join('');
+  app().innerHTML = moldeCab('Administración', acciones, '#/') + kpis([
+    aut ? kpi(pend.length ? 'ambar' : 'verde', 'reloj', 'Por autorizar', pend.length, pend.length ? '<a href="#/solicitudes">Revisar ahora</a>' : 'Nada pendiente')
+        : kpi('azul', 'reloj', 'Mis solicitudes en trámite', pend.length + porAtender.length, '<a href="#/solicitudes">Ver en qué van</a>'),
+    kpi('verde', 'dinero', 'Autorizado este mes', L(autMes.reduce((t, x) => t + num(x.monto), 0)), autMes.length + ' solicitudes'),
+    verFac ? kpi('azul', 'doc', 'Facturas del mes', fac.length, 'Total ' + L(fac.reduce((t, x) => t + num(x.total), 0)) + ' · <a href="#/facturas">Libro de compras</a>') : '',
+    apro ? kpi(pct > 100 ? 'rojo' : pct >= alerta ? 'ambar' : 'verde', 'sube', 'Presupuesto usado ' + anio, pct.toFixed(0) + ' %', L(uso) + ' de ' + L(apro) + ' · <a href="#/presupuesto">Ver</a>') : kpi('gris', 'sube', 'Presupuesto ' + anio, 'Sin cargar', esJefe() ? '<a href="#/presupuesto">Cargarlo</a>' : ''),
+    emp.length ? kpi('gris', 'gente', 'Empleados activos', emp.filter(e => e.activo).length, '<a href="#/empleados">Ver personal</a>') : ''].filter(Boolean)) +
+  (porAtender.length && puede('solicitudes.gestionar') ? `<div class="caja" style="border-color:#FECB18;background:#FFFBEB"><b>${porAtender.length} compra${porAtender.length > 1 ? 's' : ''} o fondo${porAtender.length > 1 ? 's' : ''} autorizado${porAtender.length > 1 ? 's' : ''} por atender.</b> <a href="#/solicitudes">Atender</a></div>` : '') +
+  `<div class="filaT"><h2>Últimas solicitudes</h2><a href="#/solicitudes">Ver todas</a></div>` +
+  (sol.length ? `<div class="tabla"><table><thead><tr><th>Número</th><th>Tipo</th><th>Fecha</th><th>Quién pide</th><th>Qué</th><th class="n">Monto</th><th>Estado</th></tr></thead><tbody>
+    ${sol.slice(0, 8).map(x => `<tr><td><a href="#/solicitud/${x.id}">${esc(x.numero)}</a></td><td>${esc(TIPOS[x.tipo] || x.tipo)}</td><td>${esc(String(x.creado).slice(0, 10))}</td><td>${esc(x.solicitante || '')}</td><td>${esc(String(x.descripcion || '').slice(0, 70))}</td><td class="n">${x.monto ? L(x.monto) : ''}</td><td>${estadoChip(x.estado)}</td></tr>`).join('')}</tbody></table></div>`
+    : vacio('Todavía no hay solicitudes.', '<a class="boton" href="#/compra">Hacer la primera</a>'));
 }
 // Menú en grupos con título; un grupo sin tarjetas no se muestra
 const menuGrupos = grupos => grupos.map(([titulo, ts]) => { const h = ts.filter(Boolean).join(''); return h ? `<h2 class="grupoMenu">${titulo}</h2><div class="tarjetas">${h}</div>` : ''; }).join('');

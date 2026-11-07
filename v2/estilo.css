@@ -319,3 +319,8 @@ dialog.dlg{border:0;border-radius:16px;padding:0;max-width:560px;width:calc(100%
 dialog.dlg::backdrop{background:rgba(29,44,53,.45)}
 .dlgF{padding:18px 20px}.dlgCab{display:flex;justify-content:space-between;align-items:center;gap:10px}.dlgCab h2{margin:0}
 @media print{.tablero{grid-auto-flow:row;grid-template-columns:1fr 1fr}}
+/* Botón con menú (Subir desde Excel ▾) */
+.menuBoton{position:relative;display:inline-block}
+.menuBoton>summary{list-style:none;cursor:pointer}.menuBoton>summary::-webkit-details-marker{display:none}
+.menuBoton>div{position:absolute;right:0;top:calc(100% + 6px);z-index:30;background:#fff;border:1px solid #E3E8EE;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.12);min-width:240px;padding:6px}
+.menuBoton>div a{display:block;padding:9px 12px;border-radius:8px;color:#1D2C35;text-decoration:none}.menuBoton>div a:hover{background:#F6F8FA}
