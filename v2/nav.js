@@ -133,7 +133,7 @@ function pintarNav() {
   $('#navMas').onclick = () => document.body.classList.toggle('navAbierto');
   pintarAvisosNav();
   lat.querySelectorAll('a.navItem').forEach(a => a.addEventListener('click', () => document.body.classList.remove('navAbierto')));
-  $('#navSalir').onclick = async e => { e.preventDefault(); await sb.auth.signOut({ scope: 'local' }); location.hash = '#/'; location.reload(); };
+  $('#navSalir').onclick = async e => { e.preventDefault(); await sb.auth.signOut({ scope: 'local' }); location.hash = '#/entrar'; location.reload(); };
   if (!wa) {
     wa = document.createElement('a'); wa.id = 'waBtn'; wa.className = 'waBtn'; wa.target = '_blank'; wa.rel = 'noopener';
     wa.title = 'Escribinos por WhatsApp'; wa.setAttribute('aria-label', 'Escribinos por WhatsApp'); wa.innerHTML = ICONOS.whatsapp; document.body.append(wa);

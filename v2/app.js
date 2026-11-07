@@ -150,7 +150,7 @@ function cabecera(titulo, volver = S.seccion ? '#/' + S.seccion : '#/') {
 const VIENE_A_RECUPERAR = /type=recovery/.test(location.hash) || /type=recovery/.test(location.search);
 window.addEventListener('DOMContentLoaded', async () => {
   sb = supabase.createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
-  $('#salir').onclick = async () => { await sb.auth.signOut({ scope: 'local' }); location.hash = '#/'; location.reload(); };
+  $('#salir').onclick = async () => { await sb.auth.signOut({ scope: 'local' }); location.hash = '#/entrar'; location.reload(); };
   $('#cambioOrg').onchange = e => { cambiarOrg(e.target.value); };
   window.addEventListener('hashchange', ruta);
   const { data } = await sb.auth.getSession();
@@ -287,7 +287,15 @@ const CFG_OPC = { CULTIVO_ACOPIO: ['Café', 'Cacao', 'Café y cacao'], ACOPIO_UN
 const SECCION_DE = { '': '', adm: 'adm', config: '', usuarios: '', bitacora: '', orgs: '', guia: '', aprobar: '', rev: '' };
 ['compra', 'fondo', 'liquidacion', 'vacacion', 'factura', 'facturas', 'fac', 'agregarfac', 'solicitudes', 'solicitud', 'proveedores', 'proveedor', 'empleados', 'empleado', 'presupuesto', 'laboral'].forEach(r => SECCION_DE[r] = 'adm');
 async function ruta() {
-  if (!S.user) return /^#\/?registro/.test(location.hash) ? pantallaRegistro() : pantallaAcceso();
+  if (!S.user) {
+    if (/^#\/?registro/.test(location.hash)) return pantallaRegistro();
+    // Quien llega a la dirección sola (agrogestionhn.com reenvía aquí) y no ha entrado ve la página de inicio.
+    // No aplica en la app instalada, sin señal, ni con «#/entrar», ni al volver de un enlace de recuperar la contraseña.
+    const directo = !location.hash || location.hash === '#' || location.hash === '#/';
+    const instalada = window.matchMedia?.('(display-mode: standalone)').matches || (typeof enAppAndroid === 'function' && enAppAndroid());
+    if (directo && !instalada && navigator.onLine !== false && !/access_token|type=recovery/.test(location.href)) { location.replace('/inicio/'); return; }
+    return pantallaAcceso();
+  }
   archivarLuego();
   const [r, ...resto] = location.hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent);
   const f = RUTAS[r] || RUTAS[''];
