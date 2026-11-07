@@ -132,7 +132,7 @@ RUTAS.procesos = async function verProcesos(prodSel) {
       kpi('verde', 'saco', 'Listo para vender', qqLb(seco(listos)), listos.length + ' lotes en bodega' + (prod === 'Café' ? ' o trillados' : '')),
       kpi('azul', 'sube', 'Vendido en 60 días', ls.filter(l => l.estado === 'vendido').length + ' lotes', 'Salieron en ventas')]) +
     `<p class="nota">Cada tarjeta es un lote. Tocá <b>Pasar</b> cuando cambie de proceso; marcá varios para <b>juntarlos</b>. Los pesos van en la forma en que está el producto en cada columna.</p>
-    <div class="tablero">${col.map(e => { const l2 = de(e), tot = l2.reduce((t, l) => t + num(l.peso_lb), 0); return `<section class="tcol tc-${e}"><header><b>${esc(ETAPAS[e][0])}</b><span>${e === 'vendido' ? l2.length + ' lotes' : qqLb(tot) + ' · ' + l2.length + ' lote' + (l2.length === 1 ? '' : 's')}</span><small>${esc(ETAPAS[e][1])}</small></header>
+    <div class="tablero">${col.map(e => { const l2 = de(e), tot = l2.reduce((t, l) => t + num(l.peso_lb), 0); return `<section class="tcol tc-${e}"><div class="tcab"><b>${esc(ETAPAS[e][0])}</b><span>${e === 'vendido' ? l2.length + ' lotes' : qqLb(tot) + ' · ' + l2.length + ' lote' + (l2.length === 1 ? '' : 's')}</span><small>${esc(ETAPAS[e][1])}</small></div>
       ${l2.map(l => `<article class="lcard" data-id="${l.id}">${e !== 'vendido' && puedeProceso() ? `<input type="checkbox" class="lsel" data-sel="${l.id}" aria-label="Elegir ${esc(l.codigo)}">` : ''}
         <a class="lcod" href="#/lote/${encodeURIComponent(l.codigo)}">${esc(l.codigo)}</a>
         <div class="lpeso">${e === 'vendido' ? 'Vendido' : qqLb(l.peso_lb)}</div>
