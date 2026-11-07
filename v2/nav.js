@@ -12,6 +12,9 @@ const ICONOS = {
   padron: IC('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14.8c1.6.8 2.6 2.5 3 5.2"/>'),
   acopio: IC('<path d="M4 7h16l-1.5 12a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2z"/><path d="M8 7a4 4 0 0 1 8 0"/>'),
   eudr: IC('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3"/>'),
+  procesos: IC('<rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="10" rx="1.5"/><rect x="17" y="4" width="4" height="13" rx="1.5"/>'),
+  ventas: IC('<path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>'),
+  traza: IC('<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.5 6H15a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h6.5"/>'),
   kobo: IC('<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 6h4M9 11h6M9 15h4"/>'),
   plan: IC('<path d="M3 8l4 4 5-7 5 7 4-4-2 11H5z"/>'),
   config: IC('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/>'),
@@ -23,7 +26,7 @@ const ICONOS = {
 };
 
 // Qué opción del menú se marca según la pantalla abierta
-const MARCA_DE = { padron: 'padron', prod: 'padron', prodf: 'padron', parcela: 'padron', acopio: 'acopio', acopios: 'acopio', recibo: 'acopio', eudrparc: 'eudr', kobo: 'kobo', plan: 'plan', config: 'config', usuarios: 'config', roles: 'config', catalogo: 'config', bitacora: 'config', orgs: 'config', guia: 'guia', ger: 'ger' };
+const MARCA_DE = { padron: 'padron', prod: 'padron', prodf: 'padron', parcela: 'padron', acopio: 'acopio', acopios: 'acopio', recibo: 'acopio', procesos: 'procesos', inventario: 'procesos', reg: 'procesos', despacho: 'ventas', eudr: 'ventas', balance: 'ventas', lotes: 'traza', lote: 'traza', eudrparc: 'eudr', kobo: 'kobo', plan: 'plan', config: 'config', usuarios: 'config', roles: 'config', catalogo: 'config', bitacora: 'config', orgs: 'config', guia: 'guia', ger: 'ger' };
 
 function itemsNav() {
   if (!S.user || !S.org) return null;
@@ -38,9 +41,13 @@ function itemsNav() {
       cer && ['cer', '#/cer', 'Certificaciones']]],
     cer && ['Campo y cumplimiento', [
       ['padron', '#/padron', 'Productores y fincas'],
-      ['acopio', '#/acopios', 'Acopio'],
       ['eudr', '#/eudrparc', 'Revisión EUDR', sinSat],
       ['kobo', '#/kobo', 'Kobo (campo)', sinKobo]]],
+    cer && ['Del acopio a la exportación', [
+      ['acopio', '#/acopios', 'Acopio'],
+      ['procesos', '#/procesos', 'Procesos y lotes'],
+      ['ventas', '#/despacho', 'Ventas y exportación'],
+      ['traza', '#/lotes', 'Trazabilidad']]],
     ['Tu cuenta', [
       ['plan', '#/plan', 'Mi plan', false, p.nombre],
       esAdmin() && ['config', '#/config', 'Configuración'],

@@ -137,7 +137,7 @@ const GUIA_DE = { ger: 'ger', adm: 'adm', compra: 'adm', fondo: 'adm', liquidaci
   cre: 'cre', credito: 'cre', creditos: 'cre', cred: 'cre', cartera: 'cre', recordatorios: 'cre', reportescre: 'cre', pago: 'cre', fondos: 'cre', condiciones: 'cre', edocta: 'cre',
   cer: 'padron', padron: 'padron', prod: 'padron', prodf: 'padron', parcela: 'padron', inspeccion: 'insp', inspecciones: 'insp', insp: 'insp', nc: 'insp', insumos: 'insp', reg: 'insp',
   asistencia: 'capac', quejas: 'capac', queja: 'capac', acopio: 'acopio', acopios: 'acopio', recibo: 'acopio', inventario: 'acopio', basculas: 'acopio',
-  despacho: 'venta', eudr: 'venta', eudrparc: 'venta', lotes: 'venta', lote: 'venta', balance: 'venta', prima: 'prima', actas: 'prima', paquete: 'auditoria', kobo: 'kobo', bandeja: 'campo',
+  despacho: 'cadena', eudr: 'cadena', eudrparc: 'cadena', lotes: 'cadena', lote: 'cadena', balance: 'cadena', prima: 'prima', actas: 'prima', paquete: 'auditoria', kobo: 'kobo', bandeja: 'campo',
   capacitacion: 'capac', capacitaciones: 'capac', cap: 'capac', guias: 'capac', aprobar: 'aprobacion', rev: 'aprobacion', carga: 'carga',
   panel: 'paneles', pnl: 'paneles', config: 'config', usuarios: 'config', catalogo: 'config', bitacora: 'config', orgs: 'config' };
 function cabecera(titulo, volver = S.seccion ? '#/' + S.seccion : '#/') {

@@ -4,6 +4,13 @@
 
 <section id="novedades" data-para="todos">
 <h2>Novedades</h2>
+<h3>6 de noviembre de 2026 · Del acopio a la exportación</h3>
+<ul>
+<li>Sección nueva en el menú: <b>Del acopio a la exportación</b>, con Acopio, Procesos y lotes, Ventas y exportación, y Trazabilidad.</li>
+<li>Cada entrega cae sola en el lote del día y el tablero muestra cuántos quintales hay en cada proceso: recibido, beneficio o fermentación, secado, bodega, trillado y vendido.</li>
+<li>Los lotes se pasan de proceso con un botón, y se juntan o se dividen sin perder de qué productores vienen.</li>
+<li>Al vender se eligen los lotes, salen solos los productores de esa venta y el GeoJSON para EUDR lleva solo sus parcelas.</li>
+</ul>
 <h3>6 de noviembre de 2026 · Colores nuevos</h3>
 <ul>
 <li>AgroGestión cambia de colores, al estilo de Treinta: fondo blanco, botones azul oscuro, lo seleccionado en amarillo y enlaces en azul. El verde queda solo para lo que está bien o al día, y el rojo y el amarillo de los avisos siguen igual.</li>
@@ -454,13 +461,20 @@ Si hay dudas con una factura, «Validar en el SAR ↗» abre el validador del SA
 </ul>
 </section>
 
-<section id="venta" data-para="cer">
-<h2>Despacho, trazabilidad y balance de masas</h2>
+<section id="cadena" data-para="cer">
+<h2>Del acopio a la exportación</h2>
+<p>En el menú de la izquierda está la sección <b>Del acopio a la exportación</b>: Acopio, Procesos y lotes, Ventas y exportación, y Trazabilidad. Sirve para saber en todo momento cuánto producto hay en cada proceso y de qué productores viene.</p>
 <ul>
-<li><b>Despacho y venta</b>: contrato, comprador, lotes y certificación. Cada despacho tiene <b>«Revisar»</b> para la EUDR: revisa cada parcela de los productores de esos lotes, dice cuáles no cumplen o están por revisar, descarga el GeoJSON para TRACES y guarda el número de la declaración.</li>
-<li><b>Trazabilidad por lote</b>: de qué productores y fincas salió cada lote, su beneficiado y a quién se vendió. Se puede imprimir.</li>
+<li><b>Los lotes se arman solos.</b> Cada entrega de acopio cae en el lote del día según la forma en que entra: por ejemplo, todo el café uva del 6 de noviembre va al lote <b>261106-UVA</b>. Si se entrega con otra certificación, o el lote del día ya pasó a otro proceso, la app abre el siguiente (261106-UVA-2). Si en el acopio se escribe un lote, se usa ese.</li>
+<li><b>Procesos y lotes</b> es un tablero con una columna por proceso. En café: Recibido, Beneficio, Secado, En bodega, Trillado (oro) y Vendido. En cacao: Recibido, Fermentación, Secado, En bodega y Vendido. Cada columna dice cuántos quintales y cuántos lotes tiene.</li>
+<li><b>Pasar →</b> mueve el lote al siguiente proceso. Cuando el producto cambia de forma (de uva a pergamino húmedo, de húmedo a seco, de seco a oro) se escribe lo que pesó de verdad; la app muestra lo que daría con los factores de Configuración y cuánto rindió.</li>
+<li><b>Juntar</b>: marcá dos o más lotes de la misma forma y tocá «Juntar lotes». Sale un lote nuevo (J261106-1) que recuerda de qué lotes y productores viene. Si un lote no tiene una certificación, el lote junto ya no la lleva, y la app te avisa antes.</li>
+<li><b>Dividir</b>: reparte un lote en partes (por ejemplo, para dos contratos). Cada parte lleva su parte de los productores.</li>
+<li><b>Ventas y exportación</b>: al registrar una venta se eligen los lotes que salen y cuánto de cada uno. La lista de <b>productores de esa venta</b> sale sola, con lo que aportó cada uno y si sus parcelas están listas para EUDR. Se puede quitar o agregar productores. Al guardar, la app abre la revisión EUDR de esa venta y el <b>GeoJSON lleva solo las parcelas de esos productores</b>.</li>
+<li><b>Trazabilidad</b>: la lista de todos los lotes. Cada lote muestra su recorrido (cada proceso con fecha y peso), de qué lotes viene, en qué se convirtió y sus productores con su parte. Se puede imprimir.</li>
+<li>Pasar, juntar y dividir lo hace quien tiene el permiso «Registra beneficiado»; vender, quien tiene «Registra despachos». Nada se borra: cada cambio queda en el recorrido del lote.</li>
 <li>Para el cacao, en «Qué se vende» se elige <b>Cacao seco</b>; la prima de Comercio Justo del cacao se calcula con su propio valor por libra (Configuración).</li>
-<li><b>Balance de masas</b>: comprado contra vendido por certificación, y por producto si la organización acopia café y cacao. Al registrar un despacho se revisa contra lo disponible, para no vender más certificado del que se compró.</li>
+<li><b>Balance de masas</b>: comprado contra vendido por certificación. Al registrar una venta se revisa contra lo disponible, para no vender más certificado del que se compró. Ojo: para EUDR no basta el balance de masas, por eso cada venta lleva sus productores.</li>
 </ul>
 </section>
 

@@ -936,17 +936,12 @@ RUTAS.cer = async function menuCert() {
     ${tarjeta('#/asistencia', 'Asistencia por productor', 'Quién llegó a cada capacitación')}
     ${puede('quejas.gestionar') ? tarjeta('#/quejas', 'Quejas y reclamos', 'Buzón, también anónimo', qj) : tarjeta('#/queja', 'Registrar una queja', 'Buzón, también anónimo')}
   </div>
-  <h2 class="grupoMenu">Bodega y beneficiado</h2><div class="tarjetas">
-    ${tarjeta('#/inventario', 'Inventario por lote y bodega', 'Lo que entró, lo que salió y lo que queda')}
+  <h2 class="grupoMenu">Beneficio y básculas</h2><div class="tarjetas">
     ${tarjeta('#/basculas', 'Básculas', 'Calibración y vencimiento')}
     ${tarjeta('#/reg/beneficiado', cultivos().length === 1 && cultivos()[0] === 'Cacao' ? 'Fermentación y secado' : 'Beneficiado y secado', cultivos().includes('Cacao') ? 'Fermentación, secado y prueba de corte de cada lote' : 'Proceso de cada lote')}
   </div>
-  <h2 class="grupoMenu">Ventas y trazabilidad</h2><div class="tarjetas">
-    ${puede('despacho.registrar') ? tarjeta('#/despacho', 'Despacho y venta', 'Contratos y lotes vendidos') : ''}
-    ${tarjeta('#/lotes', 'Trazabilidad por lote', 'De qué fincas salió cada lote y a quién se vendió')}
+  <h2 class="grupoMenu">Balance, Comercio Justo y asamblea</h2><div class="tarjetas">
     ${tarjeta('#/balance', 'Balance de masas', 'Comprado contra vendido por certificación')}
-  </div>
-  <h2 class="grupoMenu">Comercio Justo y asamblea</h2><div class="tarjetas">
     ${tarjeta('#/prima', 'Prima de Comercio Justo', 'Generada, usada y disponible')}
     ${tarjeta('#/actas', 'Actas de asamblea', 'Lo que aprueba la asamblea y lo que se gastó')}
   </div>
@@ -2317,18 +2312,20 @@ const chipEudr = r => r.length ? r.map(([n, t]) => `<span class="estado" style="
 RUTAS.eudr = async function verEudr(id) {
   const d = await q(sb.from('despachos').select('*').eq('id', id).single());
   // Los lotes pueden venir como «LOTE-01: 0.5 qq» (desde Kobo): se toma solo el código
-  const lotes = [...new Set(lista(d.lotes).map(x => x.split(':')[0].trim().toUpperCase()).filter(Boolean))];
-  const aco = lotes.length ? await q(sb.from('acopio').select('productor_id,lote,psec_lb').eq('org_id', S.org.id).in('lote', lotes)) : [];
-  const ids = [...new Set(aco.map(a => a.productor_id))];
+  const conProd = (d.productores || []).length > 0;
+  const lotes = (d.lotes_det || []).length ? d.lotes_det.map(x => x.codigo) : [...new Set(String(d.lotes || '').split(/[;,\n]+/).map(x => x.split(':')[0].trim().toUpperCase()).filter(Boolean))];
+  const aco = lotes.length && !conProd ? await q(sb.from('acopio').select('productor_id,lote,psec_lb').eq('org_id', S.org.id).in('lote', lotes)) : [];
+  // Si la venta se hizo desde los lotes, van los productores que se eligieron; si no, los de las entregas de esos lotes
+  const ids = conProd ? d.productores : [...new Set(aco.map(a => a.productor_id))];
   const parc = ids.length ? await q(sb.from('parcelas').select('*, productores(codigo,nombre)').in('productor_id', ids).order('nombre')) : [];
   const filas = parc.map(p => ({ p, r: revisarEudr(p) }));
   const malas = filas.filter(x => x.r.some(y => y[0] === 'error')).length, dudas = filas.filter(x => x.r.length && !x.r.some(y => y[0] === 'error')).length;
-  const sinLote = lotes.filter(l => !aco.some(a => String(a.lote || '').toUpperCase() === l));
+  const sinLote = conProd ? [] : lotes.filter(l => !aco.some(a => String(a.lote || '').toUpperCase() === l));
   const fc = { type: 'FeatureCollection', features: parc.filter(p => p.poligono || (p.lat !== null && p.lat !== undefined)).map(p => ({ type: 'Feature', geometry: p.poligono || { type: 'Point', coordinates: [num(p.lon), num(p.lat)] }, properties: { ProducerName: p.productores?.nombre || '', ProducerCountry: 'HN', ProductionPlace: p.nombre || '', Area: num(p.area_ha) } })) };
-  app().innerHTML = cabecera('EUDR · despacho ' + d.numero, '#/despacho') + `<div class="caja"><dl class="detalle">
+  app().innerHTML = cabecera('EUDR · venta ' + d.numero, '#/despacho') + `<div class="caja"><dl class="detalle">
     <dt>Comprador</dt><dd>${esc(d.comprador)} · ${esc(d.fecha)} · ${num(d.peso_lb).toLocaleString('es-HN')} lb ${esc(d.tipo_cafe)}</dd>
     <dt>Lotes</dt><dd>${lotes.map(l => `<a href="#/lote/${encodeURIComponent(l)}">${esc(l)}</a>`).join(', ') || '—'}</dd><dt>Productores</dt><dd>${ids.length}</dd><dt>Parcelas</dt><dd>${parc.length}</dd></dl>
-    ${!lotes.length ? '<p class="error">Este despacho no tiene lotes anotados. Sin lotes no se sabe de qué fincas salió el café: anotalos en el despacho.</p>' : ''}
+    ${!lotes.length && !conProd ? '<p class="error">Esta venta no tiene lotes ni productores. Sin eso no se sabe de qué fincas salió el producto.</p>' : ''}${conProd ? `<p class="nota">El GeoJSON lleva las parcelas de los ${ids.length} productores que se eligieron al registrar la venta.</p>` : ''}
     ${sinLote.length ? `<p class="error">Estos lotes no aparecen en ningún acopio: ${esc(sinLote.join(', '))}.</p>` : ''}
     ${parc.length ? `<p class="${malas ? 'error' : dudas ? '' : 'ok'}"><b>${malas ? `${malas} parcela${malas > 1 ? 's' : ''} no cumple${malas > 1 ? 'n' : ''}: corregí antes de declarar.` : dudas ? `${dudas} parcela${dudas > 1 ? 's' : ''} por revisar.` : 'Todas las parcelas cumplen.'}</b></p>` : ''}</div>
   <form class="caja" id="fd"><div class="rejilla"><div class="ancho"><label>Número de la declaración de debida diligencia (sistema TRACES de la Unión Europea)</label><input name="dds" value="${esc(d.dds_numero || '')}" placeholder="Se pega cuando la declaración ya está hecha"></div></div>
