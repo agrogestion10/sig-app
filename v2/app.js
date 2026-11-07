@@ -304,8 +304,8 @@ async function ruta() {
 function pantallaAcceso() {
   $('#barra').hidden = true;
   app().innerHTML = `<div class="acceso">
-    <span class="logo">SIG</span>
-    <h1>Sistema de Gestión Integral</h1>
+    <span class="logo">AgroGestión</span>
+    <h1>Sistema de Gestión Integral para organizaciones del agro</h1>
     <form class="caja" id="fAcceso" autocomplete="on">
       <label for="aUsr">Correo o usuario</label><input id="aUsr" name="usuario" required autocomplete="username" autocapitalize="none" placeholder="Tu correo o tu usuario">
       <div id="aOrgCaja" hidden><label for="aOrg">Organización</label><input id="aOrg" name="org" autocomplete="organization" value="${esc(localStorage.getItem('sig_ultima_org') || '')}"><p class="nota">Solo si entrás con usuario. Con tu correo no hace falta.</p></div>
@@ -313,7 +313,7 @@ function pantallaAcceso() {
       <button>Entrar</button>
       <p class="nota error" id="aErr"></p>
     </form><p class="nota" style="text-align:center"><a href="#" id="aOlvido">¿Olvidaste tu contraseña?</a></p>
-    <p style="text-align:center">¿Tu organización todavía no usa el SIG? <a href="#/registro" id="aReg"><b>Probalo gratis 30 días</b></a></p>
+    <p style="text-align:center">¿Tu organización todavía no usa AgroGestión? <a href="#/registro" id="aReg"><b>Probalo gratis 30 días</b></a></p>
     <p class="nota" style="text-align:center"><a href="/privacidad.html" target="_blank" rel="noopener">Aviso de privacidad y términos de uso</a></p></div>`;
   // La organización solo se pide cuando se entra con usuario (no con correo)
   const verOrg = () => { const v = $('#aUsr').value.trim(); $('#aOrgCaja').hidden = !v || v.includes('@'); };
