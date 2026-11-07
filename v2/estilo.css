@@ -339,3 +339,4 @@ button.navGrupo:hover{background:#F6F8FA;color:#1D2C35}
 a.kpiLink{text-decoration:none;color:inherit;transition:border-color .12s,transform .12s}
 a.kpiLink:hover{border-color:#FECB18;transform:translateY(-1px)}
 .kpiTx small{color:var(--gris)}
+.kpiTx{min-width:0}.kpiTx b{white-space:nowrap;font-size:clamp(17px,1.55vw,22px)}
