@@ -243,3 +243,33 @@ label.check input{width:auto;margin-top:3px}
 .navAviso.rojo{background:#dc2626}
 .navBaja a{position:relative}
 .navBaja a .navAviso{position:absolute;top:2px;left:calc(50% + 6px);margin:0;min-width:16px;height:16px;font-size:10px;padding:0 4px}
+
+/* ===== Colores al estilo Treinta: amarillo #FECB18, azul oscuro #1D2C35, enlaces #176BF3. El verde queda solo para «bien / al día». ===== */
+:root{--verde:#1D2C35;--verde2:#0B7A4A;--claro:#FFF8DB;--borde:#E3E8EE;--texto:#1D2C35;--gris:#5C7389;--fondo:#F6F8FA;--amarillo:#FECB18;--amarillo2:#F2BD00;--azul:#176BF3}
+header{background:#1D2C35}
+.logo{background:#FECB18;color:#1D2C35}
+a{color:var(--azul)}
+button,.boton{background:var(--amarillo);color:#1D2C35}
+button:hover,.boton:hover{background:var(--amarillo2)}
+button.sec,.boton.sec{background:#fff;color:#1D2C35;border:1px solid #D1D5DB}
+button.sec:hover,.boton.sec:hover{background:#F6F8FA}
+header button.sec{background:transparent;color:#fff;border-color:rgba(255,255,255,.45)}
+header button.sec:hover{background:rgba(255,255,255,.1)}
+button.rojo{background:var(--rojo);color:#fff}
+input:focus,select:focus,textarea:focus{outline:2px solid #FFE27A;border-color:#E0B000}
+th{background:#F6F8FA}
+.tarjeta:hover,.seccionT:hover{border-color:var(--amarillo)}
+.seccionT .icono{background:#FFF4C2;color:#1D2C35}
+.navMarca{color:#1D2C35}
+.navLogo{background:var(--amarillo);color:#1D2C35}
+.navItem:hover{background:#F6F8FA}
+.navItem.activo{background:#FFF4C2;color:#1D2C35}
+.navItem.activo svg{color:#1D2C35}
+.chipNav{background:#FFF4C2;color:#1D2C35}
+.navBaja a.activo,.navBaja button.activo{color:#1D2C35}
+.navBaja a.activo svg,.navBaja button.activo svg{color:#E0A800}
+.pestanas button:hover{background:#F6F8FA}
+.pestanas button.activa{border-bottom-color:var(--amarillo)}
+.pestanas button.activa .pestN{background:#1D2C35;color:#fff}
+.kpi-azul .kpiIc{background:#E3EEFF;color:var(--azul)}
+.menuEng a:hover,.busRes a:hover{background:#F6F8FA}
