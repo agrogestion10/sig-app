@@ -20,6 +20,8 @@ const ICONOS = {
   beneficio: IC('<path d="M12 3c3 4 5 6.8 5 9.5a5 5 0 0 1-10 0C7 9.8 9 7 12 3z"/>'),
   basculas: IC('<path d="M12 4v16M7 20h10M5 8h14"/><path d="M5 8l-2.5 6a3 3 0 0 0 5 0zM19 8l-2.5 6a3 3 0 0 0 5 0z"/>'),
   balance: IC('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'),
+  alerta: IC('<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/>'),
+  charla: IC('<path d="M4 5h16v11H9l-5 4z"/>'),
   procesos: IC('<rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="10" rx="1.5"/><rect x="17" y="4" width="4" height="13" rx="1.5"/>'),
   ventas: IC('<path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>'),
   traza: IC('<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.5 6H15a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h6.5"/>'),
@@ -34,7 +36,7 @@ const ICONOS = {
 };
 
 // Qué opción del menú se marca según la pantalla abierta
-const MARCA_DE = { padron: 'padron', prod: 'padron', prodf: 'padron', parcela: 'padron', acopio: 'acopio', acopios: 'acopio', recibo: 'acopio', procesos: 'procesos', inventario: 'procesos', reg: 'beneficio', basculas: 'basculas', despacho: 'ventas', eudr: 'ventas', balance: 'balance', lotes: 'traza', lote: 'traza', adm: 'adm', solicitudes: 'solic', solicitud: 'solic', compra: 'solic', fondo: 'solic', liquidacion: 'solic', vacacion: 'solic', laboral: 'solic', facturas: 'facturas', factura: 'facturas', fac: 'facturas', agregarfac: 'facturas', proveedores: 'proveedores', proveedor: 'proveedores', empleados: 'empleados', empleado: 'empleados', presupuesto: 'presupuesto', eudrparc: 'eudr', kobo: 'kobo', plan: 'plan', config: 'config', usuarios: 'config', roles: 'config', catalogo: 'config', bitacora: 'config', orgs: 'config', guia: 'guia', ger: 'ger' };
+const MARCA_DE = { padron: 'padron', prod: 'padron', prodf: 'padron', parcela: 'padron', acopio: 'acopio', acopios: 'acopio', recibo: 'acopio', procesos: 'procesos', inventario: 'procesos', reg: 'beneficio', basculas: 'basculas', despacho: 'ventas', eudr: 'ventas', balance: 'balance', lotes: 'traza', lote: 'traza', adm: 'adm', solicitudes: 'solic', solicitud: 'solic', compra: 'solic', fondo: 'solic', liquidacion: 'solic', vacacion: 'solic', laboral: 'solic', facturas: 'facturas', factura: 'facturas', fac: 'facturas', agregarfac: 'facturas', proveedores: 'proveedores', proveedor: 'proveedores', empleados: 'empleados', empleado: 'empleados', presupuesto: 'presupuesto', eudrparc: 'eudr', kobo: 'kobo', plan: 'plan', config: 'config', usuarios: 'config', roles: 'config', catalogo: 'catalogo', credito: 'creditos', creditos: 'creditos', cred: 'creditos', cartera: 'cartera', edocta: 'cartera', pago: 'cartera', recordatorios: 'recordatorios', reportescre: 'reportescre', fondos: 'fondos', condiciones: 'condiciones', inspeccion: 'inspecciones', insp: 'inspecciones', inspecciones: 'inspecciones', nc: 'nc', insumos: 'insumos', capacitaciones: 'capacitaciones', cap: 'capacitaciones', guias: 'guias', asistencia: 'asistencia', quejas: 'quejas', queja: 'quejas', prima: 'prima', actas: 'actas', bandeja: 'bandeja', paquete: 'cer', bitacora: 'config', orgs: 'config', guia: 'guia', ger: 'ger' };
 
 function itemsNav() {
   if (!S.user || !S.org) return null;
@@ -43,9 +45,7 @@ function itemsNav() {
   return [
     ['Gestioná tu organización', [
       ['inicio', '#/', 'Inicio'],
-      puedeSec('ger') && ['ger', '#/ger', 'Gerencia'],
-      puedeSec('cre') && ['cre', '#/cre', 'Crédito interno'],
-      cer && ['cer', '#/cer', 'Certificaciones']]],
+      puedeSec('ger') && ['ger', '#/ger', 'Gerencia']]],
     puedeSec('adm') && ['Administración', [
       ['adm', '#/adm', 'Resumen'],
       ['solic', '#/solicitudes', puede('solicitudes.autorizar') ? 'Autorizaciones' : 'Mis solicitudes'],
@@ -53,6 +53,27 @@ function itemsNav() {
       ['proveedores', '#/proveedores', 'Proveedores'],
       puede('empleados.gestionar') && ['empleados', '#/empleados', 'Empleados'],
       ['presupuesto', '#/presupuesto', 'Presupuesto']]],
+    puedeSec('cre') && ['Crédito interno', [
+      ['cre', '#/cre', 'Resumen'],
+      ['creditos', '#/creditos', esJefe() ? 'Créditos por resolver' : puede('credito.evaluar') || puede('cartera.ver') ? 'Solicitudes y créditos' : 'Mis solicitudes'],
+      (puede('cartera.ver') || puede('credito.cobrar')) && ['cartera', '#/cartera', 'Cartera y pagos'],
+      puede('credito.cobrar') && ['recordatorios', '#/recordatorios', 'Recordatorios de cuotas'],
+      puede('cartera.ver') && ['reportescre', '#/reportescre', 'Reportes de cartera'],
+      puede('cartera.ver') && ['fondos', '#/fondos', 'Fondos de crédito'],
+      esAdmin() && ['condiciones', '#/condiciones', 'Condiciones y comité']]],
+    cer && ['Certificaciones', [
+      ['cer', '#/cer', 'Resumen'],
+      ['inspecciones', '#/inspecciones', 'Inspecciones internas'],
+      ['nc', '#/nc', 'No conformidades'],
+      ['insumos', '#/insumos', 'Insumos aplicados'],
+      ['capacitaciones', '#/capacitaciones', 'Capacitaciones'],
+      ['guias', '#/guias', 'Guías y plan de capacitación'],
+      ['asistencia', '#/asistencia', 'Asistencia por productor'],
+      ['quejas', puede('quejas.gestionar') ? '#/quejas' : '#/queja', puede('quejas.gestionar') ? 'Quejas y reclamos' : 'Registrar una queja'],
+      ['prima', '#/prima', 'Prima de Comercio Justo'],
+      ['actas', '#/actas', 'Actas de asamblea'],
+      ['bandeja', '#/bandeja', 'Trabajo sin señal'],
+      esAdmin() && ['catalogo', '#/catalogo', 'Catálogo de certificaciones']]],
     cer && ['Campo y cumplimiento', [
       ['padron', '#/padron', 'Productores y fincas'],
       ['eudr', '#/eudrparc', 'Revisión EUDR', sinSat],
@@ -80,6 +101,9 @@ function pintarAvisosNav() {
     const b = document.createElement('span'); b.className = 'navAviso ' + (x.clase === 'rojo' ? 'rojo' : ''); b.textContent = x.n > 99 ? '99+' : x.n; b.title = x.txt; a.appendChild(b);
   });
 }
+const ICONO_DE = { creditos: 'cre', cartera: 'balance', recordatorios: 'reloj', reportescre: 'ger', fondos: 'cre', condiciones: 'config', inspecciones: 'solic', nc: 'alerta', insumos: 'beneficio', capacitaciones: 'empleados', guias: 'guia', asistencia: 'padron', quejas: 'charla', prima: 'cre', actas: 'facturas', bandeja: 'kobo', catalogo: 'cer' };
+ICONOS.reloj = ICONOS.reloj || IC('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>');
+const navAbiertos = () => { try { return JSON.parse(localStorage.getItem('ag_nav_abiertos') || '[]'); } catch (_) { return []; } };
 function marcaActual() {
   const r = location.hash.replace(/^#\/?/, '').split('/')[0];
   if (!r) return 'inicio';
@@ -91,14 +115,15 @@ function pintarNav() {
   if (!grupos || $('#barra').hidden) { document.body.classList.remove('conNav'); [lat, baja, wa].forEach(x => x && x.remove()); return; }
   document.body.classList.add('conNav');
   const act = marcaActual();
-  const item = ([k, h, t, corona, chip]) => `<a href="${h}" class="navItem${k === act ? ' activo' : ''}" data-k="${k}">${ICONOS[k] || ''}<span>${esc(t)}</span>${corona ? `<span class="corona" title="No viene en tu plan">${ICONOS.corona}</span>` : chip ? `<span class="chipNav">${esc(chip)}</span>` : ''}</a>`;
+  const item = ([k, h, t, corona, chip]) => `<a href="${h}" class="navItem${k === act ? ' activo' : ''}" data-k="${k}">${ICONOS[k] || ICONOS[ICONO_DE[k]] || ''}<span>${esc(t)}</span>${corona ? `<span class="corona" title="No viene en tu plan">${ICONOS.corona}</span>` : chip ? `<span class="chipNav">${esc(chip)}</span>` : ''}</a>`;
   const quien = S.maestro ? 'Usuario maestro' : S.perfil?.nombre || '';
   const html = `<a href="#/" class="navMarca"><span class="navLogo">AG</span><span>AgroGestión</span></a>
     <div class="navOrg"><span class="navAvatar">${esc((S.org.nombre || '?').trim().charAt(0).toUpperCase())}</span><span><b>${esc(S.org.nombre)}</b><small>${esc(quien)}</small></span></div>
-    ${grupos.map(([t, l]) => `<div class="navGrupo">${esc(t)}</div>${l.map(item).join('')}`).join('')}
+    ${grupos.map(([t, l], i) => { const abierto = i === 0 || t === 'Tu cuenta' || l.some(x => x[0] === act) || navAbiertos().includes(t); return `<div class="navSec${abierto ? ' abierta' : ''}"><button type="button" class="navGrupo" data-g="${esc(t)}" aria-expanded="${abierto}">${esc(t)}<svg class="navFlecha" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><div class="navItems">${l.map(item).join('')}</div></div>`; }).join('')}
     <a href="#" class="navItem navSalir" id="navSalir">${ICONOS.salir}<span>Cerrar sesión</span></a>`;
   if (!lat) { lat = document.createElement('nav'); lat.id = 'navLat'; lat.className = 'navLat'; lat.setAttribute('aria-label', 'Menú principal'); document.body.prepend(lat); }
   lat.innerHTML = html;
+  lat.querySelectorAll('[data-g]').forEach(b => b.onclick = () => { const s = b.parentElement, ab = !s.classList.contains('abierta'); s.classList.toggle('abierta', ab); b.setAttribute('aria-expanded', ab); const l = navAbiertos().filter(x => x !== b.dataset.g); if (ab) l.push(b.dataset.g); try { localStorage.setItem('ag_nav_abiertos', JSON.stringify(l)); } catch (_) {} });
   // Teléfono: barra de abajo con lo principal y «Más» con todo el menú
   const todos = grupos.flatMap(([, l]) => l), princ = todos.filter(x => ['inicio', 'adm', 'cre', 'cer', 'ger'].includes(x[0])).slice(0, 4);
   if (!baja) { baja = document.createElement('nav'); baja.id = 'navBaja'; baja.className = 'navBaja'; baja.setAttribute('aria-label', 'Menú'); document.body.append(baja); }

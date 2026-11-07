@@ -437,21 +437,28 @@ function estadoCredito(c, pagos, al = hoy()) {
 
 RUTAS.cre = async function menuCredito() {
   S.seccion = 'cre';
-  const n = esJefe() ? await cuenta('creditos', x => x.in('estado', ['Solicitado', 'En evaluación', 'Aprobado'])) : 0;
-  app().innerHTML = cabecera('Crédito interno', '#/') + menuGrupos([
-    ['Solicitudes', [puede('padron.crear') ? tarjeta('#/prodf', 'Registrar productor', 'Datos del socio (también sirve para certificaciones)') : '',
-      puede('credito.solicitar') ? tarjeta('#/credito', 'Solicitud de crédito', 'Monto, destino, plazo y garantía') : '',
-      tarjeta('#/creditos', esJefe() ? 'Créditos por resolver' : puede('credito.evaluar') || puede('cartera.ver') ? 'Solicitudes y créditos' : 'Mis solicitudes', 'Evaluación técnica, aprobación y desembolso', n)]],
-    ['Cobro y cartera', [puede('credito.cobrar') ? tarjeta('#/pago', 'Registrar pago', 'Cobrar una cuota o cancelar un crédito') : '',
-      puede('cartera.ver') || puede('credito.cobrar') ? tarjeta('#/cartera', 'Cartera y pagos', 'Saldos, mora y recuperación') : '',
-      puede('credito.cobrar') ? tarjeta('#/recordatorios', 'Recordatorios de cuotas', 'Atrasados y cuotas por vencer, con WhatsApp') : '',
-      puede('cartera.ver') ? tarjeta('#/reportescre', 'Reportes de cartera', 'PAR 30 y 90, provisión, programado contra recuperado') : '']],
-    ['Fondos y condiciones', [puede('cartera.ver') ? tarjeta('#/fondos', 'Fondos de crédito', 'De dónde sale el dinero y cuánto queda') : '',
-      esAdmin() ? tarjeta('#/condiciones', 'Condiciones y comité', 'Tasa, plazo y montos por destino; quién aprueba') : '',
-      esJefe() ? tarjeta('#/carga/cartera', 'Saldos iniciales de cartera', 'Pasar desde Excel los créditos que ya estaban dados') : '']],
-    ['Productores', [tarjeta('#/padron', 'Productores', 'Padrón de socios')]],
-    ['Panel de control', [puedePanel('cre') ? tarjeta('#/pnl/cre', 'Panel de control', 'Cartera, mora y archivo de PDF') : '']]
-  ]);
+  const verCart = puede('cartera.ver') || puede('credito.cobrar') || esJefe(), mes = hoy().slice(0, 7);
+  const [porRes, misSol, cp] = await Promise.all([
+    cuenta('creditos', x => x.in('estado', ['Solicitado', 'En evaluación', 'Aprobado'])),
+    verCart ? Promise.resolve([]) : q(sb.from('creditos').select('id,numero,estado,monto_solicitado,creado, productores(nombre)').eq('org_id', S.org.id).order('creado', { ascending: false }).limit(20)).catch(() => []),
+    verCart ? creditosConPagos(x => x.eq('estado', 'Desembolsado')) : Promise.resolve({ cre: [], pagos: [], de: () => [] })]);
+  const est = cp.cre.map(c => ({ c, e: estadoCredito(c, cp.de(c.id)) }));
+  const saldo = est.reduce((t, x) => t + x.e.saldo, 0), atr = est.filter(x => x.e.atraso > 0.5).sort((a, b2) => b2.e.dias - a.e.dias);
+  const pronto = est.filter(x => !x.e.atraso && x.e.prox && diasEntre(hoy(), x.e.prox.fecha) <= cfgN('CREDITO_DIAS_RECORDATORIO', 7));
+  const recMes = cp.pagos.filter(p => String(p.fecha).startsWith(mes)), saldoMora = atr.reduce((t, x) => t + x.e.saldo, 0);
+  const acciones = [puede('credito.solicitar') ? '<a class="boton" href="#/credito">+ Solicitud de crédito</a>' : '', puede('credito.cobrar') ? '<a class="boton sec" href="#/pago">Registrar pago</a>' : '',
+    puede('credito.cobrar') ? '<a class="boton sec" href="#/recordatorios">Recordatorios</a>' : '', esJefe() ? '<a class="boton sec" href="#/carga/cartera">Saldos iniciales (Excel)</a>' : '',
+    puedePanel('cre') ? '<a class="boton sec" href="#/pnl/cre">Panel de control</a>' : ''].filter(Boolean).join('');
+  const fila = ({ c, e }) => `<tr><td><a href="#/cred/${c.id}">${esc(c.numero)}</a></td><td>${esc(c.productores?.nombre || '')}</td><td>${esc(c.productores?.comunidad || '')}</td><td class="n">${L(e.saldo)}</td><td class="n">${e.atraso ? L(e.atraso) : ''}</td><td>${e.dias ? `<span class="error">${e.dias} días</span>` : e.prox ? 'Cuota el ' + esc(e.prox.fecha) : ''}</td></tr>`;
+  app().innerHTML = moldeCab('Crédito interno', acciones, '#/') + (verCart ? kpis([
+    kpi(porRes ? 'ambar' : 'verde', 'reloj', 'Por resolver', porRes, porRes ? '<a href="#/creditos">Evaluar, aprobar o desembolsar</a>' : 'Nada pendiente'),
+    kpi('azul', 'dinero', 'Cartera vigente', L(saldo), cp.cre.length + ' créditos desembolsados'),
+    kpi(atr.length ? 'rojo' : 'verde', 'alerta', 'Con cuotas atrasadas', atr.length, atr.length ? L(saldoMora) + ' de saldo · ' + (saldo ? (saldoMora / saldo * 100).toFixed(1) : 0) + ' % de la cartera' : 'Cartera al día'),
+    kpi('verde', 'sube', 'Recuperado este mes', L(recMes.reduce((t, p) => t + num(p.capital) + num(p.interes), 0)), recMes.length + ' pagos')]) +
+    `<div class="filaT"><h2>${atr.length ? 'Créditos con cuotas atrasadas' : 'Cuotas de esta semana'}</h2><a href="#/cartera">Ver toda la cartera</a></div>` +
+    ((atr.length ? atr : pronto).length ? `<div class="tabla"><table><thead><tr><th>Crédito</th><th>Productor</th><th>Comunidad</th><th class="n">Saldo</th><th class="n">Atrasado</th><th>Situación</th></tr></thead><tbody>${(atr.length ? atr : pronto).slice(0, 10).map(fila).join('')}</tbody></table></div>`
+      : vacio('No hay cuotas atrasadas ni cuotas por vencer esta semana.'))
+    : kpis([kpi('azul', 'doc', 'Mis solicitudes', misSol.length, '<a href="#/creditos">Ver en qué van</a>')]) + `<h2>Últimas solicitudes</h2>` + (misSol.length ? `<div class="tabla"><table><thead><tr><th>Número</th><th>Productor</th><th class="n">Monto</th><th>Estado</th></tr></thead><tbody>${misSol.slice(0, 10).map(c => `<tr><td><a href="#/cred/${c.id}">${esc(c.numero)}</a></td><td>${esc(c.productores?.nombre || '')}</td><td class="n">${c.monto_solicitado ? L(c.monto_solicitado) : ''}</td><td>${estadoChip(c.estado)}</td></tr>`).join('')}</tbody></table></div>` : vacio('Todavía no hay solicitudes de crédito.', puede('credito.solicitar') ? '<a class="boton" href="#/credito">Hacer la primera</a>' : '')));
 };
 
 RUTAS.credito = async function formCredito() {
@@ -916,31 +923,21 @@ RUTAS.cer = async function menuCert() {
   S.seccion = 'cer';
   setTimeout(() => sincronizarKobo(false), 0);
   const ini = hoy().slice(0, 4) + '-01-01';
-  const [nc, qj, nIns, nCap] = await Promise.all([cuenta('no_conformidades', x => x.eq('estado', 'Abierta')), cuenta('quejas', x => x.neq('estado', 'Cerrada')),
-    cuenta('inspecciones', x => x.gte('fecha', ini)), cuenta('capacitaciones', x => x.gte('fecha', ini))]);
-  const rapidos = [puede('inspeccion.registrar') && '<a class="boton" href="#/inspeccion">+ Inspección interna</a>', puede('capacitacion.registrar') && '<a class="boton sec" href="#/capacitaciones">+ Capacitación</a>',
-    puede('quejas.gestionar') ? '' : '<a class="boton sec" href="#/queja">Registrar una queja</a>'].filter(Boolean).join('');
-  app().innerHTML = moldeCab('Certificaciones', rapidos, '#/') + kpis([
+  const [nc, qj, nIns, nCap, ncs] = await Promise.all([cuenta('no_conformidades', x => x.eq('estado', 'Abierta')), cuenta('quejas', x => x.neq('estado', 'Cerrada')),
+    cuenta('inspecciones', x => x.gte('fecha', ini)), cuenta('capacitaciones', x => x.gte('fecha', ini)),
+    q(sb.from('no_conformidades').select('id,numero,productor_id,plazo,requisito,descripcion, productores(nombre)').eq('org_id', S.org.id).eq('estado', 'Abierta').order('plazo').limit(10)).catch(() => [])]);
+  const vencidas = ncs.filter(x => x.plazo && x.plazo < hoy()).length;
+  const acciones = [puede('inspeccion.registrar') && '<a class="boton" href="#/inspeccion">+ Inspección interna</a>', puede('capacitacion.registrar') && '<a class="boton sec" href="#/capacitaciones">+ Capacitación</a>',
+    puede('insumos.registrar') && '<a class="boton sec" href="#/insumos">+ Insumo aplicado</a>', '<a class="boton sec" href="#/queja">Registrar una queja</a>',
+    puede('auditoria.paquete') && '<a class="boton sec" href="#/paquete">Paquete para la certificadora</a>', puedePanel('cer') && '<a class="boton sec" href="#/pnl/cer">Panel de control</a>'].filter(Boolean).join('');
+  app().innerHTML = moldeCab('Certificaciones', acciones, '#/') + kpis([
     kpi('azul', 'doc', 'Inspecciones este año', nIns, '<a href="#/inspecciones">Ver inspecciones</a>'),
-    kpi(nc ? 'rojo' : 'verde', 'alerta', 'No conformidades abiertas', nc, '<a href="#/nc">Dar seguimiento</a>'),
+    kpi(nc ? (vencidas ? 'rojo' : 'ambar') : 'verde', 'alerta', 'No conformidades abiertas', nc, vencidas ? vencidas + ' con el plazo vencido' : '<a href="#/nc">Dar seguimiento</a>'),
     kpi('verde', 'gente', 'Capacitaciones este año', nCap, '<a href="#/capacitaciones">Ver capacitaciones</a>'),
     kpi(qj ? 'ambar' : 'verde', 'reloj', 'Quejas sin cerrar', qj, puede('quejas.gestionar') ? '<a href="#/quejas">Atender</a>' : '')]) + `<div class="caja nota" id="koboEstado" style="padding:10px 14px">Revisando Kobo…</div>
-  <h2 class="grupoMenu">Control interno</h2><div class="tarjetas">
-    ${tarjeta('#/inspecciones', 'Inspecciones internas', 'Resultado anual de cada productor')}
-    ${tarjeta('#/nc', 'No conformidades', 'Seguimiento y cierre', nc)}
-    ${tarjeta('#/insumos', 'Insumos aplicados', 'Qué se aplicó en cada parcela, revisado contra la lista')}
-    ${tarjeta('#/capacitaciones', 'Capacitaciones', 'Ayudas memoria, asistencia y acuerdos')}
-    ${tarjeta('#/guias', 'Guías y plan de capacitaciones', 'Lo que pide cada certificación y cuándo toca')}
-    ${tarjeta('#/asistencia', 'Asistencia por productor', 'Quién llegó a cada capacitación')}
-    ${puede('quejas.gestionar') ? tarjeta('#/quejas', 'Quejas y reclamos', 'Buzón, también anónimo', qj) : tarjeta('#/queja', 'Registrar una queja', 'Buzón, también anónimo')}
-  </div>
-  <h2 class="grupoMenu">Comercio Justo y asamblea</h2><div class="tarjetas">
-    ${tarjeta('#/prima', 'Prima de Comercio Justo', 'Generada, usada y disponible')}
-    ${tarjeta('#/actas', 'Actas de asamblea', 'Lo que aprueba la asamblea y lo que se gastó')}
-  </div>
-  ${puede('auditoria.paquete') ? `<h2 class="grupoMenu">Auditoría</h2><div class="tarjetas">${tarjeta('#/paquete', 'Paquete para la certificadora', 'Todo lo de la auditoría en un Excel y el mapa de parcelas')}</div>` : ''}
-  <h2 class="grupoMenu">Formularios de campo</h2><div class="tarjetas">${tarjeta('#/bandeja', 'Trabajo sin señal', 'Preparar el teléfono y ver lo que falta mandar', OFF.cola().length)}${esAdmin() ? tarjeta('#/catalogo', 'Catálogo de certificaciones', 'Activar o desactivar') : ''}</div>
-  ${puedePanel('cer') ? `<h2 class="grupoMenu">Panel de control</h2><div class="tarjetas">${tarjeta('#/pnl/cer', 'Panel de control', 'Números de certificaciones y archivo de PDF')}</div>` : ''}`;
+  <div class="filaT"><h2>No conformidades por cerrar</h2><a href="#/nc">Ver todas</a></div>` +
+  (ncs.length ? `<div class="tabla"><table><thead><tr><th>Número</th><th>Productor</th><th>Requisito</th><th>Hallazgo</th><th>Plazo</th></tr></thead><tbody>${ncs.map(x => `<tr><td>${esc(x.numero || '')}</td><td><a href="#/prod/${x.productor_id}">${esc(x.productores?.nombre || '')}</a></td><td>${esc(x.requisito || '')}</td><td>${esc(String(x.descripcion || '').slice(0, 80))}</td><td class="${x.plazo && x.plazo < hoy() ? 'error' : ''}">${esc(x.plazo || '')}${x.plazo && x.plazo < hoy() ? ' (vencido)' : ''}</td></tr>`).join('')}</tbody></table></div>`
+    : vacio('No hay no conformidades abiertas. ¡Todo al día!'));
 };
 
 RUTAS.padron = async function verPadron() {
