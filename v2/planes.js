@@ -13,6 +13,7 @@ async function cargarPlan() {
   if (!S.org || S.sinSenal) return;
   try { const { data } = await sb.rpc('plan_org', { o: S.org.id }); S.plan = (data || [])[0] || null; } catch (_) { S.plan = null; }
   pintarAvisoPlan();
+  if (typeof pintarNav === 'function') pintarNav();
 }
 function pintarAvisoPlan() {
   let d = document.getElementById('avisoPlan');

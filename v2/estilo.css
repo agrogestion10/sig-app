@@ -167,3 +167,44 @@ body.impTicket #recibo{width:72mm;font-size:11px}body.impTicket #recibo table{fo
 button.chico{padding:5px 10px;font-size:13px}
 label.check{display:flex;gap:8px;align-items:flex-start;font-weight:400;margin-top:12px}
 label.check input{width:auto;margin-top:3px}
+/* navegación: menú a la izquierda (computadora) y barra abajo (teléfono) */
+.navLat{display:none}
+.navBaja{display:none}
+.waBtn{position:fixed;right:18px;bottom:18px;z-index:30;width:54px;height:54px;border-radius:50%;background:#25d366;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(0,0,0,.18);text-decoration:none}
+.waBtn:hover{transform:translateY(-2px)}
+.navItem{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;color:var(--texto);text-decoration:none;font-size:15px;margin:1px 0}
+.navItem svg{flex:none;color:var(--gris)}
+.navItem:hover{background:var(--claro)}
+.navItem.activo{background:#dcfce7;font-weight:700;color:var(--verde)}
+.navItem.activo svg{color:var(--verde2)}
+.navItem .corona,.corona{margin-left:auto;background:#2563eb;color:#fde68a;border-radius:999px;width:26px;height:20px;display:inline-flex;align-items:center;justify-content:center}
+.corona.grande{width:48px;height:48px;margin:0 0 8px}
+.corona.grande svg{width:26px;height:26px}
+.chipNav{margin-left:auto;background:#dcfce7;color:var(--verde);border-radius:999px;font-size:11px;font-weight:700;padding:2px 8px}
+.navGrupo{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gris);margin:18px 12px 6px}
+.navMarca{display:flex;align-items:center;gap:10px;font-weight:800;font-size:20px;color:var(--verde);text-decoration:none;padding:4px 10px 14px}
+.navLogo{background:var(--verde2);color:#f0fdf4;border-radius:9px;width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;font-size:15px;letter-spacing:.5px}
+.navOrg{display:flex;gap:10px;align-items:center;padding:10px;border:1px solid var(--borde);border-radius:12px;background:#fff}
+.navOrg b{display:block;font-size:14px;line-height:1.2}
+.navOrg small{color:var(--gris);font-size:12px}
+.navAvatar{flex:none;width:34px;height:34px;border-radius:50%;background:#fef3c7;color:#92400e;display:inline-flex;align-items:center;justify-content:center;font-weight:800}
+.navSalir{margin-top:14px;color:var(--rojo)}
+.navSalir svg{color:var(--rojo)}
+.subirPlan{text-align:center;max-width:560px;margin:20px auto}
+@media (min-width:900px){
+  body.conNav .navLat{display:block;position:fixed;top:0;left:0;bottom:0;width:250px;overflow-y:auto;background:#fff;border-right:1px solid var(--borde);padding:16px 12px 30px;z-index:20}
+  body.conNav header,body.conNav main,body.conNav #avisoPlan{margin-left:250px}
+  body.conNav main{max-width:1100px}
+  body.conNav header .marca .logo,body.conNav header #nombreOrg,body.conNav header #salir{display:none}
+}
+@media (max-width:899px){
+  body.conNav .navBaja{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:25;background:#fff;border-top:1px solid var(--borde);padding:4px 4px calc(4px + env(safe-area-inset-bottom))}
+  .navBaja a,.navBaja button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;font-size:11px;color:var(--gris);text-decoration:none;background:none;border:0;border-radius:10px;font-weight:600}
+  .navBaja a.activo,.navBaja button.activo{color:var(--verde2)}
+  .navBaja svg{width:22px;height:22px}
+  body.conNav main{padding-bottom:96px}
+  body.conNav .waBtn{bottom:78px;right:14px;width:50px;height:50px}
+  body.conNav.navAbierto .navLat{display:block;position:fixed;left:0;right:0;bottom:64px;top:auto;max-height:75vh;overflow-y:auto;background:#fff;border-top:1px solid var(--borde);border-radius:18px 18px 0 0;box-shadow:0 -10px 30px rgba(0,0,0,.15);padding:14px 14px 20px;z-index:24}
+  body.conNav.navAbierto .navLat .navMarca{display:none}
+}
+@media print{.navLat,.navBaja,.waBtn{display:none!important}body.conNav header,body.conNav main{margin-left:0}}
