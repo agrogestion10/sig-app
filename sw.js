@@ -1,6 +1,6 @@
 // SIG · Service worker: guarda una copia de la aplicación para que abra sin señal.
 // Los datos no pasan por aquí: los maneja la aplicación (copia local y bandeja de salida).
-const CACHE = 'sig-app-3';
+const CACHE = 'sig-app-4';
 const BASE = ['/', '/manifest.webmanifest', '/iconos/ag-192.png', '/iconos/ag-512.png'];
 
 self.addEventListener('install', e => {
@@ -26,10 +26,12 @@ self.addEventListener('fetch', e => {
     try {
       // La página se pide sin la memoria del navegador, para que una versión nueva se vea apenas se publica
       const resp = await fetch(esPagina ? new Request(r.url, { cache: 'no-cache', credentials: r.credentials }) : r);
-      if (resp && resp.ok && (resp.type === 'basic' || resp.type === 'cors')) c.put(esPagina ? '/' : r, resp.clone());
+      // Solo la página de la aplicación se guarda como «/»; la página pública (/inicio/) se guarda aparte
+      const esApp = !esPagina || u.pathname === '/' || u.pathname === '/index.html';
+      if (resp && resp.ok && (resp.type === 'basic' || resp.type === 'cors')) c.put(esPagina && esApp ? '/' : r, resp.clone());
       return resp;
     } catch (err) {
-      const guardada = await c.match(esPagina ? '/' : r) || await c.match(r, { ignoreSearch: true });
+      const guardada = await c.match(esPagina && u.pathname !== '/inicio/' ? '/' : r) || await c.match(r, { ignoreSearch: true });
       if (guardada) return guardada;
       throw err;
     }
