@@ -236,3 +236,6 @@ label.check input{width:auto;margin-top:3px}
 .vacio{text-align:center;padding:40px 16px;background:#fff;border:1px dashed var(--borde);border-radius:14px;color:var(--gris)}
 .vacio p{margin:12px 0 16px;font-size:16px}
 @media (max-width:600px){.kpis{grid-template-columns:1fr 1fr;gap:10px}.kpi{flex-direction:column;align-items:flex-start;gap:8px;padding:12px}.kpiIc{width:40px;height:40px}.kpiTx b{font-size:19px}.barraFiltros input,.barraFiltros select{min-width:0;flex:1 1 140px}}
+.btnExcel{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.barraExcel{display:flex;justify-content:flex-end;margin:-6px 0 10px}
+@media print{.btnExcel,.barraExcel{display:none}}

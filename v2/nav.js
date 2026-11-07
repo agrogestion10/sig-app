@@ -120,3 +120,66 @@ const kpis = lista => `<div class="kpis">${lista.join('')}</div>`;
 const pestanas = (lista, act) => `<div class="pestanas" role="tablist">${lista.map(([k, t, n]) => `<button type="button" role="tab" data-pest="${k}" class="${k === act ? 'activa' : ''}" aria-selected="${k === act}">${esc(t)}${n != null ? ` <span class="pestN">${n}</span>` : ''}</button>`).join('')}</div>`;
 const vacio = (texto, boton = '') => `<div class="vacio">${ICK.vacio}<p>${texto}</p>${boton}</div>`;
 function alPestana(raiz, fn) { raiz.querySelectorAll('[data-pest]').forEach(b => b.onclick = () => { raiz.querySelectorAll('[data-pest]').forEach(x => { x.classList.toggle('activa', x === b); x.setAttribute('aria-selected', x === b); }); fn(b.dataset.pest); }); }
+
+// ---------- Descargar en Excel ----------
+// Cualquier pantalla con tablas muestra «Descargar Excel» a quien tenga permiso.
+// El administrador y gerencia lo tienen siempre; a los demás se lo da el administrador en Roles o en Usuarios (permiso «Descarga listas y reportes en Excel»).
+const puedeExcel = () => !!S.org && (S.maestro || esJefe() || (S.permisos || []).includes('excel.descargar'));
+const SIN_EXCEL = new Set(['', 'inicio', 'guia', 'roles', 'plan', 'config', 'miclave', 'carga', 'registro']);
+const conDatos = t => [...t.tBodies].some(tb => [...tb.rows].some(tr => !tr.hidden && tr.cells.length > 1));
+function tablasExcel() { return [...app().querySelectorAll('.tabla table')].filter(t => !t.closest('[hidden]') && conDatos(t)); }
+function ponerBotonExcel() {
+  const raiz = app(); if (!raiz) return;
+  const ruta = location.hash.replace(/^#\/?/, '').split('/')[0];
+  let b = raiz.querySelector('.btnExcel');
+  const va = puedeExcel() && !SIN_EXCEL.has(ruta) && tablasExcel().length > 0;
+  if (!va) { if (b) b.remove(); return; }
+  if (b) return;
+  b = document.createElement('button'); b.type = 'button'; b.className = 'sec btnExcel';
+  b.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg> Descargar Excel';
+  b.title = 'Descarga en Excel lo que estás viendo en esta pantalla';
+  b.onclick = () => descargarExcel(b);
+  const cab = raiz.querySelector('.moldeCab');
+  if (cab) { let acc = cab.querySelector('.moldeAcc'); if (!acc) { acc = document.createElement('div'); acc.className = 'moldeAcc'; cab.appendChild(acc); } acc.appendChild(b); return; }
+  const h1 = raiz.querySelector('h1'); if (!h1) return;
+  const caja = document.createElement('div'); caja.className = 'barraExcel'; caja.appendChild(b);
+  const ref = h1.nextElementSibling?.classList.contains('ayudaSec') ? h1.nextElementSibling : h1;
+  ref.after(caja);
+}
+async function descargarExcel(boton) {
+  const tablas = tablasExcel(); if (!tablas.length) return aviso('No hay datos para descargar.', true);
+  boton.disabled = true;
+  try {
+    const X = await libExcel(), raiz = app(), libro = X.utils.book_new(), usados = new Set();
+    const titulo = (raiz.querySelector('h1')?.textContent || 'Datos').trim();
+    let filas = 0;
+    tablas.forEach(t => {
+      const c = t.cloneNode(true);
+      [...t.rows].forEach((tr, k) => { if (tr.hidden || tr.style.display === 'none') c.rows[k].dataset.quitar = '1'; });
+      c.querySelectorAll('[data-quitar]').forEach(tr => tr.remove());
+      [...c.tBodies].forEach(tb => [...tb.rows].forEach(tr => { if (tr.cells.length === 1 && tr.cells[0].colSpan > 1) tr.remove(); }));
+      c.querySelectorAll('button,select,input,textarea,svg').forEach(e => e.remove());
+      const cab = c.tHead?.rows[0], n = cab ? cab.cells.length : 0;
+      const vacias = cab ? [...cab.cells].map((x, k) => !x.textContent.trim() && x.colSpan === 1 ? k : -1).filter(k => k >= 0).reverse() : [];
+      if (vacias.length) [...c.rows].forEach(tr => { if (tr.cells.length === n) vacias.forEach(k => tr.deleteCell(k)); });
+      c.querySelectorAll('td.n').forEach(td => { const s = td.textContent.replace(/[^\d.,-]/g, '').replace(/,/g, ''); if (/^-?\d+(\.\d+)?$/.test(s)) { td.setAttribute('data-t', 'n'); td.setAttribute('data-v', s); } });
+      filas += [...c.tBodies].reduce((a, tb) => a + tb.rows.length, 0);
+      let h = t.closest('.tabla'), nombre = '';
+      for (let e = h?.previousElementSibling; e && !nombre; e = e.previousElementSibling) if (/^H[23]$/.test(e.tagName)) nombre = e.textContent;
+      nombre = (nombre || titulo).replace(/[\[\]:*?\/\\]/g, ' ').trim().slice(0, 28) || 'Hoja';
+      let fin = nombre, i = 2; while (usados.has(fin.toLowerCase())) fin = nombre.slice(0, 26) + ' ' + i++;
+      usados.add(fin.toLowerCase());
+      X.utils.book_append_sheet(libro, X.utils.table_to_sheet(c, { raw: true }), fin);
+    });
+    const archivo = `${titulo} - ${S.org.nombre} - ${hoy()}`.replace(/[\\\/:*?"<>|]+/g, ' ').slice(0, 120) + '.xlsx';
+    X.writeFile(libro, archivo);
+    sb.from('bitacora').insert({ org_id: S.org.id, usuario: typeof nombreQuien === 'function' ? nombreQuien() : '', accion: 'Descargó en Excel', detalle: `${titulo} · ${filas} filas` }).then(() => {}, () => {});
+    aviso('Listo: se descargó ' + archivo);
+  } catch (e) { aviso(falla(e), true); }
+  finally { boton.disabled = false; }
+}
+(function vigilarExcel() {
+  const raiz = document.getElementById('app'); if (!raiz) return setTimeout(vigilarExcel, 300);
+  let pend = false;
+  new MutationObserver(() => { if (pend) return; pend = true; requestAnimationFrame(() => { pend = false; try { ponerBotonExcel(); } catch (_) {} }); }).observe(raiz, { childList: true, subtree: true });
+})();
