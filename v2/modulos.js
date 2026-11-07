@@ -1173,9 +1173,11 @@ RUTAS.parcela = async function formParcela(id, prodId) {
     <div><label>Sombra</label><select name="sombra">${opciones(['', 'Sin sombra', 'Sombra regulada', 'Sombra diversificada', 'Bosque'], p.sombra)}</select></div>
     <div><label>Estimado de cosecha (qq ${secoTxt()})</label><input name="estimado_qq" inputmode="decimal" value="${esc(p.datos?.estimado_qq ?? '')}"></div>
     <div><label>Fecha del último producto prohibido</label><input type="date" name="ultima_prohibida" value="${esc(p.datos?.ultima_prohibida || '')}"><p class="nota">${nuevo ? 'Dejala vacía si nunca se aplicó.' : esc(estadoOrganico(p).txt)}</p></div>
-    <div class="ancho"><label>Polígono (GeoJSON, obligatorio desde 4 ha para EUDR)</label><textarea name="poligono" rows="4" placeholder='{"type":"Polygon","coordinates":[[[-86.1,14.9],…]]}'>${p.poligono ? esc(JSON.stringify(p.poligono)) : ''}</textarea></div>
+    <div class="ancho"><label>Polígono de la parcela (obligatorio desde 4 ha para EUDR)</label><div id="gpsPol"></div>
+      <details style="margin-top:6px"><summary class="nota">Ver o pegar el polígono en GeoJSON</summary><textarea name="poligono" rows="4" placeholder='{"type":"Polygon","coordinates":[[[-86.1,14.9],…]]}'>${p.poligono ? esc(JSON.stringify(p.poligono)) : ''}</textarea></details></div>
   </div><div class="acciones"><button type="button" class="sec" id="gps">Usar mi ubicación actual</button><button>Guardar</button></div></form>`;
   const f = $('#f');
+  herramientaPoligono($('#gpsPol'), f, id || 'nuevo');
   $('#gps').onclick = () => navigator.geolocation ? navigator.geolocation.getCurrentPosition(pos => { f.lat.value = pos.coords.latitude.toFixed(7); f.lon.value = pos.coords.longitude.toFixed(7); if (pos.coords.altitude) f.altitud.value = Math.round(pos.coords.altitude); aviso('Ubicación tomada.'); }, () => aviso('No se pudo leer la ubicación del teléfono.', true), { enableHighAccuracy: true }) : aviso('Este equipo no tiene GPS.', true);
   f.onsubmit = async ev => {
     ev.preventDefault(); const d = datosForm(f), pr = leerProd(ps, d.productor_txt);
@@ -1188,7 +1190,13 @@ RUTAS.parcela = async function formParcela(id, prodId) {
     if (!pol && lat === null) return aviso('Poné al menos el punto GPS de la parcela.', true);
     const reg = { productor_id: pr.id, nombre: d.nombre, area_ha: num(d.area_ha), lat, lon, altitud: d.altitud ? num(d.altitud) : null, variedad: d.variedad, anio_siembra: d.anio_siembra ? +d.anio_siembra : null, sombra: d.sombra, poligono: pol, datos: { ...(p.datos || {}), estimado_qq: d.estimado_qq ? num(d.estimado_qq) : null, ultima_prohibida: d.ultima_prohibida || null } };
     ocupado(f, true);
-    try { if (nuevo) await q(sb.from('parcelas').insert({ ...reg, org_id: S.org.id })); else await q(sb.from('parcelas').update(reg).eq('id', id)); aviso('Parcela guardada.'); location.hash = '#/prod/' + pr.id; }
+    try {
+      const t0 = Date.now();
+      if (nuevo) await q(sb.from('parcelas').insert({ ...reg, org_id: S.org.id })); else await q(sb.from('parcelas').update(reg).eq('id', id));
+      try { localStorage.removeItem('ag_gps_' + (id || 'nuevo')); } catch (_) { }
+      if (S.guardadoLocal >= t0) { aviso('Sin señal: la parcela quedó guardada en el teléfono con su polígono. Se sube sola al volver la señal.'); location.hash = '#/formularios'; return; }
+      aviso('Parcela guardada.'); location.hash = '#/prod/' + pr.id;
+    }
     catch (e) { ocupado(f, false); aviso(falla(e), true); }
   };
   conectarRevision('productores', id);
@@ -2789,7 +2797,8 @@ function listaFormularios() {
     cre && ['Crédito interno', [
       puede('credito.solicitar') && ['credito', '#/credito', 'Solicitud de crédito', 'Para un productor del padrón']]],
     cer && ['Productores y fincas', [
-      puede('padron.crear') && ['prodf', '#/prodf', 'Productor nuevo', 'Datos del productor; después se agregan sus parcelas']]],
+      puede('padron.crear') && ['prodf', '#/prodf', 'Productor nuevo', 'Datos del productor; después se agregan sus parcelas'],
+      (puede('padron.crear') || puede('padron.editar')) && ['parcela', '#/parcela/nuevo', 'Parcela con GPS', 'Punto y polígono caminando el borde o marcando las esquinas']]],
     cer && ['Certificaciones', [
       puede('inspeccion.registrar') && ['inspeccion', '#/inspeccion', 'Inspección interna', 'Lista de chequeo por certificación'],
       puede('insumos.registrar') && ['insumos', '#/insumos', 'Insumo aplicado', 'Lo que se aplicó en una parcela'],
@@ -2843,3 +2852,95 @@ async function prepararFormularios(grupos) {
   finally { b.disabled = false; }
 }
 SECCION_DE.formularios = '';
+
+
+// =====================================================================
+// GPS: caminar el borde de la parcela (o marcar las esquinas) para sacar el polígono y el área.
+// Funciona sin internet: el GPS del teléfono no usa datos. El recorrido se guarda en el teléfono por si se cierra la app.
+// =====================================================================
+const MZ_HA = 0.6987;
+function areaPoligonoHa(pts) { // pts: [[lon, lat], …] sin cerrar
+  if (pts.length < 3) return 0;
+  const lat0 = pts.reduce((t, p) => t + p[1], 0) / pts.length * Math.PI / 180, kx = 111320 * Math.cos(lat0), ky = 110540;
+  let a = 0; for (let i = 0; i < pts.length; i++) { const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % pts.length]; a += x1 * kx * y2 * ky - x2 * kx * y1 * ky; }
+  return Math.abs(a) / 2 / 10000;
+}
+function metrosEntre(a, b) { const lat = (a[1] + b[1]) / 2 * Math.PI / 180, dx = (b[0] - a[0]) * 111320 * Math.cos(lat), dy = (b[1] - a[1]) * 110540; return Math.hypot(dx, dy); }
+function herramientaPoligono(caja, f, clave) {
+  const k = 'ag_gps_' + clave;
+  let pts = [], vigia = null, modo = null, ultima = null, candado = null;
+  try { const g = JSON.parse(localStorage.getItem(k) || 'null'); if (g?.pts?.length) pts = g.pts; } catch (_) { }
+  if (!pts.length && f.poligono.value) { try { let g = JSON.parse(f.poligono.value); if (g.type === 'Feature') g = g.geometry; const anillo = g.type === 'Polygon' ? g.coordinates[0] : g.type === 'MultiPolygon' ? g.coordinates[0][0] : []; pts = anillo.slice(0, -1).map(([x, y]) => [x, y]); } catch (_) { } }
+  const guardarRec = () => { try { localStorage.setItem(k, JSON.stringify({ pts, cuando: Date.now() })); } catch (_) { } };
+  const dibujo = () => {
+    if (pts.length < 2) return '<div class="gpsDibujo vacio">Todavía no hay puntos</div>';
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), lat0 = ys[0] * Math.PI / 180;
+    const minx = Math.min(...xs), maxx = Math.max(...xs), miny = Math.min(...ys), maxy = Math.max(...ys);
+    const w = Math.max((maxx - minx) * Math.cos(lat0), 1e-7), h = Math.max(maxy - miny, 1e-7), e = 200 / Math.max(w, h);
+    const P = pts.map(([x, y]) => [10 + (x - minx) * Math.cos(lat0) * e, 210 - (y - miny) * e].map(v => v.toFixed(1)).join(','));
+    return `<svg class="gpsDibujo" viewBox="0 0 220 220"><polygon points="${P.join(' ')}" fill="rgba(254,203,24,.25)" stroke="#1D2C35" stroke-width="2" stroke-linejoin="round"/>${P.map((q, i) => `<circle cx="${q.split(',')[0]}" cy="${q.split(',')[1]}" r="${i === 0 ? 4 : 2.5}" fill="${i === 0 ? '#0b7a4a' : '#1D2C35'}"/>`).join('')}</svg>`;
+  };
+  const pintar = (estado = '') => {
+    const ha = areaPoligonoHa(pts), per = pts.length > 1 ? pts.reduce((t, p, i) => t + (i ? metrosEntre(pts[i - 1], p) : 0), 0) + (pts.length > 2 ? metrosEntre(pts[pts.length - 1], pts[0]) : 0) : 0;
+    const dec = num(f.area_ha.value), dif = dec && ha ? Math.abs(ha - dec) / dec : 0;
+    caja.innerHTML = `<div class="gpsCaja">${dibujo()}<div class="gpsDatos">
+      <p style="margin:0"><b>${pts.length}</b> punto${pts.length === 1 ? '' : 's'}${ha ? ` · <b>${ha.toFixed(2)} ha</b> (${(ha / MZ_HA).toFixed(2)} mz)` : ''}${per ? ` · borde de ${Math.round(per)} m` : ''}</p>
+      <p class="nota" id="gpsEst" style="margin:4px 0">${estado || (modo === 'caminar' ? 'Caminando: el teléfono va marcando el borde.' : modo === 'esquinas' ? 'Parate en cada esquina y tocá «Marcar esta esquina».' : 'Escogé cómo marcar la parcela. No necesita internet, solo el GPS del teléfono.')}</p>
+      ${dif > 0.3 ? `<p class="nota error" style="margin:4px 0">El área medida (${ha.toFixed(2)} ha) es muy distinta a la declarada (${dec} ha). Revisá el recorrido o corregí el área.</p>` : ''}
+      <div class="acciones" style="margin-top:6px">
+        ${!modo ? `<button type="button" id="gCam">${pts.length ? 'Seguir caminando' : 'Caminar el borde'}</button><button type="button" class="sec" id="gEsq">Marcar las esquinas</button>` : ''}
+        ${modo === 'caminar' ? `<button type="button" class="sec" id="gPausa">Pausar</button>` : ''}
+        ${modo === 'esquinas' ? `<button type="button" id="gMarca">Marcar esta esquina</button>` : ''}
+        ${modo ? `<button type="button" id="gFin">Terminar</button>` : ''}
+        ${pts.length && !modo ? `<button type="button" class="sec" id="gDeshacer">Quitar el último punto</button><button type="button" class="sec" id="gBorrar">Empezar de nuevo</button>` : ''}
+        ${ha && !modo ? `<button type="button" class="sec" id="gArea">Usar el área medida</button>` : ''}
+      </div></div></div>`;
+    const on = (id, fn) => { const b = caja.querySelector('#' + id); if (b) b.onclick = fn; };
+    on('gCam', () => empezar('caminar')); on('gEsq', () => empezar('esquinas'));
+    on('gPausa', parar); on('gFin', terminar);
+    on('gMarca', marcarEsquina);
+    on('gDeshacer', () => { pts.pop(); guardarRec(); volcar(); pintar(); });
+    on('gBorrar', () => { if (!confirm('¿Borrar todos los puntos y empezar de nuevo?')) return; pts = []; guardarRec(); volcar(); pintar(); });
+    on('gArea', () => { f.area_ha.value = areaPoligonoHa(pts).toFixed(2); aviso('Se puso el área medida.'); pintar(); });
+  };
+  const volcar = () => {
+    if (pts.length >= 3) f.poligono.value = JSON.stringify({ type: 'Polygon', coordinates: [[...pts.map(p => [+p[0].toFixed(7), +p[1].toFixed(7)]), [+pts[0][0].toFixed(7), +pts[0][1].toFixed(7)]]] });
+    else if (!pts.length) f.poligono.value = '';
+  };
+  const precision = c => c.accuracy <= 25;
+  async function empezar(m) {
+    if (!navigator.geolocation) return aviso('Este teléfono no deja usar el GPS.', true);
+    modo = m; pintar('Buscando la señal del GPS… (al aire libre tarda menos)');
+    try { candado = await navigator.wakeLock?.request('screen'); } catch (_) { candado = null; }
+    vigia = navigator.geolocation.watchPosition(pos => {
+      const c = pos.coords; ultima = c;
+      const est = caja.querySelector('#gpsEst');
+      if (!precision(c)) { if (est) est.textContent = `GPS impreciso (±${Math.round(c.accuracy)} m). Esperá un momento al aire libre…`; return; }
+      if (modo === 'caminar') {
+        const p = [c.longitude, c.latitude];
+        if (!pts.length || metrosEntre(pts[pts.length - 1], p) >= 4) { pts.push(p); guardarRec(); volcar(); pintar(`Caminando (±${Math.round(c.accuracy)} m). Seguí el borde hasta volver al inicio y tocá «Terminar».`); }
+        else if (est) est.textContent = `Caminando (±${Math.round(c.accuracy)} m)…`;
+      } else if (est) est.textContent = `GPS listo (±${Math.round(c.accuracy)} m). Parate en la esquina y tocá «Marcar esta esquina».`;
+      if (!f.lat.value) { f.lat.value = c.latitude.toFixed(7); f.lon.value = c.longitude.toFixed(7); }
+      if (c.altitude && !f.altitud.value) f.altitud.value = Math.round(c.altitude);
+    }, er => pintar(er.code === 1 ? 'El teléfono no dio permiso para usar la ubicación. Activalo en los permisos del navegador.' : 'No se pudo leer el GPS. Probá al aire libre.'), { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+  }
+  function marcarEsquina() {
+    if (!ultima || !precision(ultima)) return aviso('Todavía no hay buena señal del GPS. Esperá unos segundos al aire libre.', true);
+    pts.push([ultima.longitude, ultima.latitude]); guardarRec(); volcar(); pintar(`Esquina ${pts.length} marcada (±${Math.round(ultima.accuracy)} m). Caminá a la siguiente.`);
+  }
+  function parar() { if (vigia !== null) navigator.geolocation.clearWatch(vigia); vigia = null; modo = null; try { candado?.release(); } catch (_) { } candado = null; pintar(); }
+  function terminar() {
+    parar(); volcar();
+    if (pts.length < 3) return pintar('Hacen falta al menos 3 puntos para el polígono.');
+    const ha = areaPoligonoHa(pts);
+    if (!num(f.area_ha.value)) f.area_ha.value = ha.toFixed(2);
+    const cx = pts.reduce((t, p) => t + p[0], 0) / pts.length, cy = pts.reduce((t, p) => t + p[1], 0) / pts.length;
+    if (!f.lat.value) { f.lat.value = cy.toFixed(7); f.lon.value = cx.toFixed(7); }
+    pintar(`Listo: polígono de ${pts.length} puntos, ${ha.toFixed(2)} ha. Revisá el dibujo y guardá la parcela.`);
+  }
+  f.area_ha.addEventListener('change', () => { if (!modo) pintar(); });
+  f.poligono.addEventListener('change', () => { try { let g = JSON.parse(f.poligono.value); if (g.type === 'Feature') g = g.geometry; pts = (g.type === 'Polygon' ? g.coordinates[0] : g.coordinates[0][0]).slice(0, -1); guardarRec(); pintar(); } catch (_) { } });
+  window.addEventListener('hashchange', function fuera() { parar(); window.removeEventListener('hashchange', fuera); }, { once: true });
+  pintar(pts.length && localStorage.getItem(k) ? 'Se recuperó el recorrido que estaba en el teléfono.' : '');
+}

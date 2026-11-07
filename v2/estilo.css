@@ -417,3 +417,8 @@ a.kpiLink:hover{border-color:#FECB18;transform:translateY(-1px)}
 .formTarjeta b{color:#1D2C35}
 .formEst{align-self:flex-start;margin-top:4px;font-size:12px;padding:2px 8px;border-radius:999px;background:#E6F4EC;color:#0b5e39}
 .formEst.senal{background:#EEF1F4;color:#5C7389}
+/* GPS de la parcela */
+.gpsCaja{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;border:1px solid #E3E8EE;border-radius:10px;padding:10px;background:#fff}
+.gpsDibujo{width:150px;height:150px;flex:0 0 150px;background:#F6F8FA;border-radius:8px}
+.gpsDibujo.vacio{display:flex;align-items:center;justify-content:center;text-align:center;font-size:12px;color:#5C7389;padding:8px}
+.gpsDatos{flex:1;min-width:200px}
