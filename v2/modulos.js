@@ -1644,7 +1644,11 @@ RUTAS.basculas = async function verBasculas() {
   const filas = await q(sb.from('basculas').select('*').eq('org_id', S.org.id).order('activa', { ascending: false }).order('nombre'));
   const dias = cfgN('BASCULA_DIAS_AVISO', 30), bodegas = lista(S.cfg.BODEGAS);
   const estado = b => !b.vence ? '<span class="nota">Sin fecha</span>' : b.vence < hoy() ? '<span class="error">Vencida</span>' : diasEntre(hoy(), b.vence) <= dias ? `<span style="color:#92400e">Vence en ${diasEntre(hoy(), b.vence)} días</span>` : 'Vigente';
-  app().innerHTML = cabecera('Básculas y calibración') + `${esJefe() ? `<form class="caja" id="f"><div class="rejilla">
+  const enUso = filas.filter(b => b.activa), venc = enUso.filter(b => b.vence && b.vence < hoy()), pronto = enUso.filter(b => b.vence && b.vence >= hoy() && diasEntre(hoy(), b.vence) <= dias);
+  let pest = 'uso';
+  app().innerHTML = moldeCab('Básculas y calibración') + kpis([kpi('verde', 'saco', 'Básculas en uso', enUso.length), kpi(venc.length ? 'rojo' : 'verde', 'alerta', 'Vencidas', venc.length, venc.length ? 'Calibrar cuanto antes' : 'Ninguna vencida'), kpi(pronto.length ? 'ambar' : 'gris', 'reloj', 'Vencen pronto', pronto.length, `En ${dias} días o menos`)]) +
+  pestanas([['uso', 'En uso', enUso.length], ['venc', 'Vencidas', venc.length], ['fuera', 'Fuera de uso', filas.length - enUso.length]], pest) + `<div id="lista"></div>
+  ${esJefe() ? `<h2>Agregar o actualizar una báscula</h2><form class="caja" id="f"><div class="rejilla">
     <div><label>Báscula</label><select name="id"><option value="">Nueva báscula</option>${filas.map(b => `<option value="${b.id}">${esc(b.nombre)}</option>`).join('')}</select></div>
     <div><label>Nombre</label><input name="nombre" required placeholder="Báscula de plataforma 1"></div>
     <div><label>Bodega</label><select name="bodega">${opciones(['', ...bodegas])}</select></div>
@@ -1654,9 +1658,13 @@ RUTAS.basculas = async function verBasculas() {
     <div><label>Certificado o quién la calibró</label><input name="certificado"></div>
     <div><label>¿En uso?</label><select name="activa">${opciones(['Sí', 'No'])}</select></div>
   </div><div class="acciones"><button>Guardar</button></div></form>` : ''}
-  <div class="tabla"><table><thead><tr><th>Báscula</th><th>Bodega</th><th>Capacidad</th><th>Última calibración</th><th>Vence</th><th>Estado</th><th>Certificado</th></tr></thead><tbody>
-  ${filas.map(b => `<tr${b.activa ? '' : ' style="color:var(--gris)"'}><td>${esc(b.nombre)}${b.activa ? '' : ' (fuera de uso)'}</td><td>${esc(b.bodega || '')}</td><td>${esc(b.capacidad || '')}</td><td>${esc(b.ultima_calibracion || '')}</td><td>${esc(b.vence || '')}</td><td>${b.activa ? estado(b) : ''}</td><td>${esc(b.certificado || '')}</td></tr>`).join('') || '<tr><td colspan="7" class="nota">Todavía no hay básculas registradas.</td></tr>'}</tbody></table></div>
   <p class="nota">Las certificadoras piden que la báscula del acopio esté calibrada. Cuando faltan ${dias} días o menos para que venza, sale el aviso en el panel de Certificaciones, y si está vencida, cada entrega pesada en ella queda con la nota. Las bodegas se ponen en Configuración.</p>`;
+  const pintar = () => {
+    const f = pest === 'venc' ? venc : pest === 'fuera' ? filas.filter(b => !b.activa) : enUso;
+    $('#lista').innerHTML = !f.length ? vacio(filas.length ? 'Ninguna báscula en este grupo.' : 'Todavía no hay básculas registradas.') : `<div class="tabla"><table><thead><tr><th>Báscula</th><th>Bodega</th><th>Capacidad</th><th>Última calibración</th><th>Vence</th><th>Estado</th><th>Certificado</th></tr></thead><tbody>
+    ${f.map(b => `<tr${b.activa ? '' : ' style="color:var(--gris)"'}><td>${esc(b.nombre)}${b.activa ? '' : ' (fuera de uso)'}</td><td>${esc(b.bodega || '')}</td><td>${esc(b.capacidad || '')}</td><td>${esc(b.ultima_calibracion || '')}</td><td>${esc(b.vence || '')}</td><td>${b.activa ? estado(b) : ''}</td><td>${esc(b.certificado || '')}</td></tr>`).join('')}</tbody></table></div>`;
+  };
+  alPestana(app(), k => { pest = k; pintar(); }); pintar();
   const f = $('#f'); if (!f) return;
   f.id.onchange = () => { const b = filas.find(x => x.id === f.id.value) || {}; ['nombre', 'bodega', 'capacidad', 'ultima_calibracion', 'vence', 'certificado'].forEach(k => f[k].value = b[k] || ''); f.activa.value = b.activa === false ? 'No' : 'Sí'; };
   f.onsubmit = async ev => {
@@ -1709,9 +1717,11 @@ RUTAS.balance = async function verBalance(anio) {
   anio = +(anio || new Date().getFullYear()); await certs();
   const filas = await q(sb.from('balance_masas_producto').select('*').eq('org_id', S.org.id).eq('anio', anio).order('producto'));
   const varios = cultivos().length > 1 || new Set(filas.map(x => x.producto)).size > 1;
-  app().innerHTML = cabecera('Balance de masas ' + anio) + `<div class="filtros"><select id="anio">${[anio - 1, anio, anio + 1].map(a => `<option ${a === anio ? 'selected' : ''}>${a}</option>`).join('')}</select></div>
+  const sum = k => filas.reduce((t, x) => t + num(x[k]), 0) / 100, qqF = v => v.toLocaleString('es-HN', { maximumFractionDigits: 1 }) + ' qq', neg = filas.filter(x => num(x.disponible_psec_lb) < 0).length;
+  app().innerHTML = moldeCab('Balance de masas ' + anio, `<select id="anio" aria-label="Año">${[anio - 1, anio, anio + 1].map(a => `<option ${a === anio ? 'selected' : ''}>${a}</option>`).join('')}</select>`) +
+  kpis([kpi('azul', 'saco', 'Comprado', qqF(sum('acopiado_psec_lb')), 'Equivalente seco'), kpi('verde', 'sube', 'Vendido', qqF(sum('vendido_psec_lb'))), kpi(neg ? 'rojo' : 'verde', neg ? 'alerta' : 'saco', 'Disponible', qqF(sum('disponible_psec_lb')), neg ? neg + ' certificación(es) con sobreventa' : 'Sin sobreventa')]) + `
   <div class="tabla"><table><thead><tr>${varios ? '<th>Producto</th>' : ''}<th>Certificación</th><th class="n">Comprado (lb ${varios ? 'equivalente seco' : secoTxt()})</th><th class="n">Vendido</th><th class="n">Disponible</th><th class="n">Disponible (qq)</th></tr></thead><tbody>
-  ${filas.map(x => `<tr>${varios ? `<td>${esc(x.producto)}</td>` : ''}<td>${esc(nombreCert(x.certificacion === 'Convencional' ? null : x.certificacion))}</td><td class="n">${num(x.acopiado_psec_lb).toLocaleString('es-HN')}</td><td class="n">${num(x.vendido_psec_lb).toLocaleString('es-HN')}</td><td class="n ${num(x.disponible_psec_lb) < 0 ? 'error' : ''}">${num(x.disponible_psec_lb).toLocaleString('es-HN')}</td><td class="n">${(num(x.disponible_psec_lb) / 100).toFixed(2)}</td></tr>`).join('') || `<tr><td colspan="${varios ? 6 : 5}" class="nota">Sin movimientos en este año.</td></tr>`}
+  ${filas.map(x => `<tr>${varios ? `<td>${esc(x.producto)}</td>` : ''}<td>${esc(nombreCert(x.certificacion === 'Convencional' ? null : x.certificacion))}</td><td class="n">${num(x.acopiado_psec_lb).toLocaleString('es-HN')}</td><td class="n">${num(x.vendido_psec_lb).toLocaleString('es-HN')}</td><td class="n ${num(x.disponible_psec_lb) < 0 ? 'error' : ''}">${num(x.disponible_psec_lb).toLocaleString('es-HN')}</td><td class="n">${(num(x.disponible_psec_lb) / 100).toFixed(2)}</td></tr>`).join('') || `<tr><td colspan="${varios ? 6 : 5}">${vacio('Sin movimientos en este año.')}</td></tr>`}
   </tbody></table></div><p class="nota">${cultivos().includes('Café') ? 'El café se lleva en pergamino seco: el uva, el húmedo y el oro se convierten con los factores de Configuración. ' : ''}${cultivos().includes('Cacao') ? 'El cacao se lleva en cacao seco: el cacao en baba se convierte con su factor de Configuración. ' : ''}Un disponible negativo indica sobreventa.</p>`;
   $('#anio').onchange = e => location.hash = '#/balance/' + e.target.value;
 };
@@ -1888,13 +1898,24 @@ RUTAS.quejas = async function verQuejas() {
   if (!esJefe()) return RUTAS.queja();
   const filas = await q(sb.from('quejas').select('*').eq('org_id', S.org.id).order('estado').order('fecha', { ascending: false }));
   const plazo = x => (x.urgente ? cfgN('QUEJAS_DIAS_URGENTE', 3) : cfgN('QUEJAS_DIAS_RESPUESTA', 30)) - diasEntre(x.fecha, hoy());
-  app().innerHTML = cabecera('Quejas y reclamos') + `<div class="filtros"><a class="boton" href="#/queja">+ Registrar queja</a></div>
-  <div class="tabla"><table><thead><tr><th>Número</th><th>Fecha</th><th>Tipo</th><th>Qué pasó</th><th>Quién</th><th>Estado</th><th></th></tr></thead><tbody>
-  ${filas.map(x => { const p = plazo(x), ab = x.estado !== 'Cerrada'; return `<tr${x.urgente && ab ? ' style="background:#fef2f2"' : ''}><td>${esc(x.numero)}</td><td>${esc(x.fecha)}</td><td>${x.urgente ? '<b class="error">' + esc(x.tipo) + '</b>' : esc(x.tipo)}</td><td>${esc(x.descripcion)}${x.respuesta ? '<br><span class="nota">Respuesta: ' + esc(x.respuesta) + '</span>' : ''}</td><td>${x.anonima ? 'Anónima' : esc([x.nombre, x.contacto].filter(Boolean).join(' · '))}</td><td>${esc(x.estado)}${ab ? `<br><span class="nota ${p < 0 ? 'error' : ''}">${p < 0 ? 'Vencida hace ' + (-p) + ' días' : 'Quedan ' + p + ' días'}</span>` : ''}</td><td>${ab ? `<button class="sec" data-q="${x.id}">Responder</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="7" class="nota">Sin quejas.</td></tr>'}</tbody></table></div>`;
-  app().querySelectorAll('[data-q]').forEach(b => b.onclick = async () => {
-    const r = prompt('Respuesta o acción tomada:'); if (!r) return; const cerrar = confirm('¿Cerrar la queja? (Cancelar = queda «En proceso»)');
-    try { await q(sb.from('quejas').update({ respuesta: r, estado: cerrar ? 'Cerrada' : 'En proceso', cerrada: cerrar ? hoy() : null }).eq('id', b.dataset.q)); aviso('Queja actualizada.'); RUTAS.quejas(); } catch (e) { aviso(falla(e), true); }
-  });
+  const ab = filas.filter(x => x.estado !== 'Cerrada'), urg = ab.filter(x => x.urgente), venc = ab.filter(x => plazo(x) < 0);
+  let pest = 'ab';
+  app().innerHTML = moldeCab('Quejas y reclamos', '<a class="boton" href="#/queja">+ Registrar queja</a>') + `
+  <div class="barraFiltros"><input id="bus" class="busca" type="search" placeholder="Buscar por número, tipo o lo que pasó"></div>
+  ${kpis([kpi(ab.length ? 'azul' : 'verde', 'doc', 'Abiertas', ab.length), kpi(urg.length ? 'rojo' : 'verde', 'alerta', 'Urgentes', urg.length), kpi(venc.length ? 'rojo' : 'verde', 'reloj', 'Fuera de plazo', venc.length, venc.length ? 'Pasaron el plazo de respuesta' : 'Todas a tiempo'), kpi('gris', 'hoja', 'Cerradas', filas.length - ab.length)])}
+  ${pestanas([['ab', 'Abiertas', ab.length], ['urg', 'Urgentes', urg.length], ['venc', 'Fuera de plazo', venc.length], ['cer', 'Cerradas', filas.length - ab.length], ['todas', 'Todas', filas.length]], pest)}
+  <div id="lista"></div>`;
+  const pintar = () => {
+    const t = norm($('#bus').value), base = pest === 'ab' ? ab : pest === 'urg' ? urg : pest === 'venc' ? venc : pest === 'cer' ? filas.filter(x => x.estado === 'Cerrada') : filas;
+    const f = base.filter(x => !t || norm(x.numero + x.tipo + (x.descripcion || '')).includes(t));
+    $('#lista').innerHTML = !f.length ? vacio(filas.length ? 'No hay quejas con ese filtro.' : 'Todavía no hay quejas registradas.', '<a class="boton" href="#/queja">Registrar una queja</a>') : `<div class="tabla"><table><thead><tr><th>Número</th><th>Fecha</th><th>Tipo</th><th>Qué pasó</th><th>Quién</th><th>Estado</th><th></th></tr></thead><tbody>
+    ${f.map(x => { const p = plazo(x), abierta = x.estado !== 'Cerrada'; return `<tr${x.urgente && abierta ? ' style="background:#fef2f2"' : ''}><td>${esc(x.numero)}</td><td>${esc(x.fecha)}</td><td>${x.urgente ? '<b class="error">' + esc(x.tipo) + '</b>' : esc(x.tipo)}</td><td>${esc(x.descripcion)}${x.respuesta ? '<br><span class="nota">Respuesta: ' + esc(x.respuesta) + '</span>' : ''}</td><td>${x.anonima ? 'Anónima' : esc([x.nombre, x.contacto].filter(Boolean).join(' · '))}</td><td>${esc(x.estado)}${abierta ? `<br><span class="nota ${p < 0 ? 'error' : ''}">${p < 0 ? 'Vencida hace ' + (-p) + ' días' : 'Quedan ' + p + ' días'}</span>` : ''}</td><td>${abierta ? `<button class="sec" data-q="${x.id}">Responder</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>`;
+    $('#lista').querySelectorAll('[data-q]').forEach(b => b.onclick = async () => {
+      const r = prompt('Respuesta o acción tomada:'); if (!r) return; const cerrar = confirm('¿Cerrar la queja? (Cancelar = queda «En proceso»)');
+      try { await q(sb.from('quejas').update({ respuesta: r, estado: cerrar ? 'Cerrada' : 'En proceso', cerrada: cerrar ? hoy() : null }).eq('id', b.dataset.q)); aviso('Queja actualizada.'); RUTAS.quejas(); } catch (e) { aviso(falla(e), true); }
+    });
+  };
+  alPestana(app(), k => { pest = k; pintar(); }); $('#bus').oninput = pintar; pintar();
 };
 
 // ---------- catálogo y formularios de Kobo ----------
@@ -2437,7 +2458,11 @@ const chipInsumo = e => `<span class="estado" style="background:${e === 'Permiti
 RUTAS.insumos = async function verInsumos(prodId) {
   const [ps, filas] = await Promise.all([prods(), q(sb.from('insumos_aplicados').select('*, productores(codigo,nombre)').eq('org_id', S.org.id).order('fecha', { ascending: false }).limit(300))]);
   const sugeridos = [...lista(S.cfg.INSUMOS_PERMITIDOS), ...lista(S.cfg.INSUMOS_PROHIBIDOS)];
-  app().innerHTML = cabecera('Insumos aplicados') + `<form class="caja" id="f"><div class="rejilla">
+  const proh = filas.filter(x => x.estado === 'Prohibido'), porRev = filas.filter(x => x.estado !== 'Prohibido' && x.estado !== 'Permitido'), perm = filas.filter(x => x.estado === 'Permitido');
+  let pest = 'todas';
+  app().innerHTML = moldeCab('Insumos aplicados', S.maestro ? '<a class="boton sec" href="#/carga/insumos">Subir desde Excel</a>' : '') +
+  kpis([kpi('azul', 'hoja', 'Aplicaciones registradas', filas.length, 'Las últimas 300'), kpi(proh.length ? 'rojo' : 'verde', 'alerta', 'Insumos prohibidos', proh.length, proh.length ? 'Abren no conformidad' : 'Ninguno'), kpi(porRev.length ? 'ambar' : 'verde', 'reloj', 'Por revisar', porRev.length, 'No están en ninguna lista')]) + `
+  <h2>Registrar una aplicación</h2><form class="caja" id="f"><div class="rejilla">
     <div class="ancho"><label>Productor</label>${campoProd(ps, prodId)}</div>
     <div><label>Parcela</label><select name="parcela_id" id="parc"><option value="">Toda la finca</option></select></div>
     <div><label>Fecha de la aplicación</label><input type="date" name="fecha" required value="${hoy()}"></div>
@@ -2446,10 +2471,15 @@ RUTAS.insumos = async function verInsumos(prodId) {
     <div><label>Cantidad</label><input name="cantidad" inputmode="decimal"></div>
     <div><label>Unidad</label><select name="unidad">${opciones(['kg', 'lb', 'qq', 'sacos', 'litros', 'galones', 'ml'])}</select></div>
     <div class="ancho"><label>Observaciones</label><input name="observaciones"></div>
-  </div><p class="nota" id="revIns"></p><div class="acciones"><a class="boton sec" href="#/carga/insumos">Subir varios desde Excel</a><button>Registrar aplicación</button></div></form>
+  </div><p class="nota" id="revIns"></p><div class="acciones"><button>Registrar aplicación</button></div></form>
   <p class="nota">Las listas de insumos permitidos y prohibidos se ajustan en Configuración, según la certificadora. Si se aplica un producto prohibido, la parcela vuelve a empezar la transición y se abre una no conformidad sola.</p>
-  <h2>Últimas aplicaciones</h2><div class="tabla"><table><thead><tr><th>Fecha</th><th>Productor</th><th>Parcela</th><th>Producto</th><th>Tipo</th><th class="n">Cantidad</th><th>Revisión</th><th>Origen</th></tr></thead><tbody>
-  ${filas.map(x => `<tr><td>${esc(x.fecha)}</td><td><a href="#/prod/${x.productor_id}">${esc(x.productores?.codigo || '')} ${esc(x.productores?.nombre || '')}</a></td><td>${esc(x.parcela_nombre || 'Toda la finca')}</td><td>${esc(x.producto)}</td><td>${esc(x.tipo)}</td><td class="n">${x.cantidad ? num(x.cantidad).toLocaleString('es-HN') + ' ' + esc(x.unidad || '') : ''}</td><td>${chipInsumo(x.estado)}</td><td>${x.inspeccion_id ? `<a href="#/insp/${x.inspeccion_id}">${esc(x.origen || 'Inspección')}</a>` : esc(x.origen || 'Registro')}</td></tr>`).join('') || '<tr><td colspan="8" class="nota">Todavía no hay aplicaciones registradas.</td></tr>'}</tbody></table></div>`;
+  <h2>Últimas aplicaciones</h2>${pestanas([['todas', 'Todas', filas.length], ['proh', 'Prohibidos', proh.length], ['rev', 'Por revisar', porRev.length], ['perm', 'Permitidos', perm.length]], pest)}<div id="lista"></div>`;
+  const pintar = () => {
+    const f = pest === 'proh' ? proh : pest === 'rev' ? porRev : pest === 'perm' ? perm : filas;
+    $('#lista').innerHTML = !f.length ? vacio(filas.length ? 'Ninguna aplicación en este grupo.' : 'Todavía no hay aplicaciones registradas.') : `<div class="tabla"><table><thead><tr><th>Fecha</th><th>Productor</th><th>Parcela</th><th>Producto</th><th>Tipo</th><th class="n">Cantidad</th><th>Revisión</th><th>Origen</th></tr></thead><tbody>
+    ${f.map(x => `<tr><td>${esc(x.fecha)}</td><td><a href="#/prod/${x.productor_id}">${esc(x.productores?.codigo || '')} ${esc(x.productores?.nombre || '')}</a></td><td>${esc(x.parcela_nombre || 'Toda la finca')}</td><td>${esc(x.producto)}</td><td>${esc(x.tipo)}</td><td class="n">${x.cantidad ? num(x.cantidad).toLocaleString('es-HN') + ' ' + esc(x.unidad || '') : ''}</td><td>${chipInsumo(x.estado)}</td><td>${x.inspeccion_id ? `<a href="#/insp/${x.inspeccion_id}">${esc(x.origen || 'Inspección')}</a>` : esc(x.origen || 'Registro')}</td></tr>`).join('')}</tbody></table></div>`;
+  };
+  alPestana(app(), k => { pest = k; pintar(); }); pintar();
   const f = $('#f');
   const cargarParc = async () => {
     const p = leerProd(ps, f.productor_txt.value); f.parcela_id.innerHTML = '<option value="">Toda la finca</option>';
@@ -2477,9 +2507,11 @@ RUTAS.lotes = async function verLotes() {
   const aco = await q(sb.from('acopio').select('lote,fecha,psec_lb,certificacion,productor_id').eq('org_id', S.org.id).gte('fecha', desde).not('lote', 'is', null).order('fecha', { ascending: false }).limit(5000));
   const L2 = {}; aco.forEach(a => { const k = String(a.lote).toUpperCase(); const x = L2[k] = L2[k] || { lote: k, qq: 0, prods: new Set(), desde: a.fecha, hasta: a.fecha, certs: new Set() }; x.qq += num(a.psec_lb) / 100; x.prods.add(a.productor_id); if (a.fecha < x.desde) x.desde = a.fecha; if (a.fecha > x.hasta) x.hasta = a.fecha; if (a.certificacion) x.certs.add(a.certificacion); });
   const filas = Object.values(L2); await certs();
-  app().innerHTML = cabecera('Trazabilidad por lote') + `<div class="filtros"><input id="bus" placeholder="Buscar lote"></div>
+  const totQq = filas.reduce((t, x) => t + x.qq, 0), totP = new Set(aco.map(a => a.productor_id)).size;
+  app().innerHTML = moldeCab('Trazabilidad por lote', '<a class="boton sec" href="#/despacho">Despacho y venta</a>') + `<div class="barraFiltros"><input id="bus" class="busca" type="search" placeholder="Buscar lote"></div>
+  ${kpis([kpi('azul', 'doc', 'Lotes (últimos 2 años)', filas.length), kpi('verde', 'saco', 'Pergamino seco en lotes', qqTxt(totQq)), kpi('gris', 'gente', 'Productores que entregaron', totP)])}
   <div class="tabla"><table><thead><tr><th>Lote</th><th>Acopio</th><th class="n">Productores</th><th class="n">Pergamino seco</th><th>Certificaciones</th></tr></thead><tbody>
-  ${filas.map(x => `<tr data-t="${esc(norm(x.lote))}"><td><a href="#/lote/${encodeURIComponent(x.lote)}"><b>${esc(x.lote)}</b></a></td><td>${esc(x.desde)}${x.hasta !== x.desde ? ' a ' + esc(x.hasta) : ''}</td><td class="n">${x.prods.size}</td><td class="n">${qqTxt(x.qq)}</td><td>${[...x.certs].map(nombreCert).map(esc).join(', ') || 'Convencional'}</td></tr>`).join('') || '<tr><td colspan="5" class="nota">No hay acopios con lote en los últimos dos años.</td></tr>'}</tbody></table></div>`;
+  ${filas.map(x => `<tr data-t="${esc(norm(x.lote))}"><td><a href="#/lote/${encodeURIComponent(x.lote)}"><b>${esc(x.lote)}</b></a></td><td>${esc(x.desde)}${x.hasta !== x.desde ? ' a ' + esc(x.hasta) : ''}</td><td class="n">${x.prods.size}</td><td class="n">${qqTxt(x.qq)}</td><td>${[...x.certs].map(nombreCert).map(esc).join(', ') || 'Convencional'}</td></tr>`).join('') || `<tr><td colspan="5">${vacio('No hay acopios con lote en los últimos dos años.')}</td></tr>`}</tbody></table></div>`;
   $('#bus').oninput = e => { const t = norm(e.target.value); app().querySelectorAll('tr[data-t]').forEach(tr => tr.hidden = t && !tr.dataset.t.includes(t)); };
 };
 

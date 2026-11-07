@@ -1024,10 +1024,19 @@ async function formProveedor(id) {
 // ---------- empleados ----------
 async function verEmpleados() {
   const filas = await q(sb.from('empleados').select('*').eq('org_id', S.org.id).order('nombre'));
-  app().innerHTML = cabecera('Empleados') + `<div class="filtros"><a class="boton" href="#/empleado">+ Nuevo empleado</a>${puede('empleados.gestionar') ? '<a class="boton sec" href="#/carga/empleados">Subir varios desde Excel</a>' : ''}</div>
-  <div class="tabla"><table><thead><tr><th>Nombre</th><th>Cargo</th><th>Ingreso</th><th class="n">Salario</th><th class="n">Días de vacaciones</th><th></th></tr></thead><tbody>
-  ${filas.map(e => `<tr${e.activo ? '' : ' style="opacity:.5"'}><td>${esc(e.nombre)}</td><td>${esc(e.cargo)}</td><td>${esc(e.fecha_ingreso)}</td><td class="n">${e.salario ? L(e.salario) : ''}</td><td class="n">${e.dias_vacaciones ?? ''}</td><td><a href="#/empleado/${e.id}">Editar</a></td></tr>`).join('') || '<tr><td colspan="6" class="nota">Sin empleados.</td></tr>'}
-  </tbody></table></div>`;
+  const act = filas.filter(e => e.activo), planilla = act.reduce((t, e) => t + num(e.salario), 0), vac = act.reduce((t, e) => t + num(e.dias_vacaciones), 0);
+  let pest = 'act';
+  app().innerHTML = moldeCab('Empleados', `<a class="boton" href="#/empleado">+ Nuevo empleado</a>${S.maestro ? '<a class="boton sec" href="#/carga/empleados">Subir desde Excel</a>' : ''}`) + `
+  <div class="barraFiltros"><input id="bus" class="busca" type="search" placeholder="Buscar por nombre o cargo"></div>
+  ${kpis([kpi('verde', 'gente', 'Empleados activos', act.length), kpi('azul', 'dinero', 'Planilla mensual', L(planilla), 'Suma de salarios activos'), kpi(vac > act.length * 15 ? 'ambar' : 'gris', 'reloj', 'Días de vacaciones pendientes', vac.toLocaleString('es-HN'))])}
+  ${pestanas([['act', 'Activos', act.length], ['inact', 'Inactivos', filas.length - act.length], ['todos', 'Todos', filas.length]], pest)}
+  <div id="lista"></div>`;
+  const pintar = () => {
+    const t = norm($('#bus').value), f = filas.filter(e => (pest === 'todos' || (pest === 'act' ? e.activo : !e.activo)) && (!t || norm(e.nombre + (e.cargo || '')).includes(t)));
+    $('#lista').innerHTML = !f.length ? vacio(filas.length ? 'No hay empleados con ese filtro.' : 'Todavía no hay empleados.', '<a class="boton" href="#/empleado">Agregar el primero</a>') : `<div class="tabla"><table><thead><tr><th>Nombre</th><th>Cargo</th><th>Ingreso</th><th class="n">Salario</th><th class="n">Días de vacaciones</th><th></th></tr></thead><tbody>
+    ${f.map(e => `<tr${e.activo ? '' : ' style="opacity:.5"'}><td>${esc(e.nombre)}</td><td>${esc(e.cargo)}</td><td>${esc(e.fecha_ingreso)}</td><td class="n">${e.salario ? L(e.salario) : ''}</td><td class="n">${e.dias_vacaciones ?? ''}</td><td><a href="#/empleado/${e.id}">Editar</a></td></tr>`).join('')}</tbody></table></div>`;
+  };
+  alPestana(app(), k => { pest = k; pintar(); }); $('#bus').oninput = pintar; pintar();
 }
 async function formEmpleado(id) {
   const p = id ? await q(sb.from('empleados').select('*').eq('id', id).single()) : {};
@@ -1053,12 +1062,22 @@ async function verPresupuesto(anio) {
   const filas = await q(sb.from('ejecucion_presupuesto').select('*').eq('org_id', S.org.id).eq('anio', anio).order('linea'));
   const alerta = num(S.cfg.PRESUPUESTO_AVISO_PCT || 85);
   const tot = k => filas.reduce((a, x) => a + num(x[k]), 0);
-  app().innerHTML = cabecera('Presupuesto ' + anio) + `
-  <div class="filtros"><select id="anio">${[anio - 1, anio, anio + 1].map(a => `<option ${a === anio ? 'selected' : ''}>${a}</option>`).join('')}</select></div>
-  <div class="tabla"><table><thead><tr><th>Proyecto</th><th>Línea</th><th class="n">Aprobado</th><th class="n">Ejecutado</th><th class="n">Comprometido</th><th class="n">Disponible</th><th>Uso</th></tr></thead><tbody>
-  ${filas.map(x => { const u = num(x.ejecutado) + num(x.comprometido), pct = num(x.aprobado) ? u / num(x.aprobado) * 100 : 0; return `<tr><td>${esc(x.proyecto)}</td><td>${esc(x.linea)}</td><td class="n">${L(x.aprobado)}</td><td class="n">${L(x.ejecutado)}</td><td class="n">${L(x.comprometido)}</td><td class="n">${L(num(x.aprobado) - u)}</td><td><div class="barra-pres" title="${pct.toFixed(0)} %"><i class="${pct > 100 ? 'pasado' : pct >= alerta ? 'alto' : ''}" style="width:${Math.min(pct, 100)}%"></i></div></td></tr>`; }).join('') || '<tr><td colspan="7" class="nota">Todavía no hay presupuesto cargado para este año.</td></tr>'}
-  </tbody>${filas.length ? `<tfoot><tr><th colspan="2">Total</th><th class="n">${L(tot('aprobado'))}</th><th class="n">${L(tot('ejecutado'))}</th><th class="n">${L(tot('comprometido'))}</th><th class="n">${L(tot('aprobado') - tot('ejecutado') - tot('comprometido'))}</th><th></th></tr></tfoot>` : ''}</table></div>
+  const pctDe = x => num(x.aprobado) ? (num(x.ejecutado) + num(x.comprometido)) / num(x.aprobado) * 100 : 0;
+  const disp = tot('aprobado') - tot('ejecutado') - tot('comprometido');
+  const cerca = filas.filter(x => { const p = pctDe(x); return p >= alerta && p <= 100; }), pasadas = filas.filter(x => pctDe(x) > 100);
+  let pest = 'todas';
+  app().innerHTML = moldeCab('Presupuesto ' + anio, `<select id="anio" aria-label="Año">${[anio - 1, anio, anio + 1].map(a => `<option ${a === anio ? 'selected' : ''}>${a}</option>`).join('')}</select>`) + `
+  ${kpis([kpi('azul', 'doc', 'Aprobado', L(tot('aprobado'))), kpi('verde', 'sube', 'Ejecutado', L(tot('ejecutado')), tot('aprobado') ? (tot('ejecutado') / tot('aprobado') * 100).toFixed(0) + ' % del aprobado' : ''), kpi('ambar', 'reloj', 'Comprometido', L(tot('comprometido'))), kpi(disp < 0 ? 'rojo' : 'verde', 'dinero', 'Disponible', L(disp), disp < 0 ? 'Gastado de más' : '')])}
+  ${pestanas([['todas', 'Todas las líneas', filas.length], ['cerca', 'Cerca del límite', cerca.length], ['pasadas', 'Pasadas', pasadas.length]], pest)}
+  <div id="lista"></div>
   ${esJefe() ? `<h2>Cargar o cambiar un monto aprobado</h2><form class="caja" id="f"><div class="rejilla">${camposPresupuesto()}<div><label>Monto aprobado ${anio} (L)</label><input name="aprobado" required inputmode="decimal"></div></div><div class="acciones"><button>Guardar</button></div></form>` : ''}`;
+  const pintar = () => {
+    const f = pest === 'cerca' ? cerca : pest === 'pasadas' ? pasadas : filas;
+    $('#lista').innerHTML = !f.length ? vacio(filas.length ? 'Ninguna línea en este grupo.' : 'Todavía no hay presupuesto cargado para este año.') : `<div class="tabla"><table><thead><tr><th>Proyecto</th><th>Línea</th><th class="n">Aprobado</th><th class="n">Ejecutado</th><th class="n">Comprometido</th><th class="n">Disponible</th><th>Uso</th></tr></thead><tbody>
+    ${f.map(x => { const u = num(x.ejecutado) + num(x.comprometido), pct = pctDe(x); return `<tr><td>${esc(x.proyecto)}</td><td>${esc(x.linea)}</td><td class="n">${L(x.aprobado)}</td><td class="n">${L(x.ejecutado)}</td><td class="n">${L(x.comprometido)}</td><td class="n">${L(num(x.aprobado) - u)}</td><td><div class="barra-pres" title="${pct.toFixed(0)} %"><i class="${pct > 100 ? 'pasado' : pct >= alerta ? 'alto' : ''}" style="width:${Math.min(pct, 100)}%"></i></div></td></tr>`; }).join('')}
+    </tbody>${pest === 'todas' ? `<tfoot><tr><th colspan="2">Total</th><th class="n">${L(tot('aprobado'))}</th><th class="n">${L(tot('ejecutado'))}</th><th class="n">${L(tot('comprometido'))}</th><th class="n">${L(disp)}</th><th></th></tr></tfoot>` : ''}</table></div>`;
+  };
+  alPestana(app(), k => { pest = k; pintar(); }); pintar();
   $('#anio').onchange = e => location.hash = '#/presupuesto/' + e.target.value;
   if ($('#f')) $('#f').onsubmit = async ev => {
     ev.preventDefault(); const f = ev.target, d = datosForm(f); ocupado(f, true);
