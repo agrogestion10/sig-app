@@ -200,7 +200,8 @@ RUTAS.ger = async function tableroGerencia(pest) {
   if (!puedeSec('ger')) { app().innerHTML = cabecera('Gerencia', '#/') + '<div class="caja">Esta sección es para gerencia. Pedile al administrador el permiso «Entra a Gerencia».</div>'; return; }
   const PEST = [['res', 'Resumen'], ...['adm', 'cre', 'cer'].filter(puedeSec).map(k => [k, NOMBRE_SEC[k]]), ['act', 'Actividad']];
   pest = PEST.some(x => x[0] === pest) ? pest : 'res';
-  app().innerHTML = cabecera('Gerencia · ' + esc(S.org.nombre), '#/') + `<div class="pestanas" role="tablist">${PEST.map(([k, t]) => `<a role="tab" href="#/ger/${k}" class="${k === pest ? 'activa' : ''}" aria-selected="${k === pest}">${t}</a>`).join('')}</div><div id="tab"><p class="nota">Cargando…</p></div>`;
+  app().innerHTML = moldeCab('Gerencia', `${puede('solicitudes.autorizar') ? '<a class="boton" href="#/solicitudes">Autorizaciones</a>' : ''}<a class="boton sec" href="#/aprobar">Registros por aprobar</a>${esAdmin() ? '<a class="boton sec" href="#/bitacora">Bitácora</a>' : ''}`, '#/') + pestanas(PEST.map(([k, t]) => [k, t]), pest) + '<div id="tab"><p class="nota">Cargando…</p></div>';
+  alPestana(app(), k => { location.hash = '#/ger/' + k; });
   const tab = $('#tab');
   try {
     if (pest === 'res') tab.innerHTML = await resumenGerencia();
@@ -233,7 +234,7 @@ async function resumenGerencia() {
     cer ? ok(q(sb.from('acopio').select('psec_lb,total').eq('org_id', S.org.id).gte('fecha', hace30))) : null,
     ok(q(sb.rpc('por_revisar', { o: S.org.id })))
   ]);
-  const d = (t, v, sub, h, c = '') => `<a class="tarjeta ${c}" href="${h}"><span>${t}</span><b style="font-size:22px;margin:4px 0">${v}</b><span>${sub || ''}</span></a>`;
+  const d = (t, v, sub, h, c = '') => kpiLink(t, v, sub, h, c === 'alerta' ? 'alerta' : '');
   const bloques = [];
   if (sol) {
     const pend = sol.filter(x => x.estado === 'Pendiente'), porAt = sol.filter(x => x.estado === 'Autorizada' && ['compra', 'fondo'].includes(x.tipo));
@@ -265,9 +266,9 @@ async function resumenGerencia() {
       d('Acopio de los últimos 30 días', qqTxt(qq), `${(aco || []).length} entregas · ${L(sumaP(aco || [], 'total'))}`, '#/acopios')]]);
   }
   const rp = (rev || []).filter(x => x.revision === 'Pendiente');
-  return `<p class="nota">Lo más importante de cada sección. Tocá una tarjeta para ir al detalle, o una pestaña de arriba para ver los números completos.</p>`
+  return `<p class="nota">Lo más importante de cada sección. Tocá un número para ir al detalle.</p>`
     + (rp.length ? `<div class="caja" style="border-left:4px solid #d97706"><b>${rp.length} registro${rp.length > 1 ? 's' : ''} por aprobar</b> <span class="nota">${esc([...new Set(rp.map(x => TIPOS_REV[x.tabla] || x.tabla))].join(' · '))}</span> <a href="#/aprobar">Revisar</a></div>` : '')
-    + bloques.map(([t, k, ts]) => `<h2 class="grupoMenu">${t} <a href="#/ger/${k}" style="font-size:13px;text-transform:none;letter-spacing:0;margin-left:8px">ver números</a></h2><div class="tarjetas">${ts.join('')}</div>`).join('')
+    + bloques.map(([t, k, ts]) => `<div class="filaT"><h2>${t}</h2><a href="#/ger/${k}">Ver todos los números</a></div><div class="kpis">${ts.join('')}</div>`).join('')
     + (!bloques.length ? '<div class="caja">No tenés secciones habilitadas para mostrar.</div>' : '');
 }
 
@@ -300,20 +301,20 @@ RUTAS.panel = async function panel() {
   const aprobado = s(pres, 'aprobado'), usado = s(pres, 'ejecutado') + s(pres, 'comprometido');
   const cartera = cre.map(c => estadoCredito(c, pagos.filter(p => p.credito_id === c.id)));
   const saldo = cartera.reduce((t, c) => t + c.saldo, 0), enMora = cartera.filter(c => c.dias > 0).reduce((t, c) => t + c.saldo, 0);
-  const dato = (t, v, sub, h) => `<a class="tarjeta" href="${h || '#/panel'}"><span>${t}</span><b style="font-size:22px;margin:4px 0">${v}</b><span>${sub || ''}</span></a>`;
+  const dato = (t, v, sub, h) => kpiLink(t, v, sub, h || '#/panel');
   app().innerHTML = cabecera('Panel de control', '#/') + `
-  <h2>Administración</h2><div class="tarjetas">
+  <h2>Administración</h2><div class="kpis">
     ${dato('Solicitudes por resolver', pend, 'Compras, fondos, vacaciones…', '#/solicitudes')}
     ${dato('Autorizado este mes', L(s(aut, 'monto')), 'Compras y fondos', '#/solicitudes')}
     ${dato('Presupuesto ' + anio, aprobado ? Math.round(usado / aprobado * 100) + ' % usado' : 'Sin cargar', aprobado ? L(aprobado - usado) + ' disponible' : '', '#/presupuesto')}
     ${dato('Facturas del mes', fac.length, 'ISV ' + L(s(fac, 'isv')) + ' · retenciones ' + L(s(fac, 'retencion')), '#/facturas')}
   </div>
-  <h2>Crédito interno</h2><div class="tarjetas">
+  <h2>Crédito interno</h2><div class="kpis">
     ${dato('Cartera vigente', L(saldo), cartera.length + ' créditos', '#/cartera')}
     ${dato('Cartera en mora', L(enMora), saldo ? (enMora / saldo * 100).toFixed(1) + ' % de la cartera' : '', '#/cartera')}
     ${dato('Recuperado (total)', L(s(pagos, 'capital')), 'Intereses ' + L(s(pagos, 'interes')), '#/cartera')}
   </div>
-  <h2>Certificaciones</h2><div class="tarjetas">
+  <h2>Certificaciones</h2><div class="kpis">
     ${dato('Productores activos', nprod, ncert + ' aprobados en inspección', '#/padron')}
     ${dato('Acopio ' + anio, (s(aco, 'psec_lb') / 100).toLocaleString('es-HN', { maximumFractionDigits: 1 }) + ' qq', 'Pergamino seco equivalente', '#/balance')}
     ${dato('No conformidades abiertas', ncAb, '', '#/nc')}
@@ -2074,7 +2075,15 @@ RUTAS.pnl = async function panelSeccion(sec) {
   pintarArchivo(sec);
 };
 
-const datoP = (t, v, sub, h) => `<a class="tarjeta" href="${h || 'javascript:void 0'}"><span>${t}</span><b style="font-size:22px;margin:4px 0">${v}</b><span>${sub || ''}</span></a>`;
+const iconoDato = t => /mora|atrasad|vencid|no cumplen|no conformidad/i.test(t) ? 'alerta' : /queja|resolver|autorizar|atender|liquidar|reloj/i.test(t) ? 'reloj' : /productor|socio|participa|empleado/i.test(t) ? 'gente' : /acopio|quintal|qq|lote/i.test(t) ? 'saco' : /área|hect|parcela|eudr/i.test(t) ? 'mapa' : /cartera|autorizado|presupuesto|prima|recuperado|pagado|L |\$/i.test(t) ? 'dinero' : /capacita/i.test(t) ? 'hoja' : 'doc';
+const vacioDato = v => v === 0 || v === '0' || /^L 0\.00$|^0 qq$|^\$0/.test(String(v));
+// tipo: '' (según el título), 'alerta' (amarillo o rojo si hay algo) o un color de kpi
+function kpiLink(t, v, sub, h, tipo = '') {
+  const ic = iconoDato(t), malo = ic === 'alerta' || tipo === 'alerta';
+  const color = tipo && tipo !== 'alerta' ? tipo : malo ? (vacioDato(v) ? 'verde' : ic === 'alerta' ? 'rojo' : 'ambar') : ic === 'reloj' ? (vacioDato(v) ? 'verde' : 'ambar') : ic === 'dinero' || ic === 'saco' ? 'verde' : 'azul';
+  return `<a class="kpi kpi-${color} kpiLink" href="${h || 'javascript:void 0'}"><span class="kpiIc">${ICK[ic] || ''}</span><span class="kpiTx"><small>${esc(t)}</small><b>${v}</b>${sub ? `<em>${sub}</em>` : ''}</span></a>`;
+}
+const datoP = (t, v, sub, h) => kpiLink(t, v, sub, h);
 const sumaP = (a, k) => a.reduce((t, x) => t + num(x[k]), 0);
 const MESES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
@@ -2091,7 +2100,7 @@ async function datosPanelAdm() {
   const porTipo = Object.entries(TIPOS).map(([k, n]) => { const t = sol.filter(s => s.tipo === k); return `<tr><td>${n}</td><td class="n">${t.length}</td><td class="n">${t.filter(s => s.estado === 'Pendiente').length}</td><td class="n">${L(sumaP(t.filter(s => s.estado === 'Autorizada'), 'monto'))}</td></tr>`; }).join('');
   const porMes = MESES_CORTO.map((m, i) => { const mm = anio + '-' + String(i + 1).padStart(2, '0'); return [m, sumaP(aut.filter(s => s.creado.slice(0, 7) === mm), 'monto')]; });
   const maxMes = Math.max(1, ...porMes.map(x => x[1]));
-  return `<div class="tarjetas">
+  return `<div class="kpis">
     ${datoP('Por resolver', pend.length, L(sumaP(pend, 'monto')) + ' en espera', '#/solicitudes')}
     ${datoP('Autorizado en ' + anio, L(sumaP(aut, 'monto')), aut.length + ' solicitudes', '#/solicitudes')}
     ${datoP('Presupuesto ' + anio, aprobado ? Math.round(usado / aprobado * 100) + ' % usado' : 'Sin cargar', aprobado ? L(aprobado - usado) + ' disponible' : '', '#/presupuesto')}
@@ -2112,7 +2121,7 @@ async function datosPanelCre() {
   const anio = String(new Date().getFullYear()), pagAnio = pagos.filter(p => String(p.fecha).startsWith(anio));
   const estados = ['Solicitado', 'En evaluación', 'Aprobado', 'Desembolsado', 'Pagado', 'Rechazado', 'Anulado'];
   const porDestino = {}; vig.forEach(x => { const d = x.c.destino || 'Sin destino'; porDestino[d] = (porDestino[d] || 0) + x.e.saldo; });
-  return `<div class="tarjetas">
+  return `<div class="kpis">
     ${datoP('Cartera vigente', L(saldo), vig.length + ' créditos', '#/cartera')}
     ${datoP('Cartera en mora', L(enMora), saldo ? (enMora / saldo * 100).toFixed(1) + ' % de la cartera' : '', '#/cartera')}
     ${datoP('Recuperado en ' + anio, L(sumaP(pagAnio, 'capital')), 'Intereses ' + L(sumaP(pagAnio, 'interes')) + ' · mora ' + L(sumaP(pagAnio, 'mora')), '#/cartera')}
@@ -2141,7 +2150,7 @@ async function datosPanelCer() {
   const porCert = cs.map(c => ({ c, comprado: aco.filter(a => (a.certificaciones || [a.certificacion]).includes(c.codigo)).reduce((t, a) => t + num(a.psec_lb), 0), vendido: des.filter(d => d.certificacion === c.codigo).reduce((t, d) => t + num(d.psec_lb), 0) })).filter(x => x.comprado || x.vendido);
   const primaRec = sumaP(await q(sb.from('despachos').select('prima_usd').eq('org_id', S.org.id).eq('anulado', false)), 'prima_usd'), primaUso = sumaP(prima, 'monto_usd');
   const usd = v => 'USD ' + num(v).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return `<div class="tarjetas">
+  return `<div class="kpis">
     ${datoP('Productores activos', act.length, act.filter(p => p.estado_cert === 'Aprobado').length + ' aprobados en inspección', '#/padron')}
     ${datoP('Área en fincas', ha.toLocaleString('es-HN', { maximumFractionDigits: 1 }) + ' ha', sinPol ? sinPol + ' parcelas de 4 ha o más sin polígono' : 'Polígonos al día', '#/padron')}
     ${datoP('Acopio ' + anio, qq(sumaP(aco, 'psec_lb')), 'Pagado ' + L(sumaP(aco, 'total')), '#/acopios')}

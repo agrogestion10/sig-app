@@ -335,3 +335,7 @@ button.navGrupo:hover{background:#F6F8FA;color:#1D2C35}
 .waAviso{border-color:#BBF7D0;background:#F0FDF4}.waAviso.resaltar{box-shadow:0 0 0 3px #86EFAC}
 .waAviso h3{display:flex;align-items:center;gap:8px;margin-top:0}.waIco{color:#16A34A;display:inline-flex}.waIco svg{width:22px;height:22px}
 .waLista{display:flex;flex-wrap:wrap;gap:8px}
+/* Números que llevan a su detalle */
+a.kpiLink{text-decoration:none;color:inherit;transition:border-color .12s,transform .12s}
+a.kpiLink:hover{border-color:#FECB18;transform:translateY(-1px)}
+.kpiTx small{color:var(--gris)}
