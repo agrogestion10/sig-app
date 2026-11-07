@@ -202,6 +202,7 @@ function restaurarSinSenal(user) {
 }
 
 async function cargarOrg() {
+  S.avisosNav = {};
   const [c, l, ro] = await Promise.all([
     sb.from('configuracion').select('clave,valor').eq('org_id', S.org.id),
     sb.from('leyes').select('clave,valor'),
@@ -833,7 +834,7 @@ async function verFacturas(mes) {
   const s = (k, l = fac) => l.reduce((a, x) => a + num(x[k]), 0);
   const malas = fac.filter(x => !x.valida_sar);
   let pest = 'todas';
-  app().innerHTML = moldeCab('Libro de compras', `${puede('facturas.registrar') ? '<a class="boton" href="#/agregarfac">+ Agregar facturas</a>' : ''}<button class="sec" id="csv">Descargar CSV</button>`) + `
+  app().innerHTML = moldeCab('Libro de compras', `${puede('facturas.registrar') ? '<a class="boton" href="#/agregarfac">+ Agregar facturas</a>' : ''}${puedeExcel() ? '<button class="sec" id="csv">Libro en CSV</button>' : ''}`) + `
   <div class="barraFiltros"><input type="month" id="mes" value="${mes}"><input id="bus" class="busca" type="search" placeholder="Buscar por emisor, RTN o número"></div>
   ${kpis([kpi('azul', 'doc', 'Facturas del mes', fac.length, 'Total ' + L(s('total'))), kpi('verde', 'dinero', 'ISV (crédito fiscal)', L(s('isv')), 'Para la declaración del mes'),
     kpi('gris', 'reloj', 'Retenciones', L(s('retencion')), 'Se enteran al SAR a más tardar el día 10'), kpi(malas.length ? 'rojo' : 'verde', 'alerta', 'Por revisar', malas.length, malas.length ? 'Les falta algo para el SAR' : 'Todas completas')])}
@@ -847,7 +848,7 @@ async function verFacturas(mes) {
   };
   alPestana(app(), k => { pest = k; pintar(); }); $('#bus').oninput = pintar; pintar();
   $('#mes').onchange = e => location.hash = '#/facturas/' + e.target.value;
-  $('#csv').onclick = () => {
+  if ($('#csv')) $('#csv').onclick = () => {
     const cols = ['fecha_emision', 'tipo_documento', 'numero', 'cai', 'rtn_emisor', 'emisor', 'exento', 'gravado', 'isv', 'total', 'tipo_retencion', 'retencion', 'valida_sar', 'observaciones'];
     const csv = [cols.join(','), ...fac.map(x => cols.map(c => '"' + String(x[c] ?? '').replace(/"/g, '""') + '"').join(','))].join('\n');
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv' })); a.download = `facturas-${mes}.csv`; a.click();

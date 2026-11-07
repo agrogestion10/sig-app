@@ -47,6 +47,15 @@ function itemsNav() {
       ['guia', '#/guia', 'Guía de uso']]]
   ].filter(Boolean).map(([t, l]) => [t, l.filter(Boolean)]);
 }
+// Aviso en el menú: cuántas cosas esperan en cada sección (lo que antes salía en las tarjetas de Inicio)
+function marcarNav(k, txt, clase) { const m = String(txt || '').match(/^\d+/); (S.avisosNav = S.avisosNav || {})[k] = m && +m[0] > 0 ? { n: +m[0], clase, txt } : null; pintarAvisosNav(); }
+function pintarAvisosNav() {
+  const av = S.avisosNav || {};
+  document.querySelectorAll('#navLat .navItem[data-k], #navBaja a[data-k]').forEach(a => {
+    a.querySelector('.navAviso')?.remove(); const x = av[a.dataset.k]; if (!x) return;
+    const b = document.createElement('span'); b.className = 'navAviso ' + (x.clase === 'rojo' ? 'rojo' : ''); b.textContent = x.n > 99 ? '99+' : x.n; b.title = x.txt; a.appendChild(b);
+  });
+}
 function marcaActual() {
   const r = location.hash.replace(/^#\/?/, '').split('/')[0];
   if (!r) return 'inicio';
@@ -70,9 +79,10 @@ function pintarNav() {
   const todos = grupos.flatMap(([, l]) => l), princ = todos.filter(x => ['inicio', 'adm', 'cre', 'cer', 'ger'].includes(x[0])).slice(0, 4);
   if (!baja) { baja = document.createElement('nav'); baja.id = 'navBaja'; baja.className = 'navBaja'; baja.setAttribute('aria-label', 'Menú'); document.body.append(baja); }
   const corto = { inicio: 'Inicio', ger: 'Gerencia', adm: 'Administ.', cre: 'Crédito', cer: 'Certific.' };
-  baja.innerHTML = princ.map(([k, h]) => `<a href="${h}" class="${k === act ? 'activo' : ''}">${ICONOS[k]}<span>${corto[k]}</span></a>`).join('')
+  baja.innerHTML = princ.map(([k, h]) => `<a href="${h}" data-k="${k}" class="${k === act ? 'activo' : ''}">${ICONOS[k]}<span>${corto[k]}</span></a>`).join('')
     + `<button type="button" id="navMas" class="${princ.some(x => x[0] === act) ? '' : 'activo'}">${ICONOS.mas}<span>Más</span></button>`;
   $('#navMas').onclick = () => document.body.classList.toggle('navAbierto');
+  pintarAvisosNav();
   lat.querySelectorAll('a.navItem').forEach(a => a.addEventListener('click', () => document.body.classList.remove('navAbierto')));
   $('#navSalir').onclick = async e => { e.preventDefault(); await sb.auth.signOut({ scope: 'local' }); location.hash = '#/'; location.reload(); };
   if (!wa) {

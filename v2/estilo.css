@@ -239,3 +239,7 @@ label.check input{width:auto;margin-top:3px}
 .btnExcel{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .barraExcel{display:flex;justify-content:flex-end;margin:-6px 0 10px}
 @media print{.btnExcel,.barraExcel{display:none}}
+.navAviso{margin-left:auto;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:#f59e0b;color:#fff;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+.navAviso.rojo{background:#dc2626}
+.navBaja a{position:relative}
+.navBaja a .navAviso{position:absolute;top:2px;left:calc(50% + 6px);margin:0;min-width:16px;height:16px;font-size:10px;padding:0 4px}

@@ -111,13 +111,7 @@ RUTAS[''] = async function portal() {
     <form role="search" class="buscador" id="fBus"><label for="bus" class="oculto">Buscar</label>${ic.lupa}<input id="bus" type="search" autocomplete="off" placeholder="Buscar productor, recibo, crédito o solicitud"><div id="busRes" class="busRes" hidden></div></form></div>
   ${(adm || cre || cer) ? `<section class="caja pendientes" aria-labelledby="hoyT"><div class="filaT"><h2 id="hoyT">Para atender hoy</h2><span class="nota" id="hoyN">Revisando…</span></div><ul id="hoyL"></ul></section>` : ''}
   ${rap.length ? `<section aria-labelledby="rapT"><h2 id="rapT">Accesos rápidos</h2><div class="rapidos">${rap.map(([h, t], i) => `<a href="${h}" class="boton${i ? ' sec' : ''}">${ic.mas}${t}</a>`).join('')}</div></section>` : ''}
-  <section aria-labelledby="secT"><h2 id="secT">Secciones</h2><div class="secciones">
-    ${puedeSec('ger') ? `<a href="#/ger" class="seccionT"><span class="icono"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></span><b>Gerencia</b><span class="nota">Tablero de todo lo que pasa, por secciones</span><span class="estadoSec"></span></a>` : ''}
-    ${adm ? `<a href="#/adm" class="seccionT"><span class="icono">${ic.adm}</span><b>Administración</b><span class="nota">Compras, fondos, facturas, vacaciones y presupuesto</span><span class="estadoSec" id="eadm"></span></a>` : ''}
-    ${cre ? `<a href="#/cre" class="seccionT"><span class="icono">${ic.cre}</span><b>Crédito interno</b><span class="nota">De la solicitud del productor al desembolso y la recuperación</span><span class="estadoSec" id="ecre"></span></a>` : ''}
-    ${cer ? `<a href="#/cer" class="seccionT"><span class="icono">${ic.cer}</span><b>Certificaciones</b><span class="nota">Padrón, inspecciones, acopio, balance de masas y prima</span><span class="estadoSec" id="ecer"></span></a>` : ''}
-    ${!adm && !cre && !cer ? '<div class="caja">Todavía no tenés secciones habilitadas. Pedile al administrador que te las active.</div>' : ''}
-  </div></section>
+  ${!adm && !cre && !cer && !puedeSec('ger') ? '<div class="caja">Todavía no tenés secciones habilitadas. Pedile al administrador que te las active.</div>' : ''}
   ${jefe && (cre || cer) ? `<section aria-labelledby="numT"><div class="filaT"><h2 id="numT">Hoy en números</h2><span class="nota">Solo lo ve gerencia · el detalle está en cada panel</span></div><div class="numeros" id="nums"></div></section>` : ''}
   <footer class="pieEstado" id="pieE"></footer>`;
 
@@ -145,7 +139,7 @@ RUTAS[''] = async function portal() {
   bus.onblur = () => setTimeout(() => { if (res) res.hidden = true; }, 200);
 
   // Pendientes: cada uno por su lado, para que lo que falle no tape lo demás
-  const pend = [], rojo = [], ponerSec = (s, txt, clase) => { const el = $('#e' + s); if (el && txt) { el.textContent = txt; el.className = 'estadoSec ' + (clase || ''); } };
+  const pend = [], rojo = [], ponerSec = (s, txt, clase) => { if (txt) marcarNav(s, txt, clase); const el = $('#e' + s); if (el && txt) { el.textContent = txt; el.className = 'estadoSec ' + (clase || ''); } };
   const tareas = [];
   if (Object.keys(TIPOS_REV).some(apruebo)) tareas.push(q(sb.rpc('por_revisar', { o: S.org.id })).then(l => {
     const p = l.filter(x => x.revision === 'Pendiente' && apruebo(x.tabla)); if (!p.length) return;
@@ -921,18 +915,20 @@ RUTAS.cartera = async function verCartera() {
 RUTAS.cer = async function menuCert() {
   S.seccion = 'cer';
   setTimeout(() => sincronizarKobo(false), 0);
-  const [nc, qj] = esJefe() ? await Promise.all([cuenta('no_conformidades', x => x.eq('estado', 'Abierta')), cuenta('quejas', x => x.neq('estado', 'Cerrada'))]) : [0, 0];
-  app().innerHTML = cabecera('Certificaciones · café', '#/') + `<div class="caja nota" id="koboEstado" style="padding:10px 14px">Revisando Kobo…</div>
-  <h2 class="grupoMenu">Productores y fincas</h2><div class="tarjetas">
-    ${tarjeta('#/padron', 'Padrón de productores', 'Socios, parcelas y certificaciones')}
-    ${puede('padron.crear') ? tarjeta('#/prodf', 'Registrar productor', 'Socio nuevo') : ''}
-    ${puede('padron.crear') ? tarjeta('#/parcela', 'Registrar parcela', 'Punto GPS y polígono (obligatorio desde 4 ha)') : ''}
-    ${tarjeta('#/eudrparc', 'Revisión EUDR de parcelas', 'Satélite: ¿hubo deforestación después del 31/12/2020? Antes de comprar y despachar')}
-    ${S.maestro ? tarjeta('#/carga', 'Carga masiva desde Excel', 'Productores, parcelas, polígonos, acopio anterior, inspecciones, insumos y documentos') : esAdmin() ? tarjeta('#/plan/carga', 'Pedir carga de datos', 'Mandá tu Excel y AgroGestión lo carga') : ''}
-  </div>
+  const mesIni = hoy().slice(0, 8) + '01';
+  const [nc, qj, nProd, acoMes] = await Promise.all([cuenta('no_conformidades', x => x.eq('estado', 'Abierta')), cuenta('quejas', x => x.neq('estado', 'Cerrada')), cuenta('productores', x => x.eq('activo', true)),
+    sb.from('acopio').select('psec_lb').eq('org_id', S.org.id).gte('fecha', mesIni).limit(5000).then(r => r.data || [], () => [])]);
+  const qqMes = acoMes.reduce((t, x) => t + num(x.psec_lb), 0) / 100;
+  const rapidos = [puede('acopio.registrar') && '<a class="boton" href="#/acopio">+ Registrar acopio</a>', puede('inspeccion.registrar') && '<a class="boton sec" href="#/inspeccion">+ Inspección</a>',
+    puede('padron.crear') && '<a class="boton sec" href="#/prodf">+ Productor</a>', puede('padron.crear') && '<a class="boton sec" href="#/parcela">+ Parcela</a>'].filter(Boolean).join('');
+  app().innerHTML = moldeCab('Certificaciones', rapidos, '#/') + kpis([
+    kpi('verde', 'gente', 'Productores activos', nProd, '<a href="#/padron">Ver padrón</a>'),
+    kpi('azul', 'saco', 'Acopio de este mes', qqMes.toLocaleString('es-HN', { maximumFractionDigits: 1 }) + ' qq', '<a href="#/acopios">Ver acopio</a>'),
+    kpi(nc ? 'rojo' : 'verde', 'alerta', 'No conformidades abiertas', nc, '<a href="#/nc">Dar seguimiento</a>'),
+    kpi(qj ? 'ambar' : 'verde', 'doc', 'Quejas sin cerrar', qj, puede('quejas.gestionar') ? '<a href="#/quejas">Atender</a>' : '')]) + `<div class="caja nota" id="koboEstado" style="padding:10px 14px">Revisando Kobo…</div>
+  ${S.maestro || esAdmin() ? `<div class="tarjetas">${S.maestro ? tarjeta('#/carga', 'Carga masiva desde Excel', 'Productores, parcelas, polígonos, acopio anterior, inspecciones, insumos y documentos') : tarjeta('#/plan/carga', 'Pedir carga de datos', 'Mandá tu Excel y AgroGestión lo carga')}</div>` : ''}
   <h2 class="grupoMenu">Control interno</h2><div class="tarjetas">
-    ${puede('inspeccion.registrar') ? tarjeta('#/inspeccion', 'Inspección interna', 'Resultado anual y no conformidades') : ''}
-    ${tarjeta('#/inspecciones', 'Inspecciones', 'Historial')}
+    ${tarjeta('#/inspecciones', 'Inspecciones internas', 'Resultado anual de cada productor')}
     ${tarjeta('#/nc', 'No conformidades', 'Seguimiento y cierre', nc)}
     ${tarjeta('#/insumos', 'Insumos aplicados', 'Qué se aplicó en cada parcela, revisado contra la lista')}
     ${tarjeta('#/capacitaciones', 'Capacitaciones', 'Ayudas memoria, asistencia y acuerdos')}
@@ -940,9 +936,7 @@ RUTAS.cer = async function menuCert() {
     ${tarjeta('#/asistencia', 'Asistencia por productor', 'Quién llegó a cada capacitación')}
     ${puede('quejas.gestionar') ? tarjeta('#/quejas', 'Quejas y reclamos', 'Buzón, también anónimo', qj) : tarjeta('#/queja', 'Registrar una queja', 'Buzón, también anónimo')}
   </div>
-  <h2 class="grupoMenu">Acopio y beneficiado</h2><div class="tarjetas">
-    ${puede('acopio.registrar') ? tarjeta('#/acopio', 'Registrar acopio', 'Entrega de cada socio') : ''}
-    ${tarjeta('#/acopios', 'Acopio', 'Entregas registradas, recibos y pagos')}
+  <h2 class="grupoMenu">Bodega y beneficiado</h2><div class="tarjetas">
     ${tarjeta('#/inventario', 'Inventario por lote y bodega', 'Lo que entró, lo que salió y lo que queda')}
     ${tarjeta('#/basculas', 'Básculas', 'Calibración y vencimiento')}
     ${tarjeta('#/reg/beneficiado', cultivos().length === 1 && cultivos()[0] === 'Cacao' ? 'Fermentación y secado' : 'Beneficiado y secado', cultivos().includes('Cacao') ? 'Fermentación, secado y prueba de corte de cada lote' : 'Proceso de cada lote')}
@@ -957,7 +951,7 @@ RUTAS.cer = async function menuCert() {
     ${tarjeta('#/actas', 'Actas de asamblea', 'Lo que aprueba la asamblea y lo que se gastó')}
   </div>
   ${puede('auditoria.paquete') ? `<h2 class="grupoMenu">Auditoría</h2><div class="tarjetas">${tarjeta('#/paquete', 'Paquete para la certificadora', 'Todo lo de la auditoría en un Excel y el mapa de parcelas')}</div>` : ''}
-  <h2 class="grupoMenu">Formularios de campo</h2><div class="tarjetas">${tarjeta('#/bandeja', 'Trabajo sin señal', 'Preparar el teléfono y ver lo que falta mandar', OFF.cola().length)}${tarjeta('#/kobo', 'Formularios de KoboToolbox', 'Para llenar en el campo, con o sin señal')}${esAdmin() ? tarjeta('#/catalogo', 'Catálogo de certificaciones', 'Activar o desactivar') : ''}</div>
+  <h2 class="grupoMenu">Formularios de campo</h2><div class="tarjetas">${tarjeta('#/bandeja', 'Trabajo sin señal', 'Preparar el teléfono y ver lo que falta mandar', OFF.cola().length)}${esAdmin() ? tarjeta('#/catalogo', 'Catálogo de certificaciones', 'Activar o desactivar') : ''}</div>
   ${puedePanel('cer') ? `<h2 class="grupoMenu">Panel de control</h2><div class="tarjetas">${tarjeta('#/pnl/cer', 'Panel de control', 'Números de certificaciones y archivo de PDF')}</div>` : ''}`;
 };
 
@@ -970,7 +964,7 @@ RUTAS.padron = async function verPadron() {
   const GR = { act: p => p.activo, inc: p => p.activo && falta[p.id].length, pol: p => p.activo && sinPol[p.id], inact: p => !p.activo };
   let pest = 'act';
   const carga = S.maestro ? '<a class="boton sec" href="#/carga/productores">Subir desde Excel</a>' : esAdmin() ? '<a class="boton sec" href="#/plan/carga">Pedir carga de datos</a>' : '';
-  app().innerHTML = moldeCab('Padrón de productores', `${puede('padron.crear') ? '<a class="boton" href="#/prodf">+ Nuevo productor</a>' : ''}${carga}<button class="sec" id="csv">Descargar padrón</button>`) + `
+  app().innerHTML = moldeCab('Padrón de productores', `${puede('padron.crear') ? '<a class="boton" href="#/prodf">+ Nuevo productor</a>' : ''}${carga}${puedeExcel() ? '<button class="sec" id="csv">Padrón completo (CSV)</button>' : ''}`) + `
   <div class="barraFiltros"><input id="bus" class="busca" type="search" placeholder="Buscar por nombre, código o comunidad"><select id="fc"><option value="">Todas las certificaciones</option>${cs.map(c => `<option value="${c.codigo}">${esc(c.nombre)}</option>`).join('')}</select></div>
   ${kpis([kpi('verde', 'gente', 'Productores activos', act.length, act.filter(p => p.certificaciones.length).length + ' con alguna certificación'),
     kpi('azul', 'mapa', 'Hectáreas', act.reduce((t, p) => t + (ha[p.id] || 0), 0).toLocaleString('es-HN', { maximumFractionDigits: 1 }), parc.length + ' parcelas'),
@@ -991,7 +985,7 @@ RUTAS.padron = async function verPadron() {
   };
   alPestana(app(), k => { pest = k; pintar(); });
   $('#bus').oninput = pintar; $('#fc').onchange = pintar; pintar();
-  $('#csv').onclick = () => {
+  if ($('#csv')) $('#csv').onclick = () => {
     const c = $('#fc').value, lista = filtrar();
     const req = (c ? reqDe([c]) : REQ_PADRON.filter((r, i, a) => a.findIndex(x => x[1] === r[1]) === i)).filter(r => r[3] !== 'col');
     const base = ['codigo', 'nombre', 'identidad', 'sexo', 'fecha_nacimiento', 'telefono', 'comunidad', 'municipio', 'departamento', 'fecha_ingreso'];
@@ -1189,7 +1183,7 @@ RUTAS.parcela = async function formParcela(id, prodId) {
     <div class="ancho"><label>Productor</label>${campoProd(ps, p.productor_id)}</div>
     ${c('nombre', 'Nombre de la parcela', 'required')}${c('area_ha', 'Área (hectáreas)', 'required inputmode="decimal"')}
     ${c('lat', 'Latitud (ej. 14.912345)', 'inputmode="decimal"')}${c('lon', 'Longitud (ej. -86.123456)', 'inputmode="decimal"')}
-    ${c('altitud', 'Altitud (msnm)', 'inputmode="decimal"')}${c('variedad', 'Variedad de café')}${c('anio_siembra', 'Año de siembra', 'inputmode="numeric"')}
+    ${c('altitud', 'Altitud (msnm)', 'inputmode="decimal"')}${c('variedad', cultivos().length === 1 ? 'Variedad de ' + cultivos()[0].toLowerCase() : 'Variedad')}${c('anio_siembra', 'Año de siembra', 'inputmode="numeric"')}
     <div><label>Sombra</label><select name="sombra">${opciones(['', 'Sin sombra', 'Sombra regulada', 'Sombra diversificada', 'Bosque'], p.sombra)}</select></div>
     <div><label>Estimado de cosecha (qq ${secoTxt()})</label><input name="estimado_qq" inputmode="decimal" value="${esc(p.datos?.estimado_qq ?? '')}"></div>
     <div><label>Fecha del último producto prohibido</label><input type="date" name="ultima_prohibida" value="${esc(p.datos?.ultima_prohibida || '')}"><p class="nota">${nuevo ? 'Dejala vacía si nunca se aplicó.' : esc(estadoOrganico(p).txt)}</p></div>
