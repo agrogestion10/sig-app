@@ -292,3 +292,5 @@ button.sec:hover,.boton.sec:hover{background:#F6F8FA}
 .pestanas button.activa{background:#FFF0B3;color:#1D2C35;border-bottom-color:transparent;border-radius:8px 8px 0 0}
 input,select,textarea{border-color:#D1D5DB;border-radius:10px}
 header select#cambioOrg{background:#fff;color:#1D2C35;border:1px solid #D1D5DB}
+header .engrane .icono,header #guiaBtn{background:#fff;color:#1D2C35;border:1px solid #D1D5DB}
+header .engrane .icono:hover,header .engrane .icono[aria-expanded="true"],header #guiaBtn:hover{background:#F6F8FA}
