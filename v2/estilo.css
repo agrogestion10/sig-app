@@ -273,3 +273,22 @@ th{background:#F6F8FA}
 .pestanas button.activa .pestN{background:#1D2C35;color:#fff}
 .kpi-azul .kpiIc{background:#E3EEFF;color:var(--azul)}
 .menuEng a:hover,.busRes a:hover{background:#F6F8FA}
+/* Ajuste según las pantallas de Treinta: todo blanco, botón principal azul oscuro, amarillo solo para lo seleccionado */
+body{background:#fff}
+header{background:#fff;color:#1D2C35;border-bottom:1px solid #E3E8EE}
+header .marca{color:#1D2C35}
+header .logo{background:var(--amarillo);color:#1D2C35}
+header select{background:#fff;border:1px solid #D1D5DB;color:#1D2C35}
+header button.sec,header .boton.sec{background:#fff;color:#1D2C35;border:1px solid #D1D5DB}
+header button.sec:hover{background:#F6F8FA}
+header a{color:#1D2C35}
+button,.boton{background:#1D2C35;color:#fff;border-radius:10px}
+button:hover,.boton:hover{background:#2E4250}
+button.sec,.boton.sec{background:#fff;color:#1D2C35;border:1.5px solid #1D2C35}
+button.sec:hover,.boton.sec:hover{background:#F6F8FA}
+.caja,.kpi,.tarjeta,.tabla{border-color:#E3E8EE}
+.navLat{border-right-color:#E3E8EE}
+.navItem.activo{background:#FFF0B3}
+.pestanas button.activa{background:#FFF0B3;color:#1D2C35;border-bottom-color:transparent;border-radius:8px 8px 0 0}
+input,select,textarea{border-color:#D1D5DB;border-radius:10px}
+header select#cambioOrg{background:#fff;color:#1D2C35;border:1px solid #D1D5DB}
