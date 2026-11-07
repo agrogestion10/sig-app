@@ -252,3 +252,13 @@ async function descargarExcel(boton) {
   let pend = false;
   new MutationObserver(() => { if (pend) return; pend = true; requestAnimationFrame(() => { pend = false; try { ponerBotonExcel(); } catch (_) {} }); }).observe(raiz, { childList: true, subtree: true });
 })();
+
+// ---------- Aviso al escoger un archivo que parece el PDF de otro registro de la app ----------
+// (por ejemplo, subir «VAC-2026-0002 · Autorizada.pdf» como cotización de una compra)
+document.addEventListener('change', ev => {
+  const i = ev.target; if (!(i instanceof HTMLInputElement) || i.type !== 'file' || !i.files?.length) return;
+  const raras = [...i.files].filter(f => /^(COM|FON|LIQ|VAC|LAB|ACO|CRE|DES|INS|NC|CAP|QUE)-\d{4}-\d{3,}/i.test(f.name));
+  if (!raras.length) return;
+  const esta = (location.hash.match(/(COM|FON|LIQ|VAC|LAB)-\d{4}-\d{3,}/i) || [])[0];
+  if (!confirm(`«${raras[0].name}» parece el PDF de otro registro de AgroGestión, no un documento de respaldo (cotización, factura, comprobante).\n\n¿Seguro que es el archivo correcto?`)) { i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); }
+}, true);
