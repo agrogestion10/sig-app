@@ -1,7 +1,7 @@
 // SIG · Service worker: guarda una copia de la aplicación para que abra sin señal.
 // Los datos no pasan por aquí: los maneja la aplicación (copia local y bandeja de salida).
-const CACHE = 'sig-app-2';
-const BASE = ['/', '/manifest.webmanifest', '/iconos/sig-192.png', '/iconos/sig-512.png'];
+const CACHE = 'sig-app-3';
+const BASE = ['/', '/manifest.webmanifest', '/iconos/ag-192.png', '/iconos/ag-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(BASE)).catch(() => {}));
